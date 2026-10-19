@@ -1,0 +1,190 @@
+// server/match/PlayerState.js — authoritative per-player state + every prep intent handler (DESIGN §6.2).
+//
+// Handlers validate → mutate → recompute bonds → mark the private view dirty. They never throw on bad input; they
+// return `{ ok: true }` or `{ error: ERR.*, detail? }`. Rules (research 00-INDEX §3–§4, 01 A1, 04 §2):
+//   * Hand (整备区) 10 slots filled right→left, temp (临时整备区) 5 slots. A full hand refuses buys / withdrawals,
+//     except a purchase that completes a merge and a withdrawal whose own summon stack frees a slot. Passive gains (merge
+//     results, grants, returned equipment) overflow into temp; temp blocks Ready ("直到溢出情况排除才可开始进行作战").
+//     A temp piece is resolved (chess sold back to the pool, items destroyed, summon stacks removed — they come back at
+//     the next round start, grantTokensFor) at the deadline of the
+//     first prep in which the player could act on it (tempDue): a piece that overflowed during a prep before Ready
+//     expires at that prep's end; one that arrived after Ready, at the prep end (<休整期结束时> grants), in COMBAT /
+//     SETTLE (battle-result grants, merges, returned equipment) or at the next round start / 机变 stays visible and
+//     usable (move to a free hand slot, place, equip, destroy, sell) through the NEXT prep — nothing is destroyed before
+//     the player saw it in a prep ("处于临时整备区的调度资源，在进入下一回合后会自动销毁").
+//   * Board: own region rows 9–12 × cols 2–10, legality from the stage legend (board.js); deploy cap 8 (+effects);
+//     tokens (placeable summons) don't use deploy slots. Board↔hand swaps are always allowed. In a boss round the
+//     legality reads the player's half of the boss field (Match.deployFieldOf → board.js field 'bossL' / 'bossR',
+//     user playtest #5 item 7); board coordinates are unchanged. A terrain change (terrain 机变 cards, content
+//     overrides) or a change of the deploy field withdraws the pieces left on tiles they may no longer occupy (hand,
+//     overflow temp; summons back onto their stack) — see _evictIllegal.
+//   * Shop: per-level chess slots + item slot, copy-weighted rolls from the SHARED pool (pool.js); refresh 1 (free
+//     refreshes first), one toggle freezes all unsold slots until the next round start (a manual refresh while frozen
+//     rerolls everything and the new slots stay frozen), level-up price = base − rounds elapsed (floor 0).
+//   * Merge: 3 normal copies (风丸 2) on board/hand/temp → 1 elite; equipment returns to the hand; a
+//     reward offer of 3 different free chess of tier min(level+1, 6) is queued (never one operator twice — user
+//     playtest #6 item 19; a short tier tops up from the tier below; pick 1, expires at prep end; an offer earned
+//     after the prep — SETTLE / Final Assault effects — is kept for the next prep). Where the elite goes (PRTS
+//     卫戍协议/帮助 "发送1名【精锐】状态的该干员至手牌区（若消耗已部署至作战区的干员，则发送至作战区对应位置）", user
+//     playtest #6 follow-up): when a consumed copy stood on the board, onto that copy's tile with its facing (of several,
+//     the one that deploys first — board.js mergeTile, [ASSUMED]); it replaces a deployed copy, so the deploy count
+//     never grows, and it gets its own summon stack (grantTokensFor). Otherwise to the hand, overflow temp — also
+//     outside PREP (a SETTLE merge's elite waits in temp for the next prep).
+//   * Per-piece round counters (pieceRoundCount, piece.meta.round): an operator's own counts of the current round
+//     (拉普兰德: the manual refreshes she witnessed — player feedback after 0.1.0); a new piece starts at 0, an elite
+//     merged this round keeps the highest of its copies' [ASSUMED].
+//   * Transformations (transformChess, 突变细胞 — PRTS 备注 "生效时，原干员销毁，获得一名高一阶的随机初始干员"): a destroy
+//     followed by a gain. The carrier leaves wherever it stands (a board tile is freed, the deploy count drops), its
+//     equipment — the cell included — returns to the hand first (overflow temp), then the new chess is gained like any
+//     other (acquireChess: hand, overflow temp, the no-room rule; a merge it completes puts the elite on a consumed
+//     deployed copy's tile — never the carrier's —, else in the hand). Official footage: the tile is empty at the next
+//     prep and the new operator waits in the 整备区 (pointed out in PR #2).
+//   * Items: equip max 2 (a 3rd replaces the equipped item the player picks — g.equip replaceUid, the oldest when
+//     absent; equipped items are otherwise locked: g.destroy refuses them),
+//     2 identical normal items (hand/temp/equipped) merge into the golden item in the hand, items are never sold
+//     (destroy for 0). consume-on-equip items resolve through the effect registry and never take a slot.
+//   * Tokens (PRTS 卫戍协议/帮助 §战斗部署, user playtest #6): placing an owner with manually deployable summons
+//     (tokens.json `placeable`: 赫默's 医疗探机 and 巫恋's 诅咒娃娃 with their S2, 凯瑟琳's 爬行号·防护单元, 海嗣 / 狼群 /
+//     流形) sends one stack (deployLimit copies — 凯瑟琳 2) to the hand, placed by hand like any piece (no deploy slot);
+//     withdrawing/selling/merging the owner removes its tokens (an elite that takes a merged copy's tile gets a fresh
+//     stack of its own, like any deployment), moving it on the board (also when a summon dragged onto
+//     it swaps it away) sends its placed summons back onto their stack ("移动干员时，其所属召唤物全部退场并重置至手牌区");
+//     a summon stack removed from temp at a prep deadline comes back at the next round start (startRound tops every
+//     board owner's summons up to the deploy limit, "干员所属召唤物会于下一回合返还"). In battle a skill's summon takes its
+//     tile when the skill fires (sim/content/tokens.js dockSkillSummons). A summon whose text reads "只能部署在召唤者
+//     攻击范围内" (tokens.json `ownerRange`: the tacticians' 狼群 / 流形 — their tactical point; player report #9 after
+//     0.1.0) only goes on a tile of its owner's attack range (_legal / summonRange: the loadout's grid rotated by the
+//     owner's facing); a swap with its owner is checked from the owner's new tile, and one an in-place re-orientation
+//     (or a promotion) leaves outside goes back onto its stack (recompute → _liftOutOfRange) [ASSUMED: kept when still
+//     inside]. A re-orientation that would leave such a summon with no stack and no free hand / temp slot is refused
+//     (HAND_FULL); elsewhere (a promotion, an owner moved with no room) it leaves the board and its stack comes back at
+//     the next round start (grantTokensFor) — no out-of-range placement reaches the battle.
+//   * Facing (DESIGN §3, research 09 §1.2): every board piece has `dir` ∈ UP|RIGHT|DOWN|LEFT (server/sim/dir.js), set
+//     by g.move {…, dir} (absent ⇒ RIGHT) and kept across rounds. g.move onto the piece's OWN tile re-orients it in
+//     place; a swap keeps the occupant's dir; a piece put on the board by an effect (a merge elite taking a consumed
+//     copy's tile) keeps that tile's dir, anything else defaults to RIGHT (`pieceDir`). g.art {…, dir} rotates the
+//     Art's range (画卷 1-1: its tile + the tile in front).
+//   * Operator loadout (DESIGN §16): the human's checked `seat.loadout` ({ [baseChessId]: { skill, module } }, entries
+//     equal to the defaults dropped) is re-checked against this match's data (shared/protocol.js checkLoadout; a
+//     mismatch falls back to the defaults) and kept frozen; bots always use the defaults. Match.setLoadout may replace
+//     it during INFO_CHECK only. battleInput() resolves every chess unit to `skillIndex` + `moduleId` (resolveLoadout:
+//     normal chess → moduleId null, elite → uniEquipId | 'none'); m.private exposes `loadout`.
+
+import { PlayerDiy, DiyStock } from "./player/diy.js";
+import { FIELD } from "./board.js";
+
+import { computeBonds } from "./bondsMeta.js";
+
+import { HAND_SIZE, TEMP_SIZE } from "./player/common.js";
+import { PlayerAcquire } from "./player/acquire.js";
+import { PlayerBasics } from "./player/basics.js";
+import { PlayerEconomy } from "./player/economy.js";
+import { PlayerItems } from "./player/items.js";
+import { PlayerPieces } from "./player/pieces.js";
+import { PlayerPlacement } from "./player/placement.js";
+import { PlayerPrep } from "./player/prep.js";
+import { PlayerRound } from "./player/round.js";
+import { PlayerViews } from "./player/views.js";
+export class PlayerState {
+  constructor(m, seat) {
+    this.m = m;
+    this.gd = m.gd;
+    this.playerId = seat.playerId;
+    this.seat = seat.seat;
+    this.name = seat.name;
+    this.isBot = !!seat.isBot;
+    /** anonymous ranked-profile id (RANKED; hello.aid via the seat) */
+    this.aid = seat.aid || null;
+    /** DEV：只有服务端授权会话且名为 root，才透传调试伤害；同名公共档案不授权。 */
+    this.devOps = !!(m.ranked && seat.debugAuthorized === true && String(seat.name || '').trim().toLowerCase() === 'root');
+    this.connected = this.isBot ? true : !!seat.connected;
+    this.left = false;
+    this.autoplay = false;
+    this.alive = true;
+    this.lp = 0;
+    this.bandId = null;
+    this.funds = 0;
+    this.pendingFunds = 0;
+    this.cyclopsStreak = 0; // 正数为连胜、负数为连败；每个个人作战回合结算一次。
+    this.ready = false;
+    this.infoReady = this.isBot;
+    this.lastEmoteAt = -Infinity;
+    /** operator loadout (DESIGN §16): frozen { [baseChessId]: { skill, module } }, {} = every chess on its defaults */
+    this.skins = Object.freeze(this.isBot ? {} : { ...seat.skins });
+    this.loadout = Object.freeze({});
+    this.ops = Object.freeze({});
+    if (!this.isBot && (seat.loadout || seat.ops)) this.setLoadout(seat.loadout || {}, seat.ops || {});
+    this.standIns = Object.freeze([]);
+    this._standInSet = new Set();
+    if (!this.isBot && seat.notOwned) this.setNotOwned(seat.notOwned);
+    this.diy = Object.freeze({});
+    this._diyRecords = new Map();
+    this.diyStock = new DiyStock();
+    this.diyBanned = Object.freeze([]);
+    if (!this.isBot && seat.diy) this.setDiy(seat.diy);
+    this.shop = { level: 1, upgradePrice: this.gd.upgradeBase(1) ?? 0, slots: [], frozen: false, freeRefreshes: 0 };
+    /** reward offers queue (merge rewards, special refreshes): { tier, source, label, slots: [{ kind, id, price, sold }] } */
+    this.offers = [];
+    /** @type {Array<any>} */
+    this.hand = new Array(HAND_SIZE).fill(null);
+    /** @type {Array<any>} */
+    this.temp = new Array(TEMP_SIZE).fill(null);
+    /** preps of this player that ended so far (endPrep) = index of the current (or next) prep */
+    this.prepsEnded = 0;
+    /** @type {Map<number, number>} temp piece uid → index of the prep whose deadline resolves it (see tempDue) */
+    this._tempDue = new Map();
+    /** @type {Map<string, any>} 'r,c' → piece */
+    this.board = new Map();
+    /** persistent bond layers */
+    this.layers = {};
+    /** computed bond states */
+    this.bonds = {};
+    /**
+     * this round's IN_BATTLE layer gains of the finished normal battle ({ [bondId]: n }, Match._finishCombat) until
+     * settle() makes them persistent — the views add them (bondsView, DESIGN §20.15); null otherwise
+     */
+    this.pendingLayerGains = null;
+    /** optional per-bond count bonus written by effects */
+    this.bondCountBonus = {};
+    /** EffectRef list: { id, key, name, desc, iconKind, iconId, counter?, battle, params, data } */
+    this.effects = [];
+    /** active bounties: { id, card, roundsLeft, chooser } */
+    this.bounties = [];
+    /** Pending 教鞭 offer, private to this player and the current PREP round. */
+    this.personalChoice = null;
+    /** free-form counters for content (ctx.counter / setCounter) */
+    this.counters = {};
+    /** per-round counters (reset at round start) */
+    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0 };
+    this.deployCapBonus = 0;
+    this.deployCapMin = 0;
+    this.deviceOverrides = {};
+    this.tileOverrides = {};
+    this.stats = {
+      dmgDealt: 0, kills: 0, leaks: 0, gold: 0, refreshes: 0, merges: 0, itemMerges: 0, itemsEquipped: 0,
+      bossDamage: 0, lpLost: 0, buys: 0, sells: 0, perfectRounds: 0, fundsGained: 0, healing: 0, assists: 0,
+      survivalRounds: 0, rankedDamage: 0, rankedPerfectRounds: 0,
+    };
+    this.eliminatedRound = null;
+    this.lpAtFinal = null;
+    /** last combat result for this player (unite carry state, bounties) */
+    this.lastResult = null;
+    this._deployMap = null;
+    /** the deploy field of `_deployMap` ('normal' | 'bossL' | 'bossR', Match.deployFieldOf) */
+    this._deployField = undefined;
+    /** the deploy map changed since the board's legality was last checked (invalidateDeployMap) */
+    this._legalityStale = false;
+    /** Match.scheduleBotPrep: the latest bot prep of this seat (older sliced rehearsals drop out) */
+    this._botPrepToken = 0;
+    this.bonds = computeBonds(this.gd, this);
+  }
+}
+for (const part of [PlayerAcquire, PlayerBasics, PlayerEconomy, PlayerItems, PlayerPieces, PlayerPlacement, PlayerPrep, PlayerRound, PlayerViews, PlayerDiy]) {
+  for (const key of Reflect.ownKeys(part.prototype)) {
+    if (key === 'constructor') continue;
+    if (Object.prototype.hasOwnProperty.call(PlayerState.prototype, key)) throw new Error(`PlayerState.${String(key)} is defined twice`);
+    Object.defineProperty(PlayerState.prototype, key, Object.getOwnPropertyDescriptor(part.prototype, key));
+  }
+}
+
+export { FIELD };

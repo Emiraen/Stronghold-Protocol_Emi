@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f4f6f3">
+<meta name="description" content="卫戍协议：盟约界面操作指南，模式入口、排位机制、干员调配、自选编队与设置。">
+<title>卫戍协议：盟约 · 界面操作指南</title>
+<style>
+:root{--bg:#f4f6f3;--panel:#fff;--text:#202b29;--muted:#667570;--line:#dce4df;--accent:#257259;--soft:#edf5ef;--note:#f7f2df;--size:17px}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:100px}body{margin:0;background:var(--bg);color:var(--text);font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;line-height:1.85}body.dark{--bg:#141d1a;--panel:#1d2924;--text:#e5eee9;--muted:#a9b9b0;--line:#37473e;--accent:#85cfaa;--soft:#273b30;--note:#393420}a{color:var(--accent)}button,input{font:inherit}button{cursor:pointer;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:7px 11px;font-size:13px}button:hover{border-color:var(--accent);background:var(--soft)}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #64b18c;outline-offset:3px}button:disabled{opacity:.4;cursor:default}#progress{position:fixed;top:0;left:0;height:3px;background:var(--accent);width:0;z-index:30}.topbar{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line)}.top-inner{max-width:1300px;margin:auto;display:flex;align-items:center;gap:14px;padding:14px 26px}.brand{font-weight:bold;letter-spacing:1px;white-space:nowrap;font-size:16px}.brand small{color:var(--muted);font-size:11px;display:block;line-height:1.3;letter-spacing:2px}.search{margin-left:auto;display:flex;gap:7px;align-items:center}.search input{width:215px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:13px;min-width:0}.search-output{font-size:11px;color:var(--muted);min-width:65px}.tools{display:flex;gap:5px}.menu-btn{display:none}.layout{max-width:1300px;margin:0 auto;padding:30px 26px 65px;display:grid;grid-template-columns:240px minmax(0,1fr);gap:35px}.sidebar{position:sticky;top:106px;align-self:start;max-height:calc(100vh - 125px);overflow:auto;padding:4px 10px 15px 0}.sidebar h2{font-size:11px;letter-spacing:3px;color:var(--muted);margin:0 0 15px 12px}.sidebar nav a{display:flex;align-items:baseline;gap:12px;text-decoration:none;font-size:13px;color:var(--muted);padding:9px 12px;border-radius:8px;margin:3px 0;line-height:1.6}.sidebar nav a span{font-size:10px;font-family:Arial,sans-serif;color:var(--accent);opacity:.8}.sidebar nav a:hover,.sidebar nav a.active{background:var(--soft);color:var(--text)}.sidebar nav a[href="#chapter-7"]{border:1px solid var(--line);color:var(--accent)}.side-foot{border-top:1px solid var(--line);margin:22px 12px 0;padding-top:17px;color:var(--muted);font-size:11px}.side-foot a{display:block;margin-top:8px}.content{min-width:0}.hero{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:35px 40px;margin-bottom:24px;position:relative;overflow:hidden}.hero:before{content:"";position:absolute;top:0;left:0;width:6px;height:100%;background:var(--accent)}.eyebrow{font-size:10px;letter-spacing:3px;color:var(--accent);font-weight:bold}.hero h1{font-size:32px;letter-spacing:1px;line-height:1.35;margin:13px 0}.hero p{font-size:14px;color:var(--muted);margin:10px 0 20px}.quick{display:flex;gap:8px;flex-wrap:wrap}.quick a{display:inline-block;border-radius:7px;border:1px solid var(--line);background:var(--soft);text-decoration:none;padding:6px 12px;font-size:12px}.meta{font-size:11px;color:var(--muted);margin-top:20px}.chapter{font-size:var(--size);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:25px 38px 32px;margin-bottom:20px;scroll-margin-top:105px;overflow-wrap:break-word}.chapter h2{font-size:25px;line-height:1.45;margin:0 0 23px;padding-bottom:16px;border-bottom:1px solid var(--line);letter-spacing:.2px}.chapter h3{font-size:19px;line-height:1.6;margin:29px 0 14px;color:var(--accent)}.chapter p{margin:12px 0}.chapter ul{padding-left:23px;margin:10px 0}.chapter li{margin:10px 0;padding-left:3px}.chapter li::marker{color:var(--accent)}.chapter li ul{font-size:.95em;padding-left:23px;margin-top:8px}.chapter strong{font-weight:700;color:var(--text)}#chapter-7{border-top:4px solid var(--accent)}code{font-family:Consolas,monospace;font-size:.88em;background:var(--soft);padding:2px 5px;border-radius:4px}hr{border:0;border-top:1px solid var(--line);margin:25px 0}.note{font-size:13px;background:var(--note);border-left:3px solid #b69746;border-radius:8px;padding:15px 20px;margin:0 0 24px;color:var(--text)}mark{background:#ffe3a0;color:#242d28;border-radius:2px;padding:0 1px}mark.current{background:#eeaa46;outline:2px solid #bd7826}footer{font-size:12px;color:var(--muted);text-align:center;padding:14px}.back-top{position:fixed;bottom:22px;right:25px;box-shadow:0 5px 20px #0001}#shade{display:none}
+@media(max-width:1120px){.top-inner{gap:10px}.search input{width:160px}.brand{font-size:14px}.layout{grid-template-columns:215px minmax(0,1fr);gap:20px}.hero,.chapter{padding-left:28px;padding-right:28px}.search-output{min-width:48px}}
+@media(max-width:900px){.top-inner{padding:12px 16px;flex-wrap:wrap;gap:10px}.menu-btn{display:block}.brand{margin-right:auto}.search{order:3;width:100%;margin:0}.search input{flex:1;width:auto}.search-output{min-width:66px}.layout{display:block;padding:20px 14px 50px}.sidebar{display:none;position:fixed;left:0;top:115px;bottom:0;background:var(--panel);z-index:22;width:280px;max-height:none;padding:22px 15px;box-shadow:10px 0 35px #0002}.sidebar.open{display:block}#shade.open{display:block;position:fixed;inset:115px 0 0;background:#0005;z-index:21}.hero{padding:27px 25px}.hero h1{font-size:26px}.chapter{padding:24px 22px}.chapter h2{font-size:23px}.chapter h3{font-size:18px}.chapter ul{padding-left:20px}html{scroll-padding-top:140px}.chapter{scroll-margin-top:140px}.back-top{bottom:15px;right:15px}}
+@media(max-width:420px){.tools button{padding:6px 8px}.brand{font-size:13px}.brand small{font-size:9px}.chapter{padding:20px 18px}.chapter h2{font-size:21px}.hero h1{font-size:23px}.search button{padding:7px 9px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{.topbar,.sidebar,#progress,.back-top,#shade,.quick{display:none!important}.layout{display:block;padding:0}.hero,.chapter{border:0;border-radius:0;padding:10px 0;margin:0 0 18px;break-inside:auto;background:#fff!important;color:#111!important}.hero:before{display:none}.chapter h2{break-after:avoid}.chapter h3{break-after:avoid}.chapter{font-size:12pt}.hero h1{font-size:25pt}body{background:#fff;color:#111}mark,mark.current{background:none;outline:none}footer{display:none}}
+</style>
+</head>
+<body>
+<div id="progress" aria-hidden="true"></div>
+<header class="topbar"><div class="top-inner">
+<button class="menu-btn" id="menu" aria-controls="sidebar" aria-expanded="false">目录</button>
+<div class="brand">卫戍协议：盟约<small>INTERFACE FIELD GUIDE</small></div>
+<div class="search" role="search"><input id="query" type="search" placeholder="搜索：自选、模组、排位…" aria-label="搜索指南正文"><span id="search-output" class="search-output" aria-live="polite">全文搜索</span><button id="prev" aria-label="上一个搜索结果" disabled>↑</button><button id="next" aria-label="下一个搜索结果" disabled>↓</button><button id="clear" aria-label="清除搜索">清除</button></div>
+<div class="tools"><button id="smaller" aria-label="减小字号">A−</button><button id="larger" aria-label="增大字号">A＋</button><button id="theme" aria-label="切换夜间阅读">夜间</button><button id="print">打印</button></div>
+</div></header>
+<div id="shade"></div>
+<div class="layout">
+<aside class="sidebar" id="sidebar"><h2>操作目录 / CONTENTS</h2><nav aria-label="章节导航"><a href="#chapter-1"><span>01</span>标题屏</a>
+<a href="#chapter-2"><span>02</span>大厅：选择模拟协议</a>
+<a href="#chapter-3"><span>03</span>排位赛机制</a>
+<a href="#chapter-4"><span>04</span>房间等待室（同盟）</a>
+<a href="#chapter-5"><span>05</span>确认本局信息（1/2）</a>
+<a href="#chapter-6"><span>06</span>策略轮选（2/2）</a>
+<a href="#chapter-7"><span>07</span>★ 干员配置（干员调配）</a>
+<a href="#chapter-8"><span>08</span>设置菜单</a>
+<a href="#chapter-9"><span>09</span>本机统计与对局记录</a>
+<a href="#chapter-10"><span>10</span>对局内界面速查</a><a href="#chapter-11"><span>11</span>舟铲铲之战 · 完整入门</a></nav><div class="side-foot">11 个章节 · 随时跳转<br>按 / 开始搜索，Enter 跳到下一处。<a href="#top">返回指南首页</a></div></aside>
+<main class="content" id="top"><div class="hero"><div class="eyebrow">STRONGHOLD PROTOCOL / 操作手册</div><h1>界面操作指南</h1><aside class="note"><strong>虽然可以不下载资源游玩，但是下载后游戏将会更流畅，且可以使用皮肤和干员语音等附加资源</strong></aside><p>从模式入口到自选编队，把需要找的按钮放在一处。<br>选择章节直接阅读，无需从头翻阅。</p><div class="quick"><a href="#chapter-11">舟铲铲之战怎么玩</a><a href="#chapter-2">模式怎么进</a><a href="#chapter-7">干员调配与自选</a><a href="#chapter-3">排位机制</a><a href="#chapter-8">菜单设置</a></div><div class="meta">依据提供的原文排版 · 具体规则与按钮以游戏内当前显示为准</div></div><article id="article"><aside class="note">第1–10章保留原界面操作指南，涵盖入口、按钮与配置；新增第11章「舟铲铲之战」，讲解完整回合流程、经济运营、馈赠、奖励关与征召。首次游玩舟铲铲可直接从第11章开始。</aside>
+<p><strong>虽然可以不下载资源直接游玩，但下载资源后游戏将会更流畅，并且可以使用皮肤、干员语音等附加资源。</strong></p>
+<section class="chapter" id="chapter-1"><h2>1. 标题屏</h2>
+<p>打开页面后首先进入标题屏，需先输入代号：</p>
+<ul><li><strong>博士代号输入框</strong>：填写昵称（有长度上限），会自动过滤控制字符与不可见字符。
+</li><li><strong>开始游戏</strong>：代号有效后点击进入大厅；代号为空时会提示。
+</li><li><strong>服务器选择下拉框</strong>：在多个服务器（如华东 / 华南）之间切换，旁边显示服务器状态（空闲 / 一般 / 繁忙）与<strong>重试</strong>。
+</li><li><strong>语言切换</strong>：右上角可切换中 / 英文。
+</li><li>标题屏下方还有一排入口：<strong>公告</strong>（含「今日不再弹出」勾选，未读有标记）、<strong>设置</strong>、<strong>玩法说明</strong>（书形图标）、<strong>本机统计</strong>、<strong>全屏</strong>。
+</li><li>若你有一场未结束的同盟，模式按钮会被 <strong>【断线重连】</strong> 取代，点击直接回到原座位。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-2"><h2>2. 大厅：选择模拟协议</h2>
+<p>大厅标题为「选择模拟协议」，分左右两栏。</p>
+<h3>2.1 左栏：模拟方式（01）</h3>
+<p>三张模式卡，点选其一：</p>
+<ul><li><strong>独立模拟（SOLO）</strong>：1 名博士，休整期与机变阶段不限时。
+</li><li><strong>同盟模拟（ALLIANCE）</strong>：1–4 名博士，可由 AI 队友补位，包含联防与最终攻势合并生命值。
+</li><li><strong>娱乐模式（ENTERTAINMENT）</strong>：多人同盟，最多 20 名博士，分组卡池与轮选、多轮联防，<strong>不计排位</strong>。选择后需再点「多人模式」并设置<strong>房间容量</strong>。
+</li></ul>
+<p>左栏下方还有：</p>
+<ul><li><strong>03 加入同盟</strong>：输入同盟密钥或粘贴邀请链接，点「加入同盟」；下方列出<strong>最近的同盟</strong>，可直接点选。
+</li><li><strong>观战大厅</strong>：观看进行中的对局，仅观看、不操作不结算。
+</li><li><strong>作战提示</strong>：每 5 秒轮播一条提示，可手动翻页。
+</li></ul>
+<h3>2.2 右栏：模拟难度（02）</h3>
+<p>四张难度卡：<strong>标准 / 险境 / 绝境 / 终极</strong>，每张卡显示：</p>
+<ul><li>编号（AC-1 ~ AC-4）、回合数、是否「+ 隐秘核心」、描述与效果词条；
+</li><li>战场信息：标准为「战场固定」，更高难度为「战场随机（共 N 张）」。
+</li></ul>
+<h3>2.3 右栏：排位与创建</h3>
+<ul><li><strong>开启排位赛</strong>开关：勾选后进行排位；险境 / 绝境 / 终极可计排位，<strong>标准始终不计排位分、不计定级</strong>。
+</li><li><strong>「?」按钮</strong>：查看段位积分边界表。
+</li><li><strong>排行榜</strong>：查看全服排行榜（神话及以上）。
+</li><li>底部大按钮：独立模式为「开始独立模拟」，同盟为「创建同盟」，娱乐为「创建娱乐多人同盟」。
+</li></ul>
+<h3>2.4 大厅顶栏</h3>
+<p>返回标题、Ping（网络延迟）、<strong>设置</strong>、<strong>玩法说明</strong>、<strong>干员调配</strong>（带已调整数量角标）、<strong>本机统计</strong>、<strong>对局记录</strong>，以及右上角显示你本人代号与博士编号的个人卡片。</p>
+</section>
+<section class="chapter" id="chapter-3"><h2>3. 排位赛机制</h2>
+<h3>3.1 段位</h3>
+<ul><li><strong>黑铁 / 青铜 / 白银 / 黄金 / 白金 / 钻石 / 超凡</strong>：各分 3 个小段，每小段 100 分，起点分别为 0 / 300 / 600 / 900 / 1200 / 1500 / 1800。
+</li><li><strong>神话</strong>：2100 分起，神话一 2100–2199、神话二 2200–2299、神话三 2300–2549。
+</li><li><strong>赋能战魂</strong>：2550 分及以上。
+</li><li>神话及以上，徽章末尾显示 <strong>#全服排名</strong>。
+</li></ul>
+<h3>3.2 定级赛</h3>
+<ul><li>共 <strong>3 场</strong>，只能使用险境 / 绝境 / 终极。
+</li><li>单场得分 = 难度底分 + 18 × 存活回合 + 盟约层数分 + 8 × 协助（上限 10）+ 胜场加成；三场合计夹在 <strong>0–2050</strong>（最高定级为超凡三 50 分）。
+</li><li>参考：全败且每把存活不超过 8 回合，险境约在黑铁~白银、绝境至多黄金一、终极至多黄金三。
+</li></ul>
+<h3>3.3 常规局计分</h3>
+<ul><li><strong>表现分</strong>：难度预算为险境 25 / 绝境 40 / 终极 50，按六项权重与达成比例计算：
+<ul><li>存活 35%、有效总伤害 32%、Boss 伤害 12%、盟约层数 8%、完美作战 8%、协助 5%。
+</li></ul>
+</li><li><strong>存活门槛</strong>：神话 / 赋能需个人存活 ≥ 11 回合，其余段位 ≥ 9 回合才计入表现。
+</li><li><strong>扣分</strong>：神话 / 赋能失败、个人死亡或未达存活门槛时扣分（原扣额按难度 ×1.1，下限 30）；<strong>积分低于 2100 的段位不扣分</strong>。
+</li><li><strong>跳段（统治级胜利）</strong>：绝境 / 终极胜利，且盟约层数 ≥ 200、协助 ≥ 3、个人有效伤害 ≥ 1500 万；连续 ≥ 2 次时该场额外 +50。
+</li><li><strong>人数补偿</strong>：按开局参赛人数，3 / 2 / 1 人胜局额外 +10 / 20 / 30；失败时补 7 / 14 / 21，用于抵扣剩余扣分。
+</li><li><strong>隐藏分（ELO）</strong>：按实际表现对难度基准的偏离更新，K = 32，定级赛期间加减更剧烈。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-4"><h2>4. 房间等待室（同盟）</h2>
+<p>创建 / 加入同盟后进入房间，主体为座位卡片：</p>
+<h3>4.1 座位卡片</h3>
+<ul><li><strong>空位</strong>：显示「等待博士加入」，房主可点 <strong>添加 AI 队友</strong>。
+</li><li><strong>AI 队友</strong>：标注「AI 队友」，房主可点关闭图标移除；排位房间显示「人机 · 不参与排位」。
+</li><li><strong>真人</strong>：显示头像框、昵称、博士编号与状态（已就绪 / 准备中 / 待命中 / 连接中断）；房主座位带皇冠与「创建者」，房主可点关闭图标<strong>踢出</strong>其他真人。
+</li><li>排位房间中，真人座位显示其<strong>段位徽章</strong>。
+</li></ul>
+<h3>4.2 邀请与补齐</h3>
+<ul><li><strong>邀请框</strong>：显示 4 位同盟密钥，可「复制密钥」或「复制链接」（<code>?room=密钥</code>）发给朋友。
+</li><li><strong>匹配补齐</strong>：房主开启后自动匹配真人补位，显示候选人数，可随时取消。
+</li><li><strong>AI 补齐投票</strong>：发起投票，队员「赞成 / 反对」，达到人数即由 AI 补齐。
+</li><li><strong>匹配成功确认弹窗</strong>：所有真人需独立「确认参加」，并对难度投票（票多者胜，平票取最高难度）；拒绝、未确认超时或掉线均取消本次匹配。
+</li></ul>
+<h3>4.3 开始与离开</h3>
+<ul><li>房主底部可<strong>选择难度</strong>（标准 / 险境 / 绝境 / 终极），并在所有真人就绪后点 <strong>开始模拟</strong>。
+</li><li>非房主点 <strong>准备就绪</strong>，等待房主开始；全员就绪前可取消。
+</li><li>左上角红色按钮<strong>离开同盟</strong>；房主离开时创建者身份将移交或同盟解散。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-5"><h2>5. 确认本局信息（1/2）</h2>
+<p>进入对局前的确认页，分左右两栏：</p>
+<ul><li><strong>左栏</strong>：敌方领袖（剪影、名称、技能、最终攻势所在回合）、<strong>战场</strong>（固定 / 随机及当前名称）、<strong>特训敌人</strong>（按阵营列出图标与说明，无则提示）。
+</li><li><strong>右栏</strong>：核心盟约与附加盟约的<strong>圆盘列表</strong>——可用为亮起，禁用为灰色并带「阵容不完整」角标；下方列出<strong>本局禁用干员</strong>。
+</li><li><strong>底部</strong>：可点 <strong>干员调配</strong> 在此时修改本局配置；显示「已就绪 x/N」及人员标记，点 <strong>准备就绪</strong>。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-6"><h2>6. 策略轮选（2/2）</h2>
+<ul><li><strong>左侧</strong>：按<strong>随机轮选顺序</strong>排列座位，每行显示状态（等待 / 决策中 / 已选策略）。
+</li><li><strong>右侧</strong>：40 名策略头像网格与详情面板，显示每名策略的<strong>初始生命值 N</strong>、名称与效果；选中后点「确认选择」。
+</li><li>规则：每人可<strong>跳过一次</strong>（排到最后）；超时自动选<strong>华法琳</strong>；头像上橙色角标表示用该策略通关 3 次。
+</li><li>独立模拟此阶段不限时，可自由选择。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-7"><h2>7. ★ 干员配置（干员调配）</h2>
+<p>从大厅 / 房间 / 确认页点「干员调配」打开全屏面板，顶部有三个标签页：<strong>干员调配 / 干员持有 / 自选编队</strong>。</p>
+<h3>★ 7.1 标签一：干员调配（选技能与模组）</h3>
+<ul><li><strong>左侧</strong>：112 名干员列表，可按<strong>阶级 / 职业 / 盟约</strong>筛选、搜索，可勾「仅看已调整」；卡片显示当前携带技能（S1–S3），已调整的有标记。
+</li><li><strong>右侧（选中干员）</strong>：
+<ul><li><strong>技能</strong>：在 S1–S3 间选择，每个技能显示「默认」、SP 回复方式、初始 / 消耗 SP、持续时间与描述。
+</li><li><strong>局内数值</strong>：可切换预览普通 / 精锐形态，显示属性、攻击范围、特性与天赋。
+</li><li><strong>精锐模组</strong>：仅精锐生效，可选「不装备 / X / Y」等，含属性加成、特性增强与天赋变化。
+</li><li>单名「恢复默认」。
+</li></ul>
+</li><li><strong>顶部</strong>：导出 / 导入配置、全部恢复默认，显示「已调整 N / 总数」。
+</li></ul>
+<h3>★ 7.2 标签二：干员持有（替补）</h3>
+<ul><li>列出本季 <strong>NORMAL 类</strong>棋子，按阶级分组；每张卡同时显示<strong>本人</strong>与官方指定的<strong>替补干员</strong>。
+</li><li>点卡片在 <strong>持有 / 未持有</strong> 间切换；可勾「仅看未持有」。
+</li><li>标记为<strong>未持有</strong>时，商店、整备区、作战区与结算都显示替补干员（模型、技能、天赋、攻击范围），但<strong>盟约、特质、阶级、价格与合成仍按原干员</strong>。
+</li><li>预设（PRESET）干员无论是否持有都由本人上场，不在此列；「全部持有」可重置。
+</li></ul>
+<h3>★ 7.3 标签三：自选编队（DIY）</h3>
+<ul><li><strong>4 个槽位</strong>：五阶 ×2、六阶 ×2，槽位卡显示「选择干员」及「调度中心等级 5 / 6 起出现在商店」。
+</li><li>点槽位打开选择器，可按 <strong>全部 / 原型 / 已持有</strong> 筛选并搜索：
+<ul><li><strong>已持有 6★</strong>：可任选其技能与精锐模组；
+</li><li><strong>原型干员</strong>：技能与模组锁定（与补位时一致）；
+</li><li>五阶另有 4★ 原型（先锋、特种除外），六阶为 6★ 原型。
+</li></ul>
+</li><li>选好后在右侧确认技能 / 模组，点「确认」；可「更换」或「清空」。
+</li><li><strong>自选干员只出现在你自己的商店</strong>，调度中心达到该阶后才刷新，价格与同阶干员相同；盟约按干员实际阵营派生，<strong>没有特质</strong>。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-8"><h2>8. 设置菜单</h2>
+<p>标题屏 / 大厅 / 房间均可打开「设置」：</p>
+<ul><li><strong>语言</strong>：切换界面语言。
+</li><li><strong>背景音乐、音效</strong>：滑条调节（0–100），拖动音效滑条会试听。
+</li><li><strong>干员语音</strong>：开关、语音音量、<strong>语音语言</strong>（日语 / 中文）。
+</li><li><strong>静音</strong>、<strong>显示伤害数字</strong>开关。
+</li><li><strong>画面质量</strong>：高 / 中 / 低（低端设备建议调低或关闭阴影）。
+</li><li><strong>快捷键</strong>：可逐项改键——刷新商店、冻结 / 解冻、升级调度中心、撤退、出售、准备 / 暂停；点按键后按下新键即可，冲突会交换，「恢复默认」可还原；<strong>Esc 固定不可改</strong>。
+</li><li><strong>问题反馈</strong>：复制诊断信息（本机生成、不上传、玩家名与房间号会替换），用于提交 issue。
+</li><li>底部还有 <strong>资源预载</strong>、<strong>加群</strong>、<strong>玩法说明</strong> 与「完成」。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-9"><h2>9. 本机统计与对局记录</h2>
+<p>点标题屏 / 大厅 / 房间的「本机统计」打开全屏面板，顶部有四个标签页：</p>
+<ul><li><strong>总览</strong>：总局数、胜场、胜率、到达隐秘核心次数、通关隐秘核心次数、最远回合、累计时长；并显示单人 / 同盟场数、按难度分类的局数与胜率表，以及获得的称号与次数。
+</li><li><strong>策略</strong>：按每名策略统计使用局数、通过局数、通过率，按使用次数排序。
+</li><li><strong>战斗累计</strong>：汇总击倒敌人、领袖伤害、造成伤害、盟约层数、晋升次数、配发装备、消耗资金、完美作战、刷新次数、未击倒、损失生命、成功协助等数据。
+</li><li><strong>对局记录</strong>：每条记录按时间倒序显示时间、难度、模式、使用策略、胜负结果、回合数，每次加载 50 条；点一行可回看该局结算，中途退出的对局只留记录。
+</li><li>顶部可<strong>导出 / 导入</strong>（JSON，按记录合并）与<strong>清空</strong>；全部数据只保存在本机浏览器，不会上传服务器。
+</li></ul>
+</section>
+<section class="chapter" id="chapter-10"><h2>10. 对局内界面速查</h2>
+<ul><li><strong>休整期</strong>：底部商店栏依次为调度中心等级卡（升级）、干员卡、装备卡、资金卡（含「✕ 收起」）；按钮为「冻结」「刷新」；右上显示「剩余可放置角色：N」。
+</li><li><strong>机变（选卡）</strong>：暗色遮罩，左上显示家族名（悬赏决策 / 道具补给 / 机密商店 / 战术决策），卡片 3×2 排列，<strong>点两次</strong>确认；同盟轮流各取 1 张。
+</li><li><strong>作战</strong>：中央显示击倒「n/m」，右上显示 DP；盟约栏可见、商店消失；独立可点「暂停」，同盟不可暂停。
+</li><li><strong>联防</strong>：橙色「联防阶段」横幅，盟约栏变暗提示「层数叠加已禁用」。
+</li><li><strong>最终攻势</strong>：两人共享战场，用 ‹ › 切换左半 / 全景 / 右半；120 秒后继续，150 秒后全队每秒扣 1 LP。
+</li></ul>
+<hr>
+<p><em>本指南依据项目客户端实际代码（public/js/screens、public/js/ui、shared/ranks.js 等）整理，具体按钮与界面以游戏内实际显示为准。</em></p>
+</section>
+<section class="chapter" id="chapter-11">
+<h2>11. 舟铲铲之战 · 从第一回合到最终攻势</h2>
+<p class="meta">规则版本：2026年10月15日 · 包含银阶赠送品阶限制与基础连胜／连败收入。</p>
+<p>舟铲铲之战是一场以阵容养成和金币规划为核心的合作守线挑战。你在备战时购买、部署干员和装备，作战时由阵容自动应敌；通过保留金币、升级调度中心、挑选馈赠，把阵容一路培养到第21回合的最终攻势。</p>
+<h3>11.1 怎样开一局</h3>
+<ol><li>进入大厅，选择<strong>娱乐模式 → 舟铲铲之战</strong>，设置1–8人的房间人数和难度，再点「创建舟铲铲之战同盟」。</li><li>邀请朋友或添加AI队友；所有真人准备后，由房主开始。</li><li>查看本局战场与敌人信息，完成策略选择，再进入首轮备战。模式不计排位；每人的初始目标生命值在所选策略基础上额外增加10。</li></ol>
+<p>每4人一组共享干员池，不足4人的组按实际人数组成。干员候选范围与普通模式一致；同组玩家争抢同一干员会影响可抽数量。优先与队友错开核心干员，有利于各自成型。</p>
+<h3>11.2 一回合要做什么</h3>
+<p><strong>回合开始与收入 → 特殊选择（如有）→ 备战 → 个人作战 → 联防（如触发）→ 结算。</strong>馈赠和征召发生在指定回合，不是每回合都有。</p>
+<ol><li><strong>先检查生存：</strong>观察上一场哪里漏怪，补上阻挡、治疗或输出；检查干员朝向、攻击范围和可部署位置。</li><li><strong>再决定用钱：</strong>优先买能立即补强、凑成合成或完善盟约的干员；需要更高阶候选时投资升级；刷新前先想清楚自己在找谁。</li><li><strong>整理整备区：</strong>购买的干员先进入整备区，再部署到合法格子。把装备交给能发挥它的干员，清理临时溢出区后确认准备。</li><li><strong>作战后复盘：</strong>无漏怪与漏怪会分别累计连胜、连败。联防能帮助处理漏出的敌人，但不会把个人的漏怪回合改算为连胜。</li></ol>
+<p>通常3个相同普通干员可合成1个精锐，部分干员存在自身例外；合成奖励另按游戏规则处理。相同普通装备通常2件合成，装备与部署限制以对应面板提示为准。不要只堆同一类输出而忽略阻挡和治疗。</p>
+<h3>11.3 金币：留钱、吃息与连续胜负奖励</h3>
+<p><strong>舟铲铲未花完的金币会保留到后续回合。</strong>确认准备时无需为了避免清零而花光资金，也不会出现普通模式的剩余资金确认提示。</p>
+<p>基础存款利息按上回合结余计算：每满10金币额外获得1金币，最高5金币。例如9金币为0利息、20金币为2利息、50金币及以上为5利息。利息在下一回合开始时与收入结算；馈赠带来的特殊收益另行计算。</p>
+<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;text-align:left"><caption>基础连胜与连败奖励（两者使用同一档位）</caption><thead><tr><th style="padding:10px;border-bottom:1px solid var(--line)">当前连续场次</th><th style="padding:10px;border-bottom:1px solid var(--line)">本回合额外金币</th></tr></thead><tbody><tr><td style="padding:10px">1场</td><td style="padding:10px">0</td></tr><tr><td style="padding:10px">2–3场</td><td style="padding:10px">+1</td></tr><tr><td style="padding:10px">4–5场</td><td style="padding:10px">+2</td></tr><tr><td style="padding:10px">6场及以上</td><td style="padding:10px">+3</td></tr></tbody></table></div>
+<p><strong>胜负切换就从1场重新累计。</strong>例如「胜、胜、胜、胜、负、负」对应的额外奖励依次为「0、1、1、2、0、1」；6连胜后的第7场若继续胜利，仍获得3金币，而不是一次性结算累计总额。</p>
+<p>判定依据是本人个人作战：无漏怪且未判失败为胜，漏怪或未完成守线为负。奖励关同样参与累计；联防不会另算一场。奖励在本回合结算时记账，下一次备战开始时随收入到账。此奖励是模式基础规则，无需先选「战绩滚雪球」类馈赠。</p>
+<p><strong>运营建议：</strong>阵容能稳定守住时，尽量在10、20、30、40、50的利息档位留钱；漏怪严重时优先花钱保血。连败奖励只能补贴经济，不足以抵消被淘汰的损失。</p>
+<p><strong>商店免费刷新次数可累积到下一回合。</strong>本回合没有用完的次数不会清零；后续获得的免费次数会继续相加，刷新时先消耗免费次数，用尽后才扣金币。例如剩余2次、下回合再获得1次，就有3次免费刷新。这与馈赠选择卡每槽各1次的刷新机会不同。</p>
+<h3>11.4 升级：2金币买1经验</h3>
+<p>点击调度中心的经验购买按钮，<strong>每次花2金币获得1经验</strong>，达到本级门槛后升级。购买单价不变，当前已降低升级所需经验并向上取整。</p>
+<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;text-align:left"><caption>从本级0经验起算的升级投入</caption><thead><tr><th style="padding:10px;border-bottom:1px solid var(--line)">等级变化</th><th style="padding:10px;border-bottom:1px solid var(--line)">所需经验</th><th style="padding:10px;border-bottom:1px solid var(--line)">对应金币</th></tr></thead><tbody><tr><td style="padding:10px">1 → 2</td><td>8</td><td>16</td></tr><tr><td style="padding:10px">2 → 3</td><td>12</td><td>24</td></tr><tr><td style="padding:10px">3 → 4</td><td>17</td><td>34</td></tr><tr><td style="padding:10px">4 → 5</td><td>18</td><td>36</td></tr><tr><td style="padding:10px">5 → 6</td><td>20</td><td>40</td></tr></tbody></table></div>
+<p>已有经验会减少剩余投入。调度中心升级关系到商店可出现的干员阶级，不要把它直接当成上场人数升级；当前部署余量看界面提示。升完级后还需留出购买干员的资金。</p>
+<h3>11.5 关键回合速查</h3>
+<ul><li><strong>R4：</strong>第一次奖励关；<strong>R5：</strong>银阶馈赠。</li><li><strong>R8：</strong>第二次奖励关；<strong>R10：</strong>先选金阶馈赠，再征召，最后进入备战。</li><li><strong>R12：</strong>第三次奖励关；<strong>R15：</strong>彩阶馈赠。</li><li><strong>R16：</strong>第四次奖励关；<strong>R17–20：</strong>补齐核心阵容，准备最终攻势。</li><li><strong>R21：</strong>最终攻势，集中资源完成最后挑战。</li></ul>
+<h3>11.6 独眼巨人的馈赠：35秒内三选一</h3>
+<p>第5、10、15回合依次提供<strong>银、金、彩</strong>三个品质。每位玩家看到自己的3个候选，每个槽位各有1次免费刷新机会；刷新只替换该槽位，选择后本轮不能再改。</p>
+<p><strong>选择阶段独立计时35秒，不扣减备战时长。</strong>全员完成可提前结束；到时仍未选的玩家，会从其当前有效候选中随机获得一项。AI也会随机选取。个人先选完仍需等其他玩家完成或计时结束，随后统一进入下一阶段。</p>
+<p><strong>银阶盟约馈赠直接赠送的干员限定为1–3阶。</strong>例如「军械补给」赠送的维多利亚干员最多三阶；其他七种盟约的银阶赠送同样受此限制。实际直接赠送数量为1名，相关说明已同步。这个上限针对馈赠本身的赠送，不改变商店、征召、合成奖励或彩阶馈赠的规则。</p>
+<p>选择时先看具体馈赠名与效果，侧栏标题也使用具体馈赠名。优先考虑当前主力盟约、眼前的生存缺口和剩余成长空间：银阶用于过渡，金阶帮助完善阵容，彩阶结合最终攻势需求选择。不要为了尚未抽到的核心，放弃能立刻帮助当前阵容的选项。</p>
+<h3>11.7 奖励关：多击杀，多拿装备</h3>
+<p>R4、R8、R12、R16为奖励关，敌人是10只普通猎狗；奖励关没有联防，需依靠自己的阵容处理。</p>
+<ul><li>击杀不足5只：不获得奖励装备。</li><li>击杀5–9只：获得1件装备。</li><li>全部10只击杀：获得2件装备。</li></ul>
+<p>奖励装备限定<strong>1–5阶，品阶越高掉落概率越低</strong>。即使拿到低阶装备，也可以用于过渡或合成；不要把奖励关当成必出高阶装备的保底。上场前检查是否留有漏怪通道，尽量争取全清。</p>
+<h3>11.8 第10回合征召：同时看干员与装备</h3>
+<p>R10金阶馈赠结束后进入征召。候选以<strong>干员＋装备</strong>捆绑展示，每个分组有自己的候选池；按生命值较低者优先的顺序轮流选，每人拿1项，已取走的候选会从池中移除。轮到自己时再确认，超时会自动选取。</p>
+<p>选择时同时比较两部分价值：能补齐阵容的干员、能强化主力的装备，以及整备区是否有空间。可以提前想好第一和第二选择，避免理想候选被取走后临时犹豫。征召完成后仍有正常备战时间整理收获。</p>
+<h3>11.9 新手一局的决策顺序</h3>
+<p><strong>前期（R1–5）：</strong>先做出能守线的前排、输出与治疗，优先购买可用干员。R4争取拿满装备，R5围绕已经成型的阵容选银阶馈赠。</p>
+<p><strong>中期（R6–12）：</strong>在守线稳定的前提下积累利息，规划升级与刷新预算。连续胜负奖励每回合最多3金币，不要把它当成无限收入。利用R10金阶馈赠和征召补足关键位置。</p>
+<p><strong>后期（R13–21）：</strong>逐步把存款转换成战力，完成关键合成、装备分配和站位。R15选能服务最终阵容的彩阶馈赠，R16后重点检查最终攻势所需的持续输出与生存能力。临近终局，金币的价值主要在于能否及时转化为有效补强。</p>
+<h3>11.10 常见疑问</h3>
+<ul><li><strong>银阶馈赠会直接给四阶以上干员吗？</strong>不会，直接赠送上限三阶；后续合成触发的其他奖励按其各自规则处理。</li><li><strong>连胜被打断，再赢一场能续上吗？</strong>不能。胜负一变就重新累计，新一段第1场没有基础连续奖励。</li><li><strong>队友帮我清完漏怪，算个人胜利吗？</strong>个人连胜判定仍看自己的作战结果，联防不改写已经发生的漏怪。</li><li><strong>选馈赠太慢，会减少备战时间吗？</strong>不会。馈赠有独立35秒；超时随机选择，之后照常进入征召或备战。</li><li><strong>为什么我选完不能立刻买干员？</strong>还在等其他玩家或馈赠阶段结束。R10还要先完成征召。</li><li><strong>留着金币确认准备会丢钱吗？</strong>舟铲铲会保留金币，下一回合还可按存款获得基础利息。</li></ul>
+</section></article><footer>卫戍协议：盟约 · 界面操作指南<br>独立阅读页，无外部字体、脚本或图片依赖。</footer></main>
+</div>
+<button class="back-top" id="back-top" aria-label="返回页面顶部">回到顶部 ↑</button>
+<script>
+(function(){
+  var article=document.getElementById('article'), query=document.getElementById('query'), output=document.getElementById('search-output');
+  var previous=document.getElementById('prev'), next=document.getElementById('next'), matches=[], current=-1, searchTimer;
+  var sidebar=document.getElementById('sidebar'), shade=document.getElementById('shade'), menu=document.getElementById('menu');
+  function closeMenu(){sidebar.classList.remove('open');shade.classList.remove('open');menu.setAttribute('aria-expanded','false');}
+  menu.onclick=function(){var open=!sidebar.classList.contains('open');sidebar.classList.toggle('open',open);shade.classList.toggle('open',open);menu.setAttribute('aria-expanded',open?'true':'false');};
+  shade.onclick=closeMenu;
+  sidebar.onclick=function(e){if(e.target.closest?e.target.closest('a'):e.target.tagName==='A'){closeMenu();}};
+  function updateCount(){output.textContent=matches.length?(current+1)+' / '+matches.length:(query.value.trim()?'无匹配':'全文搜索');previous.disabled=next.disabled=!matches.length;}
+  function clearMarks(){var marks=article.querySelectorAll('mark.search-hit');for(var i=0;i<marks.length;i++){var parent=marks[i].parentNode;parent.replaceChild(document.createTextNode(marks[i].textContent),marks[i]);parent.normalize();}matches=[];current=-1;}
+  function move(delta){if(!matches.length)return;if(current>=0)matches[current].classList.remove('current');current=(current+delta+matches.length)%matches.length;matches[current].classList.add('current');var box=matches[current].getBoundingClientRect();window.scrollTo(0,Math.max(0,window.pageYOffset+box.top-window.innerHeight*.35));updateCount();}
+  function search(){clearMarks();var term=query.value.trim();if(!term){updateCount();return;}var walker=document.createTreeWalker(article,NodeFilter.SHOW_TEXT,null,false),nodes=[],node;while((node=walker.nextNode()))nodes.push(node);var needle=term.toLowerCase();for(var i=0;i<nodes.length;i++){var value=nodes[i].nodeValue,lower=value.toLowerCase(),position=0,index=lower.indexOf(needle);if(index<0)continue;var frag=document.createDocumentFragment();while(index>=0){frag.appendChild(document.createTextNode(value.slice(position,index)));var mark=document.createElement('mark');mark.className='search-hit';mark.textContent=value.slice(index,index+term.length);matches.push(mark);frag.appendChild(mark);position=index+term.length;index=lower.indexOf(needle,position);}frag.appendChild(document.createTextNode(value.slice(position)));nodes[i].parentNode.replaceChild(frag,nodes[i]);}move(1);updateCount();}
+  query.oninput=function(){clearTimeout(searchTimer);searchTimer=setTimeout(search,180);};
+  query.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();clearTimeout(searchTimer);if(!matches.length){search();}else{move(e.shiftKey?-1:1);}}};
+  previous.onclick=function(){move(-1);};next.onclick=function(){move(1);};document.getElementById('clear').onclick=function(){clearTimeout(searchTimer);query.value='';clearMarks();updateCount();query.focus();};
+  document.addEventListener('keydown',function(e){if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){e.preventDefault();query.focus();}if(e.key==='Escape'){closeMenu();query.blur();}});
+  var size=17,dark=false;
+  try{var saved=parseInt(localStorage.getItem('sp.guide.font'),10);if(saved>=15&&saved<=23)size=saved;dark=localStorage.getItem('sp.guide.dark')==='1';}catch(e){}
+  function appearance(){article.style.setProperty('--size',size+'px');document.body.classList.toggle('dark',dark);document.getElementById('theme').textContent=dark?'日间':'夜间';document.getElementById('smaller').disabled=size<=15;document.getElementById('larger').disabled=size>=23;try{localStorage.setItem('sp.guide.font',size);localStorage.setItem('sp.guide.dark',dark?'1':'0');}catch(e){}}
+  document.getElementById('smaller').onclick=function(){size=Math.max(15,size-1);appearance();};document.getElementById('larger').onclick=function(){size=Math.min(23,size+1);appearance();};document.getElementById('theme').onclick=function(){dark=!dark;appearance();};appearance();
+  document.getElementById('print').onclick=function(){window.print();};document.getElementById('back-top').onclick=function(){window.scrollTo(0,0);};
+  var sections=article.querySelectorAll('.chapter'),links=sidebar.querySelectorAll('nav a');
+  function scroll(){var full=document.documentElement.scrollHeight-window.innerHeight;document.getElementById('progress').style.width=(full>0?Math.min(100,window.pageYOffset/full*100):100)+'%';var active=0;for(var i=0;i<sections.length;i++){if(sections[i].getBoundingClientRect().top<=180)active=i;}for(var j=0;j<links.length;j++){links[j].classList.toggle('active',j===active);if(j===active)links[j].setAttribute('aria-current','location');else links[j].removeAttribute('aria-current');}}
+  window.addEventListener('scroll',scroll);window.addEventListener('resize',scroll);scroll();
+})();
+</script>
+</body></html>

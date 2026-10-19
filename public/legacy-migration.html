@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>新地址已上线</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 20px; color: #e9f0ec; background: #101714; font: 16px/1.6 system-ui, sans-serif; }
+    main { width: min(520px, 100%); padding: 24px; border: 1px solid #4ed8af; background: #151e19; }
+    h1 { margin: 0 0 14px; font-size: 26px; }
+    a { color: #82e7c3; font-weight: 700; }
+    p { margin: 10px 0; }
+    textarea { width: 100%; min-height: 76px; margin-top: 8px; padding: 10px; color: inherit; background: #101714; border: 1px solid #52645a; font: inherit; resize: vertical; }
+    button { min-height: 42px; margin-top: 10px; padding: 8px 14px; color: inherit; background: #1c342c; border: 1px solid #4c997d; font: inherit; cursor: pointer; }
+    #status { min-height: 1.5em; color: #a9b9b1; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>新地址已上线！</h1>
+    <p><a href="https://emiraen.top/">点击跳转 emiraen.top</a></p>
+    <p>加入QQ群 <strong>964356269</strong> 获取最新安装包</p>
+    <label for="notice">可复制公告</label>
+    <textarea id="notice" readonly>新地址已上线！点击跳转emiraen.top，加入QQ群964356269获取最新安装包</textarea>
+    <button id="copy" type="button">复制公告</button>
+    <button id="export" type="button">导出本机资源缓存</button>
+    <p>旧地址已停用。已保存的本机资源不会删除；导出后可在新站的资源管理中导入。</p>
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script type="module">
+    const text = document.querySelector('#notice');
+    document.querySelector('#copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(text.value);
+      } catch {
+        text.select();
+        if (!document.execCommand('copy')) {
+          document.querySelector('#status').textContent = '请选中上方文字后复制。';
+          return;
+        }
+      }
+      document.querySelector('#status').textContent = '公告文字已复制。';
+    });
+    document.querySelector('#export').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const status = document.querySelector('#status');
+      button.disabled = true;
+      status.textContent = '正在校验并导出本机已缓存资源…';
+      try {
+        const { resourceCache } = await import('/js/resourceCache.js');
+        const blob = await resourceCache.exportPack();
+        if (!blob) throw new Error(resourceCache.getState().pack.error || '没有可导出的已缓存资源。');
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'Stronghold-resources.sprpack';
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        status.textContent = '资源包已导出。进入新站后，在资源管理中选择“导入资源包”。';
+      } catch (error) {
+        status.textContent = error?.message || '导出失败，请稍后重试。';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

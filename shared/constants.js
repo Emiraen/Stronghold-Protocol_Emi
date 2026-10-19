@@ -1,0 +1,338 @@
+// Shared enums & constants (server + browser). Pure ESM, no Node APIs.
+import { N_ } from './i18n.js';
+
+export const PROTOCOL_VERSION = 1;
+/** Release version shown to players (title screen, server banner, /healthz). Kept equal to package.json "version"
+ * (test/version.test.js); PROTOCOL_VERSION above is the separate wire-format number. */
+export const APP_VERSION = '0.2.1';
+export const PLUGIN_API = Object.freeze({ current: 2, min: 1 });
+export const DEV_BUILD = false;
+
+/** Emi's patch iteration marker, shown as small text on the title screen. Bump the number on each change. */
+export const EMI_BUILD = 'Emi修改#41';
+
+export const MAX_SEATS = 4;
+export const ENTERTAINMENT_MAX_SEATS = 20;
+export const ENTERTAINMENT_DEFAULT_SEATS = 8;
+export const ENTERTAINMENT_CAPACITIES = Object.freeze([4, 8, 10, 16, 20]);
+export const ENDLESS_VARIANT = 'entertainment_endless';
+export const ENDLESS_MODE_ID = 'mode_x_endless_mode_coop';
+
+// ---- 独眼巨人冲锋 (entertainment_cyclops) —— 完全独立的娱乐模式 -------------------------------------------
+/** 1–8 人（每 4 人一组共享池）。 */
+export const CYCLOPS_MAX_SEATS = 8;
+export const CYCLOPS_DEFAULT_SEATS = 4;
+export const CYCLOPS_CAPACITIES = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8]);
+/** 20 个有效玩家回合。 */
+export const CYCLOPS_LAST_ROUND = 20;
+/** 奖励关（10 只普通猎狗，打赢送随机装备）。 */
+export const CYCLOPS_BONUS_ROUNDS = Object.freeze([4, 8, 12, 16]);
+/** 独眼巨人的馈赠（馈赠三选一）：第 5/10/15 回合按 银→金→彩 固定顺序。 */
+export const CYCLOPS_HEX_ROUNDS = Object.freeze([5, 10, 15]);
+export const CYCLOPS_HEX_QUALITIES = Object.freeze(['silver', 'gold', 'prismatic']);
+/** 每次馈赠刷 3 个不同槽位（不同馈赠），每槽位 1 次免费刷新机会。 */
+export const CYCLOPS_HEX_SLOTS = 3;
+/** 奖励关敌人：10 只普通猎狗（猎狗pro）。 */
+export const CYCLOPS_BONUS_ENEMY = 'enemy_1000_gopro_2';
+export const CYCLOPS_BONUS_COUNT = 10;
+/** 奖励关装备品阶池：1-5 阶，奖励抽取由低到高递减。 */
+export const CYCLOPS_BONUS_ITEM_TIERS = Object.freeze([1, 2, 3, 4, 5]);
+/** 存款利息：50 金币以内（含），每 10 金币每回合 +1 利息。 */
+export const CYCLOPS_INTEREST_PER = 10;
+export const CYCLOPS_INTEREST_RATE = 1;
+export const CYCLOPS_INTEREST_CAP = 5;
+/** 调度中心经验制：2 金币 = 1 经验；升级所需经验为普通模式门槛的 75%（向上取整）。 */
+export const CYCLOPS_EXP_PRICE = 2;
+export const CYCLOPS_EXP_PRICE_SCALE = 2;
+export const CYCLOPS_EXP_NEED_SCALE = 0.75;
+/** 该模式禁用的经济类装备 baseId（盟约之币等 ECONOMY 系）。 */
+export const CYCLOPS_BANNED_ITEM_BASES = new Set([
+  'chess_item_1_03_e', // 盟约之币
+  'chess_item_2_05_e', // 精打细算玩偶
+  'chess_item_2_07_e', // 见钱眼开玩偶
+  'chess_item_3_12_e', // 骑士储蓄罐
+]);
+/**
+ * 该模式移出干员池的原型（补位）干员局内显示名：名字包含“干员”的补位角色，以及 Sharp、Mechanist、Stormeye、Pith、Touch、Raidian、Radian、Misery、领主·Sharp、郁金香。
+ * 池内以其为补位本体（chess.backup.charId）的壳棋子一并剔除（2026-10-14 主人与决定）。
+ */
+export const CYCLOPS_EXCLUDED_PROTO_NAMES = new Set([
+  'Sharp', 'Mechanist', 'Stormeye', 'Pith', 'Touch', 'Raidian', 'Radian', 'Misery', '领主·Sharp', '郁金香',
+]);
+export const CYCLOPS_EXCLUDED_PROTO_CHARIDS = new Set([
+  'char_600_cpione', // 预备干员-先锋
+  'char_601_cguard', // 预备干员-近卫
+  'char_602_cdfend', // 预备干员-重装
+  'char_603_csnipe', // 预备干员-狙击
+  'char_604_ccast', // 预备干员-术师
+  'char_605_cmedic', // 预备干员-医疗
+  'char_606_csuppo', // 预备干员-辅助
+  'char_607_cspec', // 预备干员-特种
+  'char_609_acguad', // Sharp
+  'char_610_acfend', // Mechanist
+  'char_611_acnipe', // Stormeye
+  'char_612_accast', // Pith
+  'char_613_acmedc', // Touch
+  'char_614_acsupo', // Raidian
+  'char_608_acpion', // 郁金香
+  'char_615_acspec', // Misery
+  'char_617_sharp2', // 领主·Sharp
+]);
+/**
+ * Spectator seats of a co-op room (community report #26, owner's decision 2026-10-04) — a remake feature: the official
+ * room has 1–4 players and no spectator seat (there only eliminated players and 联防 bystanders watch, research 09 §3.1).
+ * A spectator never counts as a player, may not act, and watches like an eliminated player (server/lobby.js spectate,
+ * server/match/Match.js addSpectator).
+ */
+export const ROOM_CODE_LEN = 4;
+export const NAME_MAX_LEN = 12;
+
+export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS'];
+export const DIFFICULTY_NAMES = { FUNNY: '标准模拟', NORMAL: '险境模拟', HARD: '绝境模拟', ABYSS: '终极模拟' };
+export const DIFFICULTY_COLORS = { FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024' };
+
+// modeId in data/config.json = `mode_${type}_${difficulty.toLowerCase()}` with type single|multi
+export const modeIdFor = (roomMode, difficulty) =>
+  `mode_${roomMode === 'solo' ? 'single' : 'multi'}_${difficulty.toLowerCase()}`;
+
+export const PHASE = Object.freeze({
+  LOBBY: 'LOBBY',
+  INFO_CHECK: 'INFO_CHECK',
+  BAND_DRAFT: 'BAND_DRAFT',
+  BATTLE_CHECK: 'BATTLE_CHECK',
+  ROUND_START: 'ROUND_START',
+  SP_DRAFT: 'SP_DRAFT',
+  CYCLOPS_HEX: 'CYCLOPS_HEX',
+  CYCLOPS_DRAFT: 'CYCLOPS_DRAFT',
+  PREP: 'PREP',
+  COMBAT: 'COMBAT',
+  UNITE: 'UNITE',
+  SETTLE: 'SETTLE',
+  FINAL_ASSAULT: 'FINAL_ASSAULT',
+  HIDDEN_CORE: 'HIDDEN_CORE',
+  RESULT: 'RESULT',
+});
+
+export const PHASE_NAMES = {
+  LOBBY: '等待中', INFO_CHECK: '确认本局信息', BAND_DRAFT: '选择策略', BATTLE_CHECK: '协议启动',
+  ROUND_START: '回合开始', SP_DRAFT: '机变阶段', CYCLOPS_HEX: '独眼巨人的馈赠', CYCLOPS_DRAFT: '征召', PREP: '休整期', COMBAT: '作战中', UNITE: '联防阶段',
+  SETTLE: '结算', FINAL_ASSAULT: '最终攻势', HIDDEN_CORE: '隐秘核心', RESULT: '模拟结束',
+};
+
+// Board geometry on the 19x21 stage grid (row 0 = bottom). See DESIGN §3.
+export const GEO = Object.freeze({
+  ROWS: 19, COLS: 21,
+  FIELD: { r0: 9, r1: 12, c0: 2, c1: 10 },        // own deployable board region
+  NORMAL_RECT: { r0: 9, r1: 12, c0: 0, c1: 10 },  // simulation rect for a normal battle
+  UNITE_RECT: { r0: 9, r1: 12, c0: 0, c1: 20 },
+  BOSS_RECT: { r0: 0, r1: 5, c0: 0, c1: 20 },
+  HAND_ROW: 7, HAND_SIZE: 10,                      // hand slot idx = col 0..9
+  TEMP_ROW: 8, TEMP_C0: 4, TEMP_SIZE: 5,           // temp slot idx 0..4 = cols 4..8
+  PARTNER_COL_OFFSET: 8,
+});
+
+export const AREA = Object.freeze({ BOARD: 'board', HAND: 'hand', TEMP: 'temp', OUTSIDE: 'outside' });
+
+export const PIECE_KIND = Object.freeze({ CHESS: 'chess', ITEM: 'item', TOKEN: 'token' });
+
+/**
+ * Whether the placed piece of a skill's summon (赫默's 医疗探机, 巫恋's 诅咒娃娃) also deploys once, for free, at the
+ * battle start. true = the PRTS reading (卫戍协议/帮助 §作战阶段: "所有手动部署的召唤物，无视所属干员的持有状态…作战开始时
+ * 立即部署一次", example 赫默's drone), settled by the user on 2026-10-01 after playtest #6 (DESIGN §20); false = the
+ * playtest #4 reading ("是赫默开技能释放一次，不是开局直接就部署了"): it takes its tile only when the owner's skill gives one.
+ * Either way the piece re-appears on its tile each time the owner's skill gives one.
+ * One switch for everything that depends on it: the sim (server/sim/content/tokens.js dockSkillSummons) and the summon
+ * card's hint (public/js/ui/detailPanel.js summonDeployHint). docs/PLAYING.md §4 and docs/SIM.md (token pieces) state
+ * the rule in prose — test/ui/playtest6_summons.test.js fails until they match the value.
+ */
+export const SKILL_SUMMON_START_DEPLOY = true;
+
+/**
+ * Official per-bond layer cap (docs/research/11-limits-official.md §1): the client's
+ * `Torappu.Battle.AutoChessBattleConst.MAX_GARRISON_STACK = 999`, and its bond counter (`AddBondCount`) stores
+ * `min(L + n, 999)` — each bond stops at 999 on its own; the community reports bonds sitting at 999 while fed (巴哈姆特
+ * 12534 "每把都能999层", 12316 "999謝"; research 02 §layers). The only implementation of the cap (DESIGN §20.12). Every
+ * writer of a bond's layers goes through `layerGainRoom`: the prep-side gains (server/match/PlayerState.js addLayers —
+ * 特质, items, bands, 机变 cards, bonds), the settle of the in-battle gains (server/match/Match.js) and the live in-battle
+ * copy (server/sim/Battle.js addLayers, as the client's AddBondCount) — and the dev tools' direct writes (tools/matchrun.mjs
+ * --layers, tools/balance.mjs applyBoard); a gain at the cap adds 0 (no onLayers, no 'layer'
+ * event), and the client-result check (server/match/fields.js) bounds a reported gain by the room left. Milestones paid
+ * per N layers (远见, 奇迹, 维多利亚 …) stop with the count. 0 / Infinity = no cap.
+ */
+export const BOND_LAYER_CAP = 999;
+
+/**
+ * The layers a gain of `n` actually adds to a bond holding `before` under BOND_LAYER_CAP: min(n, cap − before), never
+ * negative (a count already at or over the cap gains 0 and is never lowered); 0 for a non-positive / non-finite `n`
+ * except +Infinity (= "the room left").
+ */
+export function layerGainRoom(before, n, capOverride = BOND_LAYER_CAP) {
+  if (!(n > 0)) return 0;
+  const cap = capOverride === Infinity ? Infinity : capOverride > 0 ? capOverride : Infinity;
+  const b = Number.isFinite(before) && before > 0 ? before : 0;
+  return Math.max(0, Math.min(n, cap - b));
+}
+
+/**
+ * Official boss-hit limit "限伤" (docs/research/11-limits-official.md §2): `AutoChessBattleConst.MAX_BATTLE_DAMAGE =
+ * 300000`. In a boss battle outside training — our battle kinds 'boss' (Final Assault) and 'hidden' (Hidden Core) — a
+ * single hit on a leader (`AutoChessBattleUtil.IsBossEnemy`: an enemyId of activity_table autoChessData.bossInfoDict
+ * = data/bosses.json `enemyKey`; in the sim the tag-'boss' units: those leaders and their mirrored copies, never parts,
+ * escorts or drones) whose `ceil(final damage)` ≥ this is CANCELLED: 0 damage, nothing credited to the shared pool
+ * (`AutoChessStepModeManager._OnBossEnemyTakeDamage` → `modifier.Cancel()`). It is not a clamp: a hit of 299999 lands.
+ * Checked in server/sim/damage.js (dealDamage after DEF / RES and every multiplier, before shields; Battle.loseHp).
+ * Minions, normal rounds and 联防 are unaffected. 0 / Infinity = off.
+ */
+export const BOSS_HIT_LIMIT = 300000;
+
+// Snapshot unit flag bits (DESIGN §8.2)
+export const UF = Object.freeze({
+  BLOCKED: 1, STUNNED: 2, FROZEN: 4, STEALTH: 8, SKILL: 16, SHIELD: 32, INVULN: 64, COLD: 128, SLEEP: 256, FLYING: 512,
+});
+
+export const ANIM = Object.freeze({ IDLE: 0, MOVE: 1, ATTACK: 2, SKILL: 3, DIE: 4, STUN: 5, DEPLOY: 6 });
+
+export const ERR = Object.freeze({
+  BAD_MSG: 'BAD_MSG',             // malformed / unknown message
+  RATE: 'RATE',                   // rate limited
+  NOT_IN_ROOM: 'NOT_IN_ROOM',
+  ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
+  ROOM_FULL: 'ROOM_FULL',
+  ROOM_STARTED: 'ROOM_STARTED',
+  NOT_HOST: 'NOT_HOST',
+  NOT_READY: 'NOT_READY',
+  WRONG_PHASE: 'WRONG_PHASE',
+  NO_FUNDS: 'NO_FUNDS',
+  HAND_FULL: 'HAND_FULL',
+  BOARD_FULL: 'BOARD_FULL',
+  BAD_TILE: 'BAD_TILE',
+  BAD_TARGET: 'BAD_TARGET',
+  SOLD_OUT: 'SOLD_OUT',
+  MAX_LEVEL: 'MAX_LEVEL',
+  NOT_YOUR_TURN: 'NOT_YOUR_TURN',
+  ALREADY: 'ALREADY',
+  TEMP_NOT_EMPTY: 'TEMP_NOT_EMPTY',
+  ELIMINATED: 'ELIMINATED',
+  SPECTATOR: 'SPECTATOR',         // a spectator seat only watches (MAX_SPECTATORS)
+  INTERNAL: 'INTERNAL',
+  TEST_CONFIRM: 'TEST_CONFIRM', TEST_DISABLED: 'TEST_DISABLED', TEST_FORBIDDEN: 'TEST_FORBIDDEN',
+
+  PLUGIN_SCRIPT_CONFLICT: 'PLUGIN_SCRIPT_CONFLICT',
+  PLUGIN_SCRIPT_OVERRIDE: 'PLUGIN_SCRIPT_OVERRIDE',
+  PLUGIN_SCRIPT_CHECK: 'PLUGIN_SCRIPT_CHECK',
+  PLUGIN_SCRIPTS_DISABLED: 'PLUGIN_SCRIPTS_DISABLED',
+  PLUGIN_TRUST_PIN: 'PLUGIN_TRUST_PIN',
+  PLUGIN_TRUST_PUBLIC: 'PLUGIN_TRUST_PUBLIC',
+  PLUGIN_CONSENT: 'PLUGIN_CONSENT',
+  PLUGIN_UNKNOWN: 'PLUGIN_UNKNOWN',
+  PLUGIN_BLOCKED: 'PLUGIN_BLOCKED',
+  PLUGIN_DEPENDENCY: 'PLUGIN_DEPENDENCY',
+  PLUGIN_CONFLICT: 'PLUGIN_CONFLICT',
+  PLUGIN_LIMIT: 'PLUGIN_LIMIT',
+  PLUGIN_INCOMPATIBLE: 'PLUGIN_INCOMPATIBLE',
+  PLUGIN_BUSY: 'PLUGIN_BUSY',
+  CONTENT_NOT_READY: 'CONTENT_NOT_READY',
+});
+
+export const ERR_TEXT = {
+  TEST_CONFIRM: '这是测试房间，不计入任何记录。确认加入？', TEST_DISABLED: '测试模式未开启', TEST_FORBIDDEN: '这不是测试房间',
+  BAD_MSG: '无效的请求', RATE: '操作过于频繁', NOT_IN_ROOM: '你不在房间中', ROOM_NOT_FOUND: '未找到该同盟密钥对应的房间',
+  ROOM_FULL: '房间已满', ROOM_STARTED: '模拟已开始', NOT_HOST: '只有房主可以操作', NOT_READY: '仍有玩家未就绪',
+  WRONG_PHASE: '当前阶段无法进行该操作', NO_FUNDS: '资金不足', HAND_FULL: '整备区已满', BOARD_FULL: '已达到部署上限',
+  BAD_TILE: '无法部署在该位置', BAD_TARGET: '无效的目标', SOLD_OUT: '已售出', MAX_LEVEL: '调度中心已达最高等级',
+  NOT_YOUR_TURN: '尚未轮到你', ALREADY: '已完成该操作', TEMP_NOT_EMPTY: '临时整备区不为空', ELIMINATED: '你已被淘汰',
+  SPECTATOR: '观战中无法进行该操作', INTERNAL: '服务器内部错误',
+  PLUGIN_UNKNOWN: N_('本服务器没有安装该插件'), PLUGIN_BLOCKED: N_('该插件不能在房间中启用'), PLUGIN_DEPENDENCY: N_('缺少该插件需要的其他插件'),
+  PLUGIN_CONFLICT: N_('所选插件互相冲突'), PLUGIN_LIMIT: N_('所选插件的素材总量超出本服务器的上限'),
+  PLUGIN_INCOMPATIBLE: N_('该插件不适配本服务器的游戏版本'), PLUGIN_BUSY: N_('本服务器同时运行的插件组合已达上限，请稍后再试'),
+  PLUGIN_CONSENT: N_('还有玩家未同意运行受信任插件'),
+  PLUGIN_SCRIPTS_DISABLED: N_('服主没有启用脚本插件'),
+  PLUGIN_TRUST_PIN: N_('插件的锁文件或文件内容与服主钉住的哈希不符'),
+  PLUGIN_TRUST_PUBLIC: N_('公网监听默认禁止受信任插件'),
+  PLUGIN_SCRIPT_CONFLICT: N_('两个插件注册了同一个效果'),
+  PLUGIN_SCRIPT_OVERRIDE: N_('插件未声明要替换的官方技能'),
+  PLUGIN_SCRIPT_CHECK: N_('脚本未通过兼容性检查'),
+  CONTENT_NOT_READY: N_('仍有博士未载入房间的插件内容'),
+};
+
+// ---- Emotes (交流, research 09 §4) -----------------------------------------------------------------------------
+// The 36 official in-match emotes: display_meta_table emoticonData, scene AUTOCHESS_BATTLE, 6 themes × 6, one wheel
+// page per theme in activity_table autoChessData.enabledEmoticonThemeIdList order, emotes by sortId. `g.emote { id }`
+// / `m.emote { playerId, id }` carry the official emoji id. Generated reference: data/emotes.json
+// (tools/build-emotes.mjs); test/ui/emotes.test.js keeps this table identical to it.
+// Official emotes have no text (desc is null): `label` is ours and only ever an aria-label, never displayed.
+// Art: extracted from a local client (tools/local-extract) to /assets/local/emoticon/<dir>/<picId>.png and listed in
+// data/local-assets.json group `emoticon/<dir>`; also downloaded from the public mirror by tools/fetch-assets.mjs
+// (tools/assets/plan.mjs UI_EXTRAS → data/assets.json ui['emoticon/<dir>/<picId>'], GitHub issue #42). The UI takes the
+// local picture first, then the mirror copy, and shows a neutral glyph when neither is there. The picId is not
+// derived from the id (autochess_battle_fooldoctor_03…06 → pic_fooldoctor_04/05/06/08_battle).
+const emo = (id, sortId, picId, label) => Object.freeze({ id, sortId, picId, label });
+export const EMOTE_THEMES = Object.freeze([
+  { themeId: 'emoticon_autochess_basic', dir: 'basic', sortId: 100000, isBasic: true, name: '表情套组：卫戍协议', emotes: [
+    emo('autochess_battle_happy', 1001, 'pic_happy_battle', '开心'),
+    emo('autochess_battle_scared', 1002, 'pic_scared_battle', '害怕'),
+    emo('autochess_battle_sorry', 1003, 'pic_sorry_battle', '对不起'),
+    emo('autochess_battle_thanks', 1004, 'pic_thanks_battle', '谢谢'),
+    emo('autochess_battle_thinking', 1005, 'pic_thinking_battle', '思考'),
+    emo('autochess_battle_nice_cooperate', 1006, 'pic_cooperate_battle', '合作愉快'),
+  ] },
+  { themeId: 'emoticon_originium_slug', dir: 'slug', sortId: 1001, isBasic: false, name: '表情套组：虫动', emotes: [
+    emo('slug_autochess_battle_nice_work', 2001, 'pic_nice_work_battle', '合作愉快！'),
+    emo('slug_autochess_battle_thanks', 2002, 'pic_thanks_battle', '谢谢！'),
+    emo('slug_autochess_battle_sorry', 2003, 'pic_sorry_battle', '对不起！'),
+    emo('slug_autochess_battle_bye', 2004, 'pic_bye_battle', '再见！'),
+    emo('slug_autochess_battle_distrust', 2005, 'pic_distrust_battle', '？？？'),
+    emo('slug_autochess_battle_very_soon', 2006, 'pic_very_soon_battle', '很快就好！'),
+  ] },
+  { themeId: 'emoticon_autochess_basic_2', dir: 'basic_2', sortId: 100001, isBasic: true, name: '表情套组：卫戍协议', emotes: [
+    emo('autochess_battle_noproblem', 1007, 'pic_noproblem_battle', '没问题！'),
+    emo('autochess_battle_respect', 1008, 'pic_respect_battle', '敬礼！'),
+    emo('autochess_battle_call', 1009, 'pic_call_battle', '欢呼！'),
+    emo('autochess_battle_playingcool', 1010, 'pic_playingcool_battle', '酷！'),
+    emo('autochess_battle_sad', 1011, 'pic_sad_battle', '伤心'),
+    emo('autochess_battle_dying', 1012, 'pic_dying_battle', '快死了'),
+  ] },
+  { themeId: 'emoticon_foolsday_doctor', dir: 'fooldoctor', sortId: 1002, isBasic: false, name: '表情套组：博士士', emotes: [
+    emo('autochess_battle_fooldoctor_01', 1020, 'pic_fooldoctor_01_battle', '博士士 1'),
+    emo('autochess_battle_fooldoctor_02', 1021, 'pic_fooldoctor_02_battle', '博士士 2'),
+    emo('autochess_battle_fooldoctor_03', 1022, 'pic_fooldoctor_04_battle', '博士士 3'),
+    emo('autochess_battle_fooldoctor_04', 1023, 'pic_fooldoctor_05_battle', '博士士 4'),
+    emo('autochess_battle_fooldoctor_05', 1024, 'pic_fooldoctor_06_battle', '博士士 5'),
+    emo('autochess_battle_fooldoctor_06', 1025, 'pic_fooldoctor_08_battle', '博士士 6'),
+  ] },
+  { themeId: 'emoticon_foolsday_amiya', dir: 'foolamiya', sortId: 1003, isBasic: false, name: '表情套组：米米子', emotes: [
+    emo('autochess_battle_foolamiya_01', 1040, 'pic_foolamiya_01_battle', '米米子 1'),
+    emo('autochess_battle_foolamiya_02', 1041, 'pic_foolamiya_02_battle', '米米子 2'),
+    emo('autochess_battle_foolamiya_03', 1042, 'pic_foolamiya_03_battle', '米米子 3'),
+    emo('autochess_battle_foolamiya_04', 1043, 'pic_foolamiya_04_battle', '米米子 4'),
+    emo('autochess_battle_foolamiya_05', 1044, 'pic_foolamiya_05_battle', '米米子 5'),
+    emo('autochess_battle_foolamiya_06', 1045, 'pic_foolamiya_06_battle', '米米子 6'),
+  ] },
+  { themeId: 'emoticon_foolsday_wisdel', dir: 'foolwisdel', sortId: 1004, isBasic: false, name: '表情套组：维维美', emotes: [
+    emo('autochess_battle_foolwisdel_01', 1060, 'pic_foolwisdel_01_battle', '维维美 1'),
+    emo('autochess_battle_foolwisdel_02', 1061, 'pic_foolwisdel_02_battle', '维维美 2'),
+    emo('autochess_battle_foolwisdel_03', 1062, 'pic_foolwisdel_03_battle', '维维美 3'),
+    emo('autochess_battle_foolwisdel_04', 1063, 'pic_foolwisdel_04_battle', '维维美 4'),
+    emo('autochess_battle_foolwisdel_05', 1064, 'pic_foolwisdel_05_battle', '维维美 5'),
+    emo('autochess_battle_foolwisdel_06', 1065, 'pic_foolwisdel_06_battle', '维维美 6'),
+  ] },
+].map((t) => Object.freeze({ ...t, emotes: Object.freeze(t.emotes) })));
+/** Every emote with its theme: `{ id, sortId, picId, label, themeId, dir }`, in wheel order. */
+export const EMOTE_CATALOG = Object.freeze(EMOTE_THEMES.flatMap((t) => t.emotes.map((e) => Object.freeze({ ...e, themeId: t.themeId, dir: t.dir }))));
+/** The 36 official emote ids (protocol whitelist: `EMOTES.includes(id)`). */
+export const EMOTES = Object.freeze(EMOTE_CATALOG.map((e) => e.id));
+const EMOTE_INDEX = new Map(EMOTE_CATALOG.map((e) => [e.id, e]));
+/** Catalog record of an emote id, or null (safe for any input, including '__proto__'). */
+export const emoteInfo = (id) => (typeof id === 'string' && EMOTE_INDEX.get(id)) || null;
+// id-keyed maps without a prototype: a wire id like '__proto__' / 'toString' looks up undefined, never an Object method
+const emoteMap = (pick) => Object.freeze(Object.assign(Object.create(null), Object.fromEntries(EMOTE_CATALOG.map((e) => [e.id, pick(e)]))));
+/** Emote id → theme id. */
+export const EMOTE_THEME = emoteMap((e) => e.themeId);
+/** Emote id → our aria-label (never displayed). */
+export const EMOTE_LABEL = emoteMap((e) => e.label);
+/** data/local-assets.json group of an emote's art (`emoticon/<dir>`), or null. */
+export const emoteArtGroup = (id) => { const e = emoteInfo(id); return e ? `emoticon/${e.dir}` : null; };
+/** Canonical URL of an emote's extracted art (`/assets/local/emoticon/<dir>/<picId>.png`), or null for unknown ids. */
+export const emoteArtPath = (id) => { const e = emoteInfo(id); return e ? `/assets/local/emoticon/${e.dir}/${e.picId}.png` : null; };
+export const EMOTE_COOLDOWN_MS = 1000; // activity_table autoChessData.constData.chatCD (s)
+export const EMOTE_BUBBLE_MS = 3000;   // constData.chatTime (s): how long a bubble stays up

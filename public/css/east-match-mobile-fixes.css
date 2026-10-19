@@ -1,0 +1,83 @@
+/* Keep touch hit areas on their visible controls; invisible expansions can cover adjacent board targets. */
+.sp-coarse .gm :is(.gm__gear, .ewheel__btn, .team__btn, .toolbtn, .readybtn, .pausebtn, .funds__collapse,
+  .gtop__iconbtn, .enemybtn, .effect, .bslot .bond)::before { content: none; }
+
+.gm .gm__bonds .bond__count {
+  bottom: 0; z-index: 2; padding: 0 2px; border-radius: calc(5 * var(--battle-ui-unit, 1px));
+  background: rgba(8, 11, 10, .88); line-height: 1.15;
+}
+
+.gm .gtop__net { display: flex; align-items: center; gap: .06rem; }
+
+@media (max-height: 600px) and (pointer: coarse) {
+  /* Keep the original card position while reserving space for its seat label and avatar outline inside the scroller. */
+  .sp-coarse .gm .team:not(.team--multi) {
+    padding-left: max(3px, .06rem);
+    margin-left: calc(-1 * max(3px, .06rem));
+  }
+}
+
+.gm__bonds {
+  right: auto;
+  width: 4.1rem;
+  max-width: calc(100% - 6.76rem);
+  overflow: visible;
+}
+
+.gm__bonds:has(.bstrip__owner) { width: 6.5rem; }
+.gm__bonds > .tt-anchor { display: block; max-width: 100%; }
+.gm__bonds .bstrip:not(.bstrip--empty) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-top: max(4px, .08rem);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  user-select: none;
+}
+
+.gm__bonds::-webkit-scrollbar, .gm__bonds .bstrip::-webkit-scrollbar { display: none; width: 0; height: 0; }
+/* Only an overflowing, clipped five-slot strip handles swipes; short strips keep their gaps transparent to the board. */
+.gm__bonds .bstrip.is-scrollable { pointer-events: auto; cursor: grab; }
+.gm__bonds .bstrip.is-dragging, .gm__bonds .bstrip.is-dragging .bond { cursor: grabbing; }
+.gm__bonds :is(.bstrip, .bslot, .bond) { touch-action: pan-x; }
+.gm__bonds .bslot { flex: none; }
+.gm.has-sp .gm__bonds .bstrip, .gm.is-pen .gm__bonds .bstrip { pointer-events: none; }
+
+@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse) {
+  .gm .shopbar,
+  .gm .shopbar-tab {
+    scale: .85;
+    transform-origin: right bottom;
+  }
+  .gm .shopbar { max-width: calc(100vw - 3.7rem - .4rem); }
+  .gm .team__row { scale: .8; transform-origin: left center; }
+  .gm .gm__corner { scale: .8; transform-origin: left bottom; }
+  body.east-match-legacy .sp-chat--match .sp-chat__toggle { scale: .8; transform-origin: left bottom; }
+  .gm .shopbar__row { min-width: 0; max-width: 100%; }
+  .gm .shopbar__cards, .gm .shopbar__item, .gm .shopbar__reward {
+    min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+    touch-action: pan-x; scrollbar-width: thin;
+  }
+  .gm .shopbar__cards > *, .gm .shopbar__item > *, .gm .shopbar__rwcards > * { flex: none; }
+  .gm .lvcard { flex: 0 0 54px; width: 54px; min-width: 54px; }
+  .gm .lvcard__label {
+    max-width: 100%; font-size: 10px; line-height: 1.1; letter-spacing: 0; padding: 0;
+    white-space: nowrap; overflow-wrap: normal; text-align: center;
+  }
+  .gm .shopbar-tab { max-width: calc(100vw - 16px); }
+  .gm .shopbar-tab__btn {
+    flex: none; min-width: max-content; height: auto; min-height: 40px; max-width: none; overflow: visible;
+    padding-inline: 10px; font-size: max(12px, .17rem); letter-spacing: 0; white-space: nowrap;
+  }
+  .gm .shopbar-tab__btn .icon { flex: none; }
+}
+
+.avatar__img img, .pavatar__img img, .ach-card__ava img, .sop__art img.is-avatar, .tcard__img.is-avatar {
+  object-position: 50% 50%;
+}

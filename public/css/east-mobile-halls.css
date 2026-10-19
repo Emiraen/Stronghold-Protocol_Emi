@@ -1,0 +1,175 @@
+/* Mobile management surfaces: real touch targets, separate scrolling regions and no hidden hit-area overlap. */
+@media (max-width: 1100px) and (pointer: coarse), (max-width: 1100px) and (any-pointer: coarse) {
+  .east-hub .topbar__tools { gap: 6px; }
+  .east-hub .topbar__tools > button,
+  .east-hub .topbar__tools .btn,
+  .east-hub .topbar__tools .fsbtn { min-width: 40px; width: 40px; height: 40px; min-height: 40px; padding: 6px; flex: none; }
+  .east-hub .topbar__tools .fsbtn .icon { width: 21px; height: 21px; }
+  .east-hub .hub-side { min-height: 0; margin-bottom: 52px; padding-bottom: 0; gap: 6px; overscroll-behavior-y: contain; }
+  .east-hub .hub-side .hub-tile { min-height: 40px; padding: 6px 8px; }
+  .east-hub .hub-side .hub-tile__label { font-size: 13px; }
+  .east-hub .hub-tile__label { white-space: nowrap; }
+  .east-hub .east-rank-tile { gap: 6px; }
+  .east-hub .hub-plate { height: 42px !important; min-height: 42px; }
+  .east-hub .hub-plate__label, .east-hub .hub-plate .btn__label { font-size: 13px; }
+  .east-hub .hub-entry { min-height: 76px; }
+  .east-hub .hub-entry__en { font-size: 10px; }
+  .east-hub .hub-entry__name { font-size: 16px; }
+  .east-hub .topbar__tools :is(.btn, .tapx, .fsbtn)::before { content: none; }
+
+  /* The scroll viewport itself ends above chat; scrolling cannot park an entry under its launcher. */
+  .east-entertainment__cards { margin-bottom: 52px; padding-bottom: 12px; overscroll-behavior-y: contain; }
+  .sp-overlay-layer--hall .ally-body { margin-bottom: 52px; }
+  .sp-overlay-layer--hall .ally-side { justify-content: flex-start; overscroll-behavior-y: contain; }
+  .sp-overlay-layer--hall .ally-key input { font-size: 16px; }
+  .sp-overlay-layer--hall .ally-key { min-height: 44px; height: 44px; margin: 6px; gap: 6px; }
+  .sp-overlay-layer--hall .ally-key__spec { flex: none; white-space: nowrap; min-height: 36px; padding-inline: 8px; }
+  .sp-overlay-layer--hall .ally-card__bar { min-height: 44px; }
+  .sp-overlay-layer--hall .proto-list { overscroll-behavior-y: contain; }
+  .sp-overlay-layer--hall .proto-back { min-height: 40px; }
+
+  .east-loadout .lo-top { min-height: 52px; gap: 8px; }
+  .east-loadout .lo-top__left, .east-loadout .lo-top__right { gap: 6px; }
+  .east-loadout .lo-top__left { min-width: 0; }
+  .east-loadout :is(.lo-back, .lo-info, .lo-tbtn, .lo-top__right .btn) { height: 40px; min-height: 40px; min-width: 40px; }
+  .east-loadout .lo-top .lo-back { height: 40px; min-height: 40px; }
+  .east-loadout .lo-top :is(.lo-assist, .lo-quickbtn) { min-height: 40px; }
+  .east-loadout .lo-bbar { min-height: 52px; height: auto; gap: 8px; padding: 4px 12px; }
+  .east-loadout .lo-bbar__seg button { min-height: 38px; padding-inline: 12px; }
+  .east-loadout .lo-bbar__tier { min-height: 38px; min-width: 38px; padding-inline: 8px; }
+  .east-loadout .lo-bbar__tiers { padding-top: 8px; padding-bottom: 2px; touch-action: pan-x; }
+  .east-loadout .lo-drawer__close { min-height: 36px; }
+  .east-loadout .lo-detail__body { touch-action: pan-y; }
+  .east-loadout .lo-pop { max-height: calc(var(--sp-ui-height, 100dvh) - 68px); overflow-y: auto; overscroll-behavior-y: contain; }
+  .east-loadout .lo-pop button { min-height: 36px; }
+
+  .east-room .rs-top__left, .east-room .rs-top__right { min-width: 0; }
+  .east-room .rs-top__left { flex-wrap: nowrap; gap: 6px; }
+  .east-room .rs-tools { gap: 6px; }
+  .east-room .rs-tools .btn { min-width: 36px; width: 36px; min-height: 36px; height: 36px; padding: 6px; }
+  .east-room .rs-exit { width: 40px; height: 40px; }
+  .east-room .rs-key { min-height: 40px; height: 40px; gap: 8px; }
+  .east-room .rs-key :is(.rs-key__copy, .rs-key__link, .rs-key__friends) { min-width: 36px; min-height: 34px; height: 34px; }
+  .east-room .rs-key__copy { padding-inline: 10px; }
+  .east-room .rs-key__link { width: 36px; }
+  .east-room .rs-clock b { overflow: hidden; text-overflow: ellipsis; }
+  .east-room .rseat__botadd { min-height: 36px; padding: 5px; font-size: 11px; flex: none; }
+  .east-room .rseat__pick { min-width: 34px; min-height: 34px; }
+  .sp-no-hover .east-room .rseat__pick { opacity: .9; }
+  .east-room .rseat__cancel { min-height: 36px; }
+  .east-room .rseat__invite { min-height: 0; padding: 6px; gap: 6px; }
+  .east-room .rs-foot__center { min-width: 0; grid-column: auto; grid-row: auto; align-items: flex-start; }
+  .east-room .rs-foot__right { min-width: 0; grid-column: auto; grid-row: auto; }
+  .east-room .rs-pill { min-height: 40px; height: 40px; }
+  .east-room .rs-pill__diff { min-height: 38px; }
+  .east-room .rs-pill__gear { min-width: 38px; min-height: 38px; width: 38px; height: 38px; }
+  .east-room .rs-go.proto-start { min-height: 46px; height: 46px; }
+  .east-room :is(.rs-tools .btn, .rs-key button, .rs-pill button)::before { content: none; }
+  .east-stats .st-top .st-back,
+  .east-stats .st-top .st-top__right .btn { min-height: 40px; height: 40px; min-width: 40px; }
+  .east-stats .st-tabs { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+  .east-stats .st-tab { flex: none; min-height: 40px; }
+}
+
+/* A landscape tablet retains the two action rails and a centred identity, instead of the portrait stack. */
+@media (min-width: 768px) and (max-width: 1100px) and (min-aspect-ratio: 1/1) {
+  .east-hub .hub-stage { grid-template-columns: minmax(180px, .9fr) minmax(0, 1fr) minmax(230px, 1.1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 14px 20px; padding: 12px 20px 20px; overflow: hidden; }
+  .east-hub .hub-center { grid-column: 2; grid-row: 1; padding: 0; }
+  .east-hub .hub-side { grid-column: 1; grid-row: 1 / -1; width: 100%; max-width: none; justify-self: stretch; }
+  .east-hub .hub-right { grid-column: 3; grid-row: 1; width: 100%; justify-self: stretch; }
+  .east-hub .hub-entries { grid-column: 2 / -1; grid-row: 2; align-items: flex-end; }
+  .east-hub .hub-entries__row { flex-wrap: nowrap; }
+  .east-hub .hub-center__en { font-size: 9px; letter-spacing: .08em; }
+  .east-hub .hub-center__title { font-size: 22px; }
+}
+
+@media (max-width: 1100px) and (max-height: 520px) and (pointer: coarse), (max-width: 1100px) and (max-height: 520px) and (any-pointer: coarse) {
+  .east-hub .hub-side { padding-top: 0; }
+  .east-hub .hub-side .hub-tile__en { display: none; }
+  .east-hub .hub-plate__tag { display: none; }
+  .east-hub .hub-right .hub-plate--sweep { min-height: 42px; }
+  .east-hub .hub-center__en { display: none; }
+  .east-hub .hub-center__mark .emblem { width: 84px; height: 84px; }
+  .east-hub .hub-center__title { font-size: 20px; }
+  .east-room .rs-clock > span, .east-room .room-ranked-chip { display: none; }
+  .east-room .rs-top.topbar { min-height: 48px; padding: 4px 10px; }
+  .east-room .rs-seats { padding-top: 10px; padding-bottom: 6px; }
+  .east-room .rseat__invite small { display: none; }
+  .east-room .rseat__invite b { font-size: 13px; }
+  .east-room .rseat__plus { width: 28px; height: 28px; }
+  .room-screen.east-room .rs-foot.room-bar { grid-template-columns: minmax(0, 1fr) auto; min-height: 62px; gap: 10px; padding: 4px 10px 8px 64px; }
+  .east-room .rs-hint { font-size: 10px; text-align: left; margin: 0; }
+  .east-room .rs-pill__mode, .east-room .rs-pill__diff { font-size: 12px; }
+  .east-room .rs-go.proto-start { width: min(210px, 30vw); }
+}
+
+@media (max-width: 620px) and (max-height: 420px) {
+  .east-hub .hub-stage { grid-template-columns: 168px minmax(0, 1fr) 170px; gap: 8px 12px; }
+  .east-hub .hub-side .hub-tile { padding: 5px 6px; }
+  .east-hub .hub-entries__row { gap: 6px; }
+  .east-hub .hub-entry { width: 108px; min-height: 76px; }
+  .east-hub .hub-plate { padding-inline: 8px !important; gap: 6px; }
+  .east-hub .topbar__tools { gap: 4px; }
+  .east-room .rs-clock { max-width: 76px; }
+  .east-room .rs-key { gap: 6px; padding-left: 8px; }
+  .east-room .rseat__plate { padding-inline: 4px; }
+  .east-room .rs-hint { max-width: 245px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .east-loadout .lo-bbar__tier { min-width: 34px; padding-inline: 6px; }
+  .east-loadout .lo-bbar__seg button { padding-inline: 10px; }
+}
+@media (max-height: 420px) and (max-width: 1100px) {
+  .sp-overlay-layer--hall .ally-card--create .ally-card__art { display: none; }
+  .sp-overlay-layer--hall .ally-card--join .ally-card__art { flex: none; height: 36px; padding: 2px 10px; overflow: hidden; }
+  .sp-overlay-layer--hall .ally-card--join .mf-art { width: 100%; height: 34px; }
+}
+
+/* Reserve independent rows for compact home actions; safe-area padding reduces the usable width. */
+@media (max-width: 620px) and (max-height: 420px) and (any-pointer: coarse) {
+  .east-hub .hub-stage { grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
+  .east-hub .hub-side { grid-row: 1; margin-bottom: 0; padding-bottom: 0; }
+  .east-hub .hub-right { grid-row: 1; }
+  .east-hub .hub-entries { grid-column: 1 / -1; grid-row: 2; margin-left: 46px; }
+  .east-hub .hub-entries__row { width: 100%; }
+  .east-hub .hub-entry-wrap { flex: 1 1 0; min-width: 0; }
+  .east-hub .hub-entry { width: 100%; min-width: 0; padding-inline: 6px; }
+  .east-hub .hub-entry__name { font-size: 14px; }
+  .east-hub .hub-entry__en { font-size: 7px; letter-spacing: 0; }
+  .east-hub .hub-tile__label { white-space: normal; line-height: 1.25; }
+  .east-hub .hub-center__title { font-size: 16px; }
+  .east-room .rs-go.proto-start { width: clamp(124px, 24vw, 148px); }
+  .east-room .rs-pill { gap: 4px; padding-left: 8px; }
+  .east-room .rs-pill__diff { padding-inline: 6px; }
+  .east-room .rs-pill__mode, .east-room .rs-pill__diff { font-size: 11px; }
+  .east-room .rs-hint { max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
+}
+@media (max-width: 1100px) and (any-pointer: coarse) {
+  .east-hub .hub-plate .btn__label { line-height: 1.4; }
+  .east-hub .hub-entry__en { overflow-wrap: anywhere; }
+  .east-room .rs-clock b { overflow: visible; text-overflow: clip; white-space: normal; }
+}
+
+@media (max-width: 1100px) and (any-pointer: coarse) {
+  .east-room .rseat__name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }
+  .east-room .rseat__plate { height: auto; }
+}
+
+@media (max-width: 1100px) and (any-pointer: coarse) {
+  /* Let the card row grow to its copy; scroll the hall instead of clipping descriptions. */
+  .east-entertainment__cards { grid-auto-rows: max-content; align-content: start; }
+  .east-entertainment__cards .east-mode { min-height: max-content; }
+  .east-entertainment__cards .east-mode > * { flex-shrink: 0; }
+}
+
+/* Keep the desktop identity visible on touch screens. The tool rail scrolls within
+   its own grid column when safe-area insets leave too little horizontal room. */
+@media (max-width: 1100px) and (any-pointer: coarse) {
+  .east-hub .hub-topbar { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:8px; }
+  .east-hub .hub-topbar > .topbar__left { max-width:100%; min-width:0; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; touch-action:pan-x; overscroll-behavior-x:contain; padding-block:3px; }
+  .east-hub .hub-topbar > .topbar__left::-webkit-scrollbar { display:none; }
+  .east-hub .hub-topbar > .topbar__left > * { flex-shrink:0; }
+  .east-hub .hub-topbar > .topbar__right { display:flex; max-width:170px; min-width:0; }
+  .east-hub .hub-topbar .me-chip { display:flex; max-width:100%; gap:7px; padding:4px 7px 4px 4px; }
+  .east-hub .hub-topbar .me-chip .avatar { --av:32px; flex-shrink:0; }
+  .east-hub .hub-topbar .me-chip__text { display:flex; min-width:0; }
+  .east-hub .hub-topbar .me-chip__name { font-size:12px; max-width:112px; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; line-height:1.25; }
+}

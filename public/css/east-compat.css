@@ -1,0 +1,35 @@
+/* East structures retained behind the PR 643 terminal UI.
+   Load after devices.css. Gameplay coordinates, safe areas and scroll containers stay in the
+   East screen styles; this layer adapts only the visual frame and text to their existing DOM. */
+:root {
+  --text: var(--text-hi);
+  --bg: var(--bg-1);
+  --east-surface: rgba(17, 22, 22, .96);
+  --east-frame: rgba(205, 214, 211, .4);
+}
+
+/* The original East rank settlement remains the source of rank and points. Its plate follows
+   the new UI's square terminal panels, preserving every placement / tier animation. */
+.rrank {
+  border-radius: 0;
+  background: linear-gradient(100deg, rgba(48, 43, 28, .6), rgba(14, 21, 18, .94));
+  box-shadow: inset 2px 0 0 #c5ad6b, 0 0 0 1px rgba(205, 214, 211, .2);
+}
+.rsettle__card {
+  border-radius: 0;
+  border-color: rgba(221, 224, 210, .55);
+  background: repeating-linear-gradient(115deg, rgba(255, 255, 255, .014) 0 2px, transparent 2px 5px), linear-gradient(180deg, #202722, #0b1310);
+  box-shadow: 0 .2rem .7rem rgba(0, 0, 0, .65), inset 0 0 0 4px rgba(230, 198, 103, .035);
+}
+.rsettle__head { width: 100%; padding-bottom: .12rem; border-bottom: 1px solid rgba(219, 221, 205, .2); }
+.rsettle__head b { color: #dce3dc; }
+.rsettle__confirm {
+  border-radius: 0;
+  border-color: #e7d38e;
+  background: linear-gradient(180deg, #e1ce8d, #b49b51);
+  clip-path: polygon(.1rem 0, 100% 0, calc(100% - .1rem) 100%, 0 100%);
+}
+.result__summary { border-left: 2px solid rgba(78, 216, 175, .45); padding-left: .22rem; }
+.result.is-lose .result__summary { border-left-color: rgba(255, 84, 84, .55); }
+.rcard { border-color: var(--east-frame); background: linear-gradient(110deg, rgba(35, 42, 39, .96), rgba(11, 18, 15, .96)); }
+

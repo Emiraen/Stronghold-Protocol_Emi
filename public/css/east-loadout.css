@@ -1,0 +1,32 @@
+/* Load after legacy East compatibility rules: complete PR 643 management structures own their layout. */
+.east-loadout .lo-top { background: rgba(8, 10, 10, .97); }
+.east-loadout .lo-detail { background: linear-gradient(180deg, #242729, #151819); }
+.east-loadout .lo-top__left, .east-loadout .lo-top__right { min-width: 0; }
+.east-loadout .lo-detail__body { overscroll-behavior: contain; }
+.east-loadout .lo-loading { gap: .16rem; }
+.east-loadout .east-legacy-note { flex: none; gap: .16rem; flex-wrap: wrap; }
+.east-loadout .lo-op__pick, .east-loadout .lo-op__card { -webkit-tap-highlight-color: transparent; }
+.east-loadout .lo-op__pick:focus-visible, .east-loadout .lo-tbtn:focus-visible {
+  outline: 2px solid var(--mint-400); outline-offset: 3px;
+}
+.east-loadout .diy-skin { min-height: 0; overflow-y: auto; }
+body.lo-open .chat-panel { visibility: hidden; }
+@media (max-height: 500px) {
+  .east-loadout .east-legacy-note { margin-block: .04rem; font-size: max(.13rem, 10px); }
+}
+/* Mobile headers reserve independent rows for navigation and actions rather than
+   shrinking tab glyphs into adjacent buttons. */
+@media (pointer: coarse) and (max-width: 1100px) {
+  .east-loadout .lo-tab { flex: none; }
+  .east-loadout .lo-top:not(.lo-top--deck) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .east-loadout .lo-top:not(.lo-top--deck) .lo-top__center { width: 100%; overflow: hidden; }
+}
+@media (pointer: coarse) and (max-width: 760px) {
+  .east-loadout .lo-top:not(.lo-top--deck) { height: auto; min-height: 76px; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; padding-block: 4px; }
+  .east-loadout .lo-top:not(.lo-top--deck) .lo-top__left { grid-column: 1; grid-row: 1; }
+  .east-loadout .lo-top:not(.lo-top--deck) .lo-top__right { grid-column: 2; grid-row: 1; }
+  .east-loadout .lo-top:not(.lo-top--deck) .lo-top__center { grid-column: 1 / -1; grid-row: 2; }
+  .east-loadout .lo-top:not(.lo-top--deck) .lo-top__center > .micro { display: none; }
+  .east-loadout .lo-tabs { justify-content: flex-start; width: 100%; }
+  .east-loadout .lo-tab { padding: 5px 8px; }
+}

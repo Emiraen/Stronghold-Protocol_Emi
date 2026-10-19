@@ -1,0 +1,145 @@
+import { PHASE, CYCLOPS_EXP_PRICE } from "../../../shared/constants.js";
+
+import { boardOrder, pieceDir } from "../board.js";
+
+import { bondList, offBondCounts } from "../bondsMeta.js";
+
+import { bountyText, bountyCard } from "../choices.js";
+
+import { cyclopsHexes, cyclopsHexCard, normalizeCyclopsGiftHooks } from '../cyclops.js';
+
+export class PlayerViews {
+  pieceView(p, rc = null) {
+    const rec = p.kind === 'item' ? this.gd.item(p.id) : p.kind === 'token' ? this.gd.token(p.id) : this.gd.chess(p.id);
+    const v = {
+      uid: p.uid,
+      kind: p.kind,
+      id: p.id,
+      skin: p.kind === 'chess' ? this.skinFor(p.id) : null,
+      golden: !!(rec && rec.isGolden),
+      tier: rec && Number.isInteger(rec.tier) ? rec.tier : null,
+      items: p.kind === 'chess' ? (p.items || []).map((it) => ({ uid: it.uid, id: it.id })) : [],
+      count: p.kind === 'token' ? (p.count || 1) : 1,
+      ownerUid: p.kind === 'token' ? p.ownerUid ?? null : null,
+    };
+    if (rc) { v.row = rc[0]; v.col = rc[1]; v.dir = pieceDir(p); }
+    return v;
+  }
+
+  effectsView() {
+    normalizeCyclopsGiftHooks(this);
+    const out = [];
+    const band = this.bandId ? this.gd.band(this.bandId) : null;
+    if (band) out.push({ id: band.effectId || band.bandId, name: band.effectName || band.name, desc: band.desc || '', iconKind: 'band', iconId: band.iconId || band.bandId });
+    for (const e of this.effects) {
+      if (e.hidden) continue;
+      const v = { id: e.id, name: e.name || e.id, desc: e.desc || '', iconKind: e.iconKind || 'choice', iconId: e.iconId || e.id };
+      if (this.m.isCyclops && e.iconKind === 'cyclops') {
+        const hex = cyclopsHexes(this.gd.raw).find(h => h.id === e.data?.effectId);
+        const card = cyclopsHexCard(hex, e.data?.quality);
+        if (card) { v.name = card.levelName || card.name; v.desc = card.desc; }
+      }
+      if (e.counter != null) v.counter = e.counter;
+      if (e.counterText != null) v.counterText = e.counterText;
+      if (e.iconKind === 'cyclops') v.data = { quality: e.data?.quality, family: e.data?.family };
+      out.push(v);
+    }
+    for (const b of this.bounties) {
+      // the battles the bounty's enemies still come for (an official multi-round card: every battle, no counter) and
+      // the card's official rich text (blue "下场作战" / "两场作战", red "每场"; a multi-round card reads as long as it
+      // lasts — choices.js bountyText, MULTI_ROUND_BOUNTY_BATTLES) — user playtest #6 item 4
+      const left = b.roundsLeft >= 90 ? null : b.roundsLeft;
+      const eff = b.card.effectId ? this.gd.effect(b.card.effectId) : null;
+      out.push({
+        id: b.id, name: b.card.name || '悬赏', desc: bountyText((eff && eff.descRaw) || b.card.desc || '', b.card), iconKind: 'choice', iconId: b.card.effectId || 'bounty',
+        counter: left, counterText: left == null ? '之后的每场作战' : `还剩 ${left} 场作战`,
+      });
+    }
+    return out;
+  }
+
+  privateView() {
+    normalizeCyclopsGiftHooks(this);
+    const hexes = this.m.isCyclops ? cyclopsHexes(this.gd.raw) : [];
+    const currentHexCard = card => card ? { ...card,
+      ...(cyclopsHexCard(hexes.find(hex => hex.id === card.id), card.quality) || {}) } : null;
+    const cyclopsMine = this.m.isCyclops && this.m.phase === 'CYCLOPS_HEX'
+      ? this.m.cyclops?.state.get(this.playerId) : null;
+    const slots = this.shop.slots.map((s) => (s ? { kind: s.kind, id: s.id, price: this.priceOf(s), basePrice: s.basePrice, sold: !!s.sold, frozen: !!s.frozen } : null));
+    const offer = this.offers[0] || null;
+    const free = this.shop.freeRefreshes > 0;
+    const board = [];
+    for (const { r, c, piece } of boardOrder(this.board)) board.push(this.pieceView(piece, [r, c]));
+    return {
+      t: 'm.private',
+      playerId: this.playerId,
+      seat: this.seat,
+      alive: this.alive,
+      lp: this.lp,
+      funds: this.funds,
+      bandId: this.bandId,
+      ready: this.ready,
+      canReady: this.alive && this.tempEmpty && !this.personalChoice && this.m.phase === PHASE.PREP,
+      personalChoice: this.personalChoice ? {
+        id: this.personalChoice.id,
+        round: this.personalChoice.round,
+        sourceItemId: this.personalChoice.sourceItemId,
+        cards: this.personalChoice.cards.map((c) => bountyCard(this.gd, c)),
+      } : null,
+      shop: {
+        level: this.shop.level,
+        maxLevel: this.gd.maxShopLevel,
+        upgradePrice: this.shop.level >= this.gd.maxShopLevel ? 0 : this.shop.upgradePrice,
+        refreshPrice: free ? 0 : this.gd.refreshPrice,
+        freeRefreshes: this.shop.freeRefreshes,
+        frozen: this.shop.frozen,
+        layout: { ...(this.shop.layout || { chess: slots.length, item: 0 }) },
+        slots,
+        // `source` 'merge' = the promotion reward (晋升奖励); any other offer (a strategy, an item, a 特质) carries the
+        // `label` the bar shows instead; `queued` = offers waiting behind it (player report #6 after 0.1.0)
+        rewardOffer: offer ? { tier: offer.tier, source: offer.source === 'merge' ? 'merge' : 'special', label: offer.label || null, queued: this.offers.length - 1, slots: offer.slots.map((s) => ({ kind: s.kind === 'item' ? 'item' : 'chess', id: s.id, price: s.price, sold: !!s.sold })) } : null,
+      },
+      ...(this.m.isCyclops ? { cyclopsRisk: this.effects.filter(e => e.data?.effectId === 'cyc_risk').map(e => ({
+        quality: e.data.quality,
+        available: e.params.usedRound !== this.m.round && (e.params.bloodTrade
+          ? e.params.bloodUses < e.params.bloodMax && this.lp > Math.max(e.params.bloodMin, Math.ceil(this.lp * 0.1))
+          : e.params.sacrificeUntil >= this.m.round),
+      })) } : {}),
+      hand: this.hand.map((p) => (p ? this.pieceView(p) : null)),
+      temp: this.temp.map((p) => (p ? this.pieceView(p) : null)),
+      board,
+      deployCap: this.deployCap,
+      deployCount: this.deployCount,
+      // + the mode-off bonds it has members of (`off: true`, the strip's grey 本局禁用 discs — bondsMeta.offBondCounts)
+      bonds: bondList(this.gd, this.bondsView(), { full: true, off: offBondCounts(this.gd, this) }),
+      effects: this.effectsView(),
+      nextEnemies: this.m.nextEnemiesFor(this),
+      // DESIGN §16: the effective operator loadout ({ [baseChessId]: { skill, module } }; chess not listed use defaults)
+      loadout: this.loadout,
+      ops: this.ops,
+      standIns: this.standIns,
+      diy: this.diy,
+      diyBanned: this.diyBanned,
+      stats: {
+        dmgDealt: Math.round(this.stats.dmgDealt), kills: this.stats.kills, leaks: this.stats.leaks, gold: this.stats.gold,
+        refreshes: this.stats.refreshes, merges: this.stats.merges,
+      },
+      // 独眼巨人的馈赠：本玩家的 3 槽详情 + 本局已选馈赠
+      ...(this.m.isCyclops && this.m.phase === 'CYCLOPS_HEX' && this.m.cyclops ? {
+        cyclopsMine: cyclopsMine ? { ...cyclopsMine, slots: cyclopsMine.slots.map(currentHexCard) } : null,
+      } : {}),
+      // 独眼巨人选秀：本玩家所在组的 10 项详情
+      ...(this.m.isCyclops && this.m.phase === 'CYCLOPS_DRAFT' && this.m.cyclops ? {
+        cyclopsDraftMine: this.m._cyclopsDraftPoolOf(this),
+      } : {}),
+      ...(this.m.isCyclops && (this.cyclopsHexes || []).length ? {
+        cyclopsHexes: this.cyclopsHexes.map((h) => {
+          const current = currentHexCard(h);
+          return { id: current.id, family: current.family, name: current.name, levelName: current.levelName, quality: current.quality, logo: current.logo, desc: current.desc };
+        }),
+      } : {}),
+      // 独眼巨人冲锋：经验进度展示
+      ...(this.m.isCyclops ? { expPrice: CYCLOPS_EXP_PRICE, shopExp: this.shop.exp || 0, expNeeded: this._cyclopsExpNeeded(this.shop.level) } : {}),
+    };
+  }
+}

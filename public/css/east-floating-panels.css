@@ -1,0 +1,12 @@
+/* Keep secondary in-match panels above the HUD while retaining the original East panel styling. */
+.sp-overlay-layer--game-panel { z-index: 130; }
+.sp-overlay-layer--panel:has(> .guide) { z-index: 150; }
+.sp-overlay-layer--game-panel > .east-floating-panel {
+  position: fixed; inset: auto; margin: 0; box-sizing: border-box; min-width: 0; min-height: 0;
+  max-width: none; max-height: none; transform: none; z-index: 0; pointer-events: auto;
+  display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; padding: 0;
+}
+.sp-overlay-layer--game-panel .east-floating-panel :is(.dpanel__scroll, .bpop__scroll, .edrawer__body, .hexpop__scroll, .combat-metrics__body) {
+  min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}

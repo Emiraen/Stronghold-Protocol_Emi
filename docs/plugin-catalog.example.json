@@ -1,0 +1,14 @@
+{
+  "catalog": 1,
+  "name": "Example plugin catalogue",
+  "plugins": [
+    {
+      "id": "demo-cosmetic",
+      "name": "Demo cosmetic",
+      "version": "1.0.0",
+      "app": ">=0.2.0 <0.3.0",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "url": "https://example.invalid/demo-cosmetic.zip"
+    }
+  ]
+}

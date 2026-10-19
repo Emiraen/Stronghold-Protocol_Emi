@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1119">
+  <title>卫戍协议 · 管理控制台</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <main id="bootView" class="entry-screen">
+    <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <p class="eyebrow">STRONGHOLD / CONTROL</p>
+    <h1>正在连接控制台</h1>
+    <p id="bootMessage" class="muted">正在验证访问权限…</p>
+    <button id="bootRetry" class="button button-outline" type="button" hidden>重新连接</button>
+  </main>
+
+  <main id="loginView" class="entry-screen" hidden>
+    <div class="login-card">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p class="eyebrow">STRONGHOLD / CONTROL</p>
+      <h1>管理控制台<span class="title-dot">.</span></h1>
+      <p class="login-intro">实时掌握房间、玩家与排位动态。</p>
+      <form id="loginForm" class="login-form">
+        <label for="password">管理密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入访问密码">
+        <p id="loginError" class="form-error" role="alert" hidden></p>
+        <button id="loginButton" class="button button-primary" type="submit">进入控制台 <span aria-hidden="true">↗</span></button>
+      </form>
+      <p class="login-footnote"><span class="signal-dot"></span> 独立管理入口 · 仅授权访问</p>
+    </div>
+    <p class="entry-copyright">STRONGHOLD PROTOCOL <span>©</span> ADMIN</p>
+  </main>
+
+  <main id="dashboardView" class="dashboard" hidden>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-brand">
+          <div class="brand-mark brand-mark-small" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div><span class="brand-name">卫戍协议</span><span class="brand-sub">ADMIN CONSOLE</span></div>
+        </div>
+        <div class="topbar-actions">
+          <span id="connectionStatus" class="connection-status" role="status"><span class="signal-dot"></span><span id="connectionText">正在同步</span></span>
+          <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新">↻</button>
+          <button id="logoutButton" class="button button-outline logout-button" type="button">退出</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="dashboard-content">
+      <div class="page-heading">
+        <div><p class="eyebrow">LIVE OPERATIONS / 实时动态</p><h1>运行总览<span class="title-dot">.</span></h1><p class="heading-sub">掌握每一场正在发生的对局。</p></div>
+        <div class="sync-meta"><span class="sync-pulse" aria-hidden="true"></span><span id="updatedAt">等待首次同步</span></div>
+      </div>
+
+      <p id="summaryStatus" class="summary-status" role="status">等待首次同步</p>
+      <section class="stats-grid" aria-label="双服合计与档案总数">
+        <article class="stat-card stat-card-accent"><div class="stat-top"><span>在线人数</span><span class="stat-icon" aria-hidden="true">↗</span></div><strong id="statOnline">—</strong><span id="statOnlineNote" class="stat-bottom">当前连接的玩家</span></article>
+        <article class="stat-card"><div class="stat-top"><span>玩家总数</span><span class="stat-icon" aria-hidden="true">◈</span></div><strong id="statPlayers">—</strong><span class="stat-bottom">主权威累计档案 · 两服共用一份</span></article>
+        <article class="stat-card"><div class="stat-top"><span>进行中对局</span><span class="stat-icon" aria-hidden="true">▣</span></div><strong id="statMatches">—</strong><span id="statMatchesNote" class="stat-bottom">活跃房间</span></article>
+        <article class="stat-card"><div class="stat-top"><span>排位对局</span><span class="stat-icon" aria-hidden="true">◆</span></div><strong id="statRanked">—</strong><span id="statRankedNote" class="stat-bottom">正在进行的排位</span></article>
+      </section>
+      <section id="serverDetails" class="server-details" aria-label="分服明细" hidden>
+        <h2>分服明细</h2>
+        <div id="serverList" class="server-grid"></div>
+      </section>
+
+      <div class="workspace">
+        <nav class="tabbar" role="tablist" aria-label="管理栏目">
+          <button type="button" class="tab active" role="tab" data-tab="matches" aria-selected="true"><span class="tab-glyph" aria-hidden="true">▣</span> 实时对局 <span id="matchTabCount" class="tab-count">0</span></button>
+          <button type="button" class="tab" role="tab" data-tab="online" aria-selected="false"><span class="tab-glyph" aria-hidden="true">◉</span> 在线玩家 <span id="onlineTabCount" class="tab-count">0</span></button>
+          <button type="button" class="tab" role="tab" data-tab="players" aria-selected="false"><span class="tab-glyph" aria-hidden="true">◇</span> 全部玩家</button>
+          <button type="button" class="tab" role="tab" data-tab="ranking" aria-selected="false"><span class="tab-glyph" aria-hidden="true">▤</span> 完整排名</button>
+          <button type="button" class="tab" role="tab" data-tab="announcement" aria-selected="false">发布公告</button>
+        </nav>
+        <p id="operationStatus" class="operation-status" role="status" hidden></p>
+        <section class="panel" data-panel="announcement" aria-label="发布公告" hidden>
+          <div class="section-heading"><div><p class="eyebrow">05 / ANNOUNCEMENT</p><h2>发布公告</h2><p>更新游戏入口公告，并通知两区在线玩家。新公告会替换当前公告。</p></div></div>
+          <form id="announcementForm" class="announcement-form">
+            <label for="announcementTitle">公告标题</label>
+            <input id="announcementTitle" maxlength="80" required placeholder="输入公告标题，最多80字">
+            <label for="announcementContent">公告正文</label>
+            <textarea id="announcementContent" maxlength="3000" rows="8" required placeholder="输入公告正文，支持换行，最多3000字"></textarea>
+            <div class="announcement-actions"><button id="announcementPublish" type="submit" class="button button-primary">发布公告</button><button id="announcementReload" type="button" class="button button-outline">读取当前公告</button><span id="announcementUpdated" class="muted">尚未读取</span></div>
+            <p id="announcementStatus" class="operation-status" role="status" hidden></p>
+          </form>
+          <article class="announcement-preview" aria-label="公告预览"><p class="eyebrow">预览</p><h3 id="announcementPreviewTitle">公告标题</h3><p id="announcementPreviewContent">公告正文会显示在这里。</p></article>
+        </section>
+
+        <section class="panel" data-panel="matches" aria-label="实时对局">
+          <div class="section-heading"><div><p class="eyebrow">01 / MATCHES</p><h2>实时对局</h2><p>点击房间，查看当前回合与参战名单。</p></div><span id="matchCount" class="section-count">0 场进行中</span></div>
+          <div id="matchList" class="match-grid"></div>
+        </section>
+
+        <section class="panel" data-panel="online" aria-label="在线玩家" hidden>
+          <div class="section-heading"><div><p class="eyebrow">02 / CONNECTED</p><h2>在线玩家</h2><p>当前在线的玩家及所在房间。</p></div><span id="onlineCount" class="section-count">0 人在线</span></div>
+          <div class="toolbar"><label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">搜索在线玩家</span><input id="onlineSearch" type="search" placeholder="搜索玩家或房间" autocomplete="off"></label></div>
+          <div id="onlineList" class="row-list"></div>
+        </section>
+
+        <section class="panel" data-panel="players" aria-label="全部玩家" hidden>
+          <div class="section-heading"><div><p class="eyebrow">03 / DIRECTORY</p><h2>全部玩家</h2><p>玩家档案与最近活动记录。</p></div><span id="playerCount" class="section-count">0 位玩家</span></div>
+          <div class="toolbar"><label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">搜索全部玩家</span><input id="playerSearch" type="search" placeholder="搜索玩家名称" autocomplete="off"></label><div class="filter-group" aria-label="玩家状态筛选"><button type="button" class="filter active" data-filter="all" aria-pressed="true">全部</button><button type="button" class="filter" data-filter="online" aria-pressed="false">在线</button><button type="button" class="filter" data-filter="offline" aria-pressed="false">离线</button></div></div>
+          <div id="playerList" class="row-list"></div>
+        </section>
+
+        <section class="panel" data-panel="ranking" aria-label="完整排名" hidden>
+          <div class="section-heading"><div><p class="eyebrow">04 / LEADERBOARD</p><h2>完整排名</h2><p>所有玩家的积分与战绩，一览无余。</p></div><span id="rankingCount" class="section-count">0 位上榜</span></div>
+          <div id="rankingList" class="row-list ranking-list"></div>
+        </section>
+      </div>
+      <footer class="dashboard-footer"><span>STRONGHOLD PROTOCOL / OPERATIONS</span><span>仅供管理使用</span></footer>
+    </div>
+  </main>
+
+  <dialog id="kickDialog" class="match-dialog" aria-labelledby="kickTitle">
+    <div class="dialog-inner"><h2 id="kickTitle">确认踢玩家下线</h2><p id="kickTarget"></p><p class="muted">将断开该玩家当前连接，并停止页面自动重连。不会封号或删除档案；进行中的对局按原有断线规则处理，玩家仍可主动重新连接。</p><p id="kickStatus" class="operation-status" role="status" hidden></p><div class="announcement-actions"><button id="kickConfirm" type="button" class="button button-danger">确认踢下线</button><button id="kickCancel" type="button" class="button button-outline">取消</button></div></div>
+  </dialog>
+  <dialog id="matchDialog" class="match-dialog" aria-labelledby="dialogTitle">
+    <div class="dialog-inner"><div class="dialog-top"><p class="eyebrow">MATCH INTELLIGENCE</p><button id="dialogClose" type="button" class="dialog-close" aria-label="关闭详情">×</button></div><h2 id="dialogTitle">房间详情</h2><p id="dialogSubtitle" class="dialog-subtitle"></p><div id="dialogMeta" class="dialog-meta"></div><div class="dialog-list-heading"><span>参战玩家</span><span id="dialogPlayerCount"></span></div><div id="dialogPlayers" class="dialog-players"></div></div>
+  </dialog>
+</body>
+</html>

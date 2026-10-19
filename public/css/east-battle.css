@@ -1,0 +1,251 @@
+/* East extensions to the complete PR 643 battle interface. Load after devices.css. */
+
+.gm .team.team--multi { max-height: calc(100% - 3.8rem); width: 3rem; overflow-y: auto; overflow-x: hidden; pointer-events: auto; padding: .06rem; overscroll-behavior: contain; }
+
+.team--multi .team__row, .team--multi > .team__pool-note, .team--multi > .multi-unite { flex-shrink: 0; }
+
+.team--multi .team__bubble { left: .2rem; top: 0; transform: none; z-index: 2; max-width: 2.7rem; }
+
+.team__pool-note, .multi-unite { padding: .08rem; background: rgba(8, 22, 17, .94); color: var(--text-md); font-size: .14rem; line-height: 1.5; }
+
+.team__pool-id { color: var(--mint-400); font-size: .11rem; }
+
+.multi-unite { display: flex; flex-direction: column; gap: .06rem; }
+
+.multi-unite small { color: var(--text-lo); }
+
+.draft-group-dialog .modal__body { min-height: 0; overflow-y: auto; }
+
+.draft-group-pages { display: flex; align-items: center; flex-wrap: wrap; gap: .1rem; }
+
+.draft-group-view { display: flex; flex-direction: column; gap: .12rem; font-size: max(.16rem, 12px); }
+
+.draft-group-view > p { display: flex; align-items: center; flex-wrap: wrap; gap: .12rem; }
+
+.draft-group-order { margin: 0; padding-left: 1.5em; }
+
+.draft-group-order li { padding: .06rem; }
+
+.draft-group-order li > span { margin-left: .14rem; }
+
+.draft-group-order li > .rt { display: block; color: var(--text-lo); }
+
+.draft-group-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .12rem; }
+
+.draft-group-card { display: flex; flex-direction: column; gap: .08rem; padding: .12rem; border: 1px solid var(--line); overflow-wrap: anywhere; }
+
+.draft-group-card small { color: var(--mint-400); }
+ .draft-group-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+ .gm .team.team--multi { width: 2.4rem; max-height: calc(100% - 3.2rem); }
+
+.team__identity { display: flex; align-items: center; gap: .2em; min-width: 0; font-size: .15rem; }
+
+.team__identity .team__name { min-width: 0; }
+
+.team__rank { width: 1em; height: 1em; flex: 0 0 1em; object-fit: contain; }
+/* ---- 独眼巨人的馈赠 (entertainment_cyclops 馈赠三选一) ---- */
+.cycov { position: absolute; inset: 0 0 0 2.8rem; z-index: 20; }
+.cycov__veil { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(4, 7, 6, .6) 0, rgba(4, 7, 6, .9) .5rem, rgba(4, 7, 6, .92)); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); border-left: 1px solid var(--line); }
+.cycov__inner { position: absolute; left: .3rem; right: .5rem; top: 1.14rem; bottom: .5rem; display: flex; flex-direction: column; gap: .16rem; animation: screen-in var(--t-slow) var(--ease-out); }
+.cycov__head { display: flex; align-items: flex-end; justify-content: space-between; gap: .3rem; }
+.cycov__titles { display: flex; flex-direction: column; gap: .04rem; }
+.cycov__title { display: flex; align-items: baseline; gap: .14rem; font-size: .5rem; font-weight: 900; letter-spacing: .08em; color: #eafff8; }
+.cycov__title--silver { color: #d7dee6; text-shadow: 0 0 .2rem rgba(190, 205, 220, .4); }
+.cycov__title--gold { color: var(--gold-2); text-shadow: 0 0 .2rem rgba(242, 189, 62, .45); }
+.cycov__title--prismatic { color: #fff; text-shadow: 0 0 .12rem rgba(255, 120, 220, .55), 0 0 .26rem rgba(120, 230, 255, .55), 0 0 .4rem rgba(180, 140, 255, .4); }
+.cycov__bar { color: var(--mint-700); font-weight: 400; }
+.cycov__desc { font-size: .22rem; font-weight: 400; color: var(--text-lo); letter-spacing: .04em; text-shadow: none; }
+.cycov__sub { font-size: .15rem; color: var(--text-dim); }
+.cycov__turntxt { display: flex; align-items: center; gap: .08rem; font-size: .24rem; font-weight: 700; color: var(--mint-400); }
+.cycov__grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .2rem; margin-top: .2rem; }
+
+/* 卡片：复用 spcard 的骨架语义，品质描边按 银/金/白彩 */
+.cyc-hex {
+  position: relative; display: flex; flex-direction: column; gap: .12rem; padding: .18rem .2rem; overflow: hidden; text-align: left;
+  background: linear-gradient(180deg, rgba(210, 224, 219, .12), rgba(120, 140, 132, .06));
+  transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.cyc-hex__glow { position: absolute; inset: 0; pointer-events: none; }
+.cyc-hex--silver { border: 1px solid #9aa7b5; }
+.cyc-hex--silver .cyc-hex__glow { background: radial-gradient(70% 50% at 50% 0%, rgba(170, 185, 200, .14), transparent 70%); }
+.cyc-hex--gold { border: 1px solid var(--gold-2); }
+.cyc-hex--gold .cyc-hex__glow { background: radial-gradient(70% 50% at 50% 0%, rgba(242, 189, 62, .16), transparent 70%); }
+.cyc-hex--prismatic { border: 1px solid #b9a0ed; }
+.cyc-hex--prismatic .cyc-hex__glow { background: radial-gradient(70% 50% at 50% 0%, rgba(200, 160, 255, .2), transparent 70%); }
+.cyc-hex:hover { transform: translateY(-.06rem); }
+.cyc-hex.is-armed { box-shadow: 0 0 0 2px var(--gold), 0 .1rem .3rem rgba(255, 198, 0, .25); }
+.cyc-hex__head { display: flex; gap: .14rem; align-items: flex-start; }
+.cyc-hex__icon {
+  width: 1rem; height: 1rem; flex-shrink: 0; display: grid; place-items: center;
+  padding: 0; background: none; border: 0;
+}
+/* Quality color is baked into the original emblem, with no badge, mask or CSS recoloring. */
+.cyc-hex__icon img, .cyc-hex__icon .icon { width: 100%; height: 100%; object-fit: contain; }
+.cyc-hex__title { display: flex; flex-direction: column; gap: .03rem; min-width: 0; }
+.cyc-hex__name { font-size: .26rem; font-weight: 900; color: var(--text-hi); letter-spacing: .04em; }
+.cyc-hex__lvl { font-size: .15rem; color: var(--text-lo); }
+.cyc-hex__lvl--silver { color: #c8d2dd; }
+.cyc-hex__lvl--gold { color: var(--gold-2); }
+.cyc-hex__lvl--prismatic { color: #fff; text-shadow: 0 0 .1rem rgba(180, 140, 255, .8); }
+.cyc-hex__desc { font-size: .17rem; line-height: 1.5; color: var(--text-md); overflow-y: auto; }
+.cyc-hex__reroll { display: flex; flex: none; align-items: center; justify-content: center; gap: .12rem; align-self: stretch; margin-top: auto; min-height: .72rem; padding: .1rem .14rem; font-size: .22rem; font-weight: 700; color: var(--text-lo); border: 1px solid var(--line); background: rgba(0, 0, 0, .4); cursor: pointer; }
+/* Existing refresh glyph at 3x the standard .18rem icon size. */
+.cyc-hex__reroll .icon { width: .54rem; height: .54rem; flex: none; }
+.cyc-hex.is-armed { padding-bottom: .7rem; }
+.cyc-hex__reroll:hover { color: var(--mint-400); border-color: var(--mint-400); }
+.cyc-hex__confirm { position: absolute; left: 0; right: 0; bottom: 0; padding: .08rem; text-align: center; background: linear-gradient(90deg, rgba(255, 198, 0, .25), rgba(255, 198, 0, .35)); border-top: 1px solid var(--gold); }
+.cyc-hex__confirm b { color: var(--gold); font-size: .2rem; }
+.cyc-hex__confirm small { display: block; font-size: .13rem; color: var(--text-lo); }
+.cyc-hex--empty { display: grid; place-items: center; border: 1px dashed var(--line); color: var(--text-dim); font-size: .16rem; }
+
+/* ---- 征召 (entertainment_cyclops R10) ---- */
+.cycov--draft .cycov__inner { top: .9rem; }
+.cyc-draft-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: .14rem; margin-top: .14rem; overflow-y: auto; }
+.cyc-draft-opt {
+  position: relative; display: flex; flex-direction: column; gap: .08rem; padding: .12rem; text-align: left;
+  background: linear-gradient(180deg, rgba(210, 224, 219, .12), rgba(120, 140, 132, .06)); border: 1px solid rgba(200, 220, 212, .25);
+  transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.cyc-draft-opt.is-pickable { cursor: pointer; }
+.cyc-draft-opt.is-pickable:hover { transform: translateY(-.04rem); border-color: var(--mint-400); }
+.cyc-draft-opt.is-armed { box-shadow: 0 0 0 2px var(--gold), 0 .08rem .24rem rgba(255, 198, 0, .25); }
+.cyc-draft-opt.is-taken > :not(.cyc-draft-opt__taken) { opacity: .35; filter: grayscale(.7); }
+.cyc-draft-opt__idx { position: absolute; top: .04rem; left: .06rem; font-size: .14rem; color: var(--text-dim); }
+.cyc-draft-opt__chess, .cyc-draft-opt__item { display: flex; align-items: center; gap: .08rem; min-width: 0; }
+.cyc-draft-opt__avatar, .cyc-draft-opt__iicon { width: .5rem; height: .5rem; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(0, 0, 0, .35); }
+.cyc-draft-opt__avatar img, .cyc-draft-opt__iicon img { width: 100%; height: 100%; object-fit: contain; }
+.cyc-draft-opt__cname, .cyc-draft-opt__iname { font-size: .16rem; font-weight: 700; color: var(--text-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.cyc-draft-opt__plus { text-align: center; color: var(--mint-700); font-weight: 900; font-size: .16rem; }
+.cyc-draft-opt__taken { position: absolute; inset: 0; display: grid; place-items: center; font-size: .2rem; font-weight: 900; color: var(--text-dim); letter-spacing: .1em; }
+.cyc-draft-opt__confirm { position: absolute; left: 0; right: 0; bottom: 0; padding: .06rem; text-align: center; background: linear-gradient(90deg, rgba(255, 198, 0, .25), rgba(255, 198, 0, .35)); border-top: 1px solid var(--gold); }
+.cyc-draft-opt__confirm b { color: var(--gold); font-size: .16rem; }
+.cyc-draft-opt__confirm small { display: block; font-size: .12rem; color: var(--text-lo); }
+.cycov__order { display: flex; flex-wrap: wrap; gap: .06rem; margin: 0; padding: 0; list-style: none; }
+.cyc-draft-who { display: flex; align-items: center; gap: .06rem; padding: .03rem .1rem; border: 1px solid var(--line); background: rgba(255, 255, 255, .03); font-size: .14rem; }
+.cyc-draft-who.is-cur { border-color: var(--gold); background: rgba(255, 198, 0, .08); }
+.cyc-draft-who.is-done { opacity: .5; }
+.cyc-draft-who.is-self b { color: var(--mint-400); }
+.cyc-draft-who__lp { color: var(--text-dim); font-size: .12rem; }
+
+
+.spov--multi .spov__inner { overflow-y: auto; padding: .04rem; }
+
+.spov--multi .spov__head, .spov--multi .spov__order { flex-shrink: 0; }
+
+.spov--multi .spov__order { overflow-x: auto; }
+
+.spov--multi .spov__who { flex-shrink: 0; }
+
+.spov--multi .spov__grid { flex-shrink: 0; min-height: 5.4rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.spov--multi .spcard__desc { display: block; flex: 1; min-height: 0; overflow-y: auto; }
+
+.brief--multi .brief-ready__pips { max-width: 3rem; overflow-x: auto; }
+
+.brief--multi .brief-ready__pips i { flex-shrink: 0; }
+
+.draft--multi .draft-order { overflow-y: auto; padding-right: .06rem; }
+
+.draft--multi .draft-order > * { flex-shrink: 0; }
+/* ---- ranked (排位段位行) ------------------------------------------------------------------------------- */
+.rrank {
+  display: grid; grid-template-columns: .44rem minmax(0, 1fr); align-items: center; gap: .06rem .1rem; padding: .07rem .1rem; margin-top: .06rem;
+  background: #12161a; box-shadow: 0 0 0 1px var(--line); border-radius: .04rem; min-width: 0;
+}
+.rrank.is-placement { background: #14120e; box-shadow: 0 0 0 1px rgba(230, 198, 103, .5); }
+.rrank__icon { width: .44rem; height: .44rem; object-fit: contain; flex: none; }
+.rrank__text { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.rrank__tier { font-size: .16rem; color: var(--gold, #e6c667); letter-spacing: .04em; line-height: 1.25; overflow-wrap: anywhere; } /* 可换行：长段位名（赋能战魂 764分 #1）不再溢出压到分数上 */
+.rrank__delta, .rrank__place { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+.rrank__pts { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
+.rrank__global { font-size: .11rem; color: var(--text-lo); white-space: nowrap; }
+.rrank__place { flex: none; font-size: .13rem; color: var(--gold, #e6c667); white-space: nowrap; }
+.rrank__delta { flex: none; font-size: .2rem; font-weight: 700; white-space: nowrap; }
+.rrank__delta.is-up { color: #ff9a3d; }
+.rrank__delta.is-down { color: #58c2c9; }
+.rrank__pts { flex: none; font-size: .12rem; color: var(--text-lo); white-space: nowrap; }
+
+/* ---- rank settlement overlay (段位结算动画) ----------------------------------------------------------- */
+.rsettle { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; cursor: default; }
+.rsettle__backdrop { position: absolute; inset: 0; background: rgba(4, 6, 5, .8); animation: rset-fade .3s ease-out; }
+.rsettle__card {
+  position: relative; z-index: 1; width: 4.8rem; max-width: calc(100% - 16px); max-height: calc(100% - 16px); min-height: 0; padding: .32rem .5rem .26rem; cursor: default;
+  display: flex; flex-direction: column; align-items: center; gap: .12rem; text-align: center;
+  background: linear-gradient(180deg, rgba(17, 21, 19, .98), rgba(9, 12, 10, .98));
+  border: 1px solid rgba(230, 198, 103, .4); border-radius: .06rem;
+  box-shadow: 0 0 .7rem rgba(0, 0, 0, .65), inset 0 0 .6rem rgba(230, 198, 103, .05);
+  animation: rset-card .45s var(--ease-out, ease-out);
+}
+@keyframes rset-fade { from { opacity: 0; } }
+@keyframes rset-card { from { opacity: 0; transform: translateY(.3rem) scale(.94); } }
+.rsettle__head { flex: none; display: flex; flex-direction: column; gap: .03rem; align-items: center; }
+.rsettle__content { width: 100%; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: .12rem; }
+.rsettle__content > * { flex-shrink: 0; }
+.rsettle__confirm { flex: none; }
+.rsettle__head b { font-size: .2rem; letter-spacing: .3em; color: var(--text-md); }
+.rsettle__icon { width: 1.2rem; height: 1.2rem; object-fit: contain; filter: drop-shadow(0 0 .18rem rgba(230, 198, 103, .35)); animation: rset-pop .4s var(--ease-out, ease-out); }
+.rsettle__icon.is-walk { animation: none; } /* 走条过程中换段不重播弹入，避免连闪 */
+@keyframes rset-pop { from { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.12); } }
+.rsettle__tier { font-size: .34rem; font-weight: 900; letter-spacing: .06em; color: var(--gold, #e6c667); white-space: nowrap; line-height: 1.2; }
+.rsettle__tier.is-long { font-size: .26rem; letter-spacing: .02em; } /* 超凡三 99分 等长名防溢出 */
+.rsettle__global { font-size: .14rem; color: var(--text-lo); letter-spacing: .08em; margin-top: -.04rem; }
+.rsettle__barwrap { width: 100%; display: flex; align-items: center; gap: .12rem; }
+.rsettle__bar { position: relative; flex: 1; height: .07rem; background: #0c0f0d; box-shadow: 0 0 0 1px var(--line, #2a322d); border-radius: .04rem; overflow: visible; }
+.rsettle__fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: .04rem; background: linear-gradient(90deg, #b98d2f, #e6c667); box-shadow: 0 0 .1rem rgba(230, 198, 103, .5); }
+.rsettle__fill.is-down { background: linear-gradient(90deg, #2f7d84, #58c2c9); box-shadow: 0 0 .1rem rgba(88, 194, 201, .4); }
+.rsettle__cursor { position: absolute; top: 50%; width: .12rem; height: .16rem; transform: translate(-50%, -50%); background: #fff; border-radius: .02rem; box-shadow: 0 0 .1rem rgba(255, 255, 255, .8); }
+.rsettle__sub { font-size: .16rem; color: var(--text-hi, #fff); width: max(1rem, 8ch); flex: none; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } /* 固定宽：位数变化不挤压进度条 */
+.rsettle__sub--plain { width: auto; min-width: 0; white-space: nowrap; text-align: center; color: var(--text-lo); }
+.rsettle__delta { font-size: .4rem; font-weight: 900; color: var(--text-md); animation: rset-delta .35s var(--ease-out, ease-out); }
+.rsettle__delta.is-up { color: #ff9a3d; }
+.rsettle__delta.is-down { color: #58c2c9; }
+.rsettle__delta.is-place { color: var(--mint-400, #17f9b7); font-size: .3rem; letter-spacing: .1em; }
+.rsettle__total { font-size: .16rem; color: var(--text-hi, #fff); }
+@keyframes rset-delta { from { transform: scale(1.4); opacity: 0; } }
+.rsettle__dots { display: flex; gap: .08rem; }
+.rsettle__dots i { width: .16rem; height: .16rem; border-radius: 50%; background: #0c0f0d; box-shadow: 0 0 0 1px var(--line-2, #3a453e); }
+.rsettle__dots i.is-on { background: var(--gold, #e6c667); box-shadow: 0 0 .1rem rgba(230, 198, 103, .5); }
+.rsettle__confirm {
+  min-width: 1.6rem; min-height: .42rem; margin-top: .14rem; padding: .06rem .24rem;
+  border: 1px solid var(--gold, #e6c667); border-radius: .04rem;
+  background: linear-gradient(180deg, #d9b957, #98721c); color: #11150f;
+  font: inherit; font-size: .2rem; font-weight: 900; letter-spacing: .18em;
+  cursor: pointer; transition: filter .15s ease, opacity .15s ease;
+}
+.rsettle__confirm:hover:not(:disabled), .rsettle__confirm:focus-visible { filter: brightness(1.18); }
+.rsettle__confirm:focus-visible { outline: 2px solid #fff; outline-offset: .04rem; }
+.rsettle__confirm:disabled { opacity: .42; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rsettle__card, .rsettle__icon, .rsettle__delta { animation: none; }
+}
+@media (max-height: 600px) and (pointer: coarse) {
+  .rsettle__card { width: min(360px, calc(100% - 16px)); padding: 12px; }
+  .rsettle__head b, .rsettle__global, .rsettle__sub { font-size: 14px; }
+  .rsettle__tier, .rsettle__tier.is-long { font-size: 18px; white-space: normal; overflow-wrap: anywhere; }
+  .rsettle__delta.is-place { font-size: 16px; }
+  .rsettle__confirm { min-height: 44px; min-width: 120px; font-size: 16px; }
+}
+
+
+.result--multi .result__players > * { flex-shrink: 0; }
+.shopbar__risk { flex-wrap: wrap; padding: .06rem .1rem; border: 1px solid var(--gold-2); background: rgba(40, 29, 8, .8); }
+.shopbar__risk select { min-height: .36rem; border: 1px solid var(--line-2); }
+.team--multi { max-height: calc(100% - 2.8rem); overflow-y: auto; overscroll-behavior: contain; }
+.team--multi > * { flex-shrink: 0; }
+.settle--many .steam__cards { justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: .18rem; scrollbar-width: thin; }
+.settle--many .tcard { flex: 0 0 3.25rem; min-width: 3.25rem; }
+.settle .splate__rank .rrank { margin: 0; min-height: .48rem; padding: .03rem .08rem; background: rgba(0,0,0,.35); }
+.settle .splate__gain { color: var(--mint-400); }
+.settle .splate__rank .rrank__icon { width: .4rem; height: .4rem; }
+.settle .tcard__rank { width: .28rem; height: .28rem; object-fit: contain; flex: none; }
+.settle .tchip--rank { min-width: 0; max-width: 100%; gap: .08rem; font-size: .15rem; }
+.settle .tchip--rank img { width: .26rem; height: .26rem; object-fit: contain; }
+.settle .tchip--rank span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settle .tchip--rank .is-up { color: #ff9a3d; }
+.settle .tchip--rank .is-down { color: #58c2c9; }
+.settle .rsettle { z-index: 100; }
+.settle__detail > .result { position: absolute; inset: 0; }
+.gm__inventory-pages { position: absolute; left: 50%; bottom: 1.35rem; transform: translateX(-50%); display: flex; align-items: center; gap: .12rem; pointer-events: auto; padding: .06rem .12rem; background: rgba(6,13,12,.88); border: 1px solid var(--line); font-size: .14rem; }
+.gm__inventory-pages .btn { white-space: nowrap; }
+@media (max-height: 600px) and (pointer: coarse) { .gm__inventory-pages { bottom: 1.5rem; font-size: max(.12rem, 10px); } }

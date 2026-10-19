@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Safari 连接检测</title><style>body{margin:0;background:#f3f6fa;color:#172b41;font:16px/1.6 -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:760px;margin:auto;padding:24px 16px}section{background:white;border:1px solid #dce3eb;border-radius:14px;padding:18px;margin:16px 0}h1{font-size:26px;margin:0 0 10px}button{font:inherit;padding:12px 18px;border:0;border-radius:8px;background:#1763ba;color:white;margin:5px 8px 5px 0;cursor:pointer}button:disabled{opacity:.5}pre,textarea{box-sizing:border-box;width:100%;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,monospace}pre{background:#edf2f8;padding:12px;border-radius:8px;min-height:120px}textarea{height:240px}small{color:#52657a}#status{font-weight:650}li{margin:8px 0}</style></head><body><main><h1>Safari / 华南连接检测</h1><p>只测试未登录的 WebSocket，不加载游戏资源、不发送 hello、不读取玩家存储。结果仅显示在本页，不自动上传；服务器仍会产生正常连接访问日志。</p><section><ol><li>请在发生故障的 Safari 中打开本页，并关闭其他游戏标签页。</li><li>点击开始，保持本页在前台，先测两次华南连接；完成后点击“刷新后单连”，保留前一阶段结果再测试。全程最多约两分钟。</li><li>完成后点击复制，将完整结果发回。不要切换应用或锁屏。</li></ol><button id="start">开始检测 V2</button><button id="reload" disabled>刷新后单连</button><button id="copy">复制结果</button><p id="status">尚未开始 · V2</p><small>先在同页连接华南两次，再刷新页面单连华南。每次建连最多观察30秒（第10秒记录，不取消）；不改变游戏超时设置。刷新对照仅在本检测页sessionStorage保存检测文字，不读取游戏存储。</small></section><section><h2>结果</h2><pre id="log"></pre><textarea id="manual" aria-label="手动复制检测结果" hidden readonly></textarea></section></main><script>
+'use strict';
+const logEl=document.getElementById('log');
+const statusEl=document.getElementById('status');
+const startButton=document.getElementById('start');
+const sockets=new Set();
+let started=performance.now();
+let running=false;
+function log(event,data){logEl.textContent+='['+Math.round(performance.now()-started)+'ms] '+event+(data?' '+JSON.stringify(data):'')+'\n';}
+function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+function state(ws){return ['CONNECTING','OPEN','CLOSING','CLOSED'][ws.readyState]||String(ws.readyState);}
+function probe(label,host,hold){return new Promise(resolve=>{
+  let ws;const at=performance.now();let finished=false;let pingTimer;let tenTimer;let timeout;let sampleTimer;let pongs=0;let sequence=0;const sent=new Map();
+  const finish=(outcome)=>{if(finished)return;finished=true;clearInterval(pingTimer);clearTimeout(tenTimer);clearTimeout(timeout);clearTimeout(sampleTimer);log(label+' RESULT',{outcome,elapsedMs:Math.round(performance.now()-at),state:ws?state(ws):'NO_SOCKET',pongs});resolve({ws,outcome});};
+  const ping=()=>{if(ws.readyState!==1)return;const c=++sequence;sent.set(c,performance.now());ws.send(JSON.stringify({t:'ping',c}));};
+  log(label+' START',{url:'ws://'+host+':3000/ws'});
+  try{ws=new WebSocket('ws://'+host+':3000/ws');sockets.add(ws);}catch(e){log(label+' CONSTRUCTOR_ERROR',{name:e.name,message:e.message});finish('constructor_error');return;}
+  ws.onopen=()=>{log(label+' OPEN',{elapsedMs:Math.round(performance.now()-at),extensions:ws.extensions,protocol:ws.protocol});clearTimeout(tenTimer);clearTimeout(timeout);ping();pingTimer=setInterval(ping,1000);sampleTimer=setTimeout(()=>finish(pongs?'open_with_pong':'open_without_pong'),hold);};
+  ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch{return;}if(m.t==='pong'){pongs++;const t=sent.get(m.c);log(label+' PONG',{rttMs:t==null?null:Math.round(performance.now()-t)});sent.delete(m.c);}else log(label+' MESSAGE',{type:m.t,code:m.code});};
+  ws.onerror=()=>{log(label+' ERROR',{state:state(ws),note:'Browser does not expose HTTP handshake status to page JavaScript'});};
+  ws.onclose=ev=>{sockets.delete(ws);log(label+' CLOSE',{code:ev.code,reason:ev.reason,clean:ev.wasClean,elapsedMs:Math.round(performance.now()-at)});finish('closed_before_sample');};
+  tenTimer=setTimeout(()=>log(label+' AT_10_SECONDS',{state:state(ws)}),10000);
+  timeout=setTimeout(()=>{log(label+' CANCEL_BY_PROBE',{state:state(ws)});finish('connect_timeout_30s');try{ws.close(1000,'probe timeout');}catch{}},30000);
+});}
+async function closeSocket(ws,wait){if(!ws||ws.readyState===3)return;const closed=new Promise(resolve=>{ws.addEventListener('close',()=>resolve('close_event'),{once:true});setTimeout(()=>resolve('close_wait_timeout'),1500);});try{ws.close(1000,'probe complete');}catch{}if(wait)log('CLOSE_WAIT',{result:await closed,state:state(ws)});}
+async function run(afterReload=false){if(running)return;running=true;startButton.disabled=true;document.getElementById('reload').disabled=true;document.getElementById('manual').hidden=true;if(!afterReload)logEl.textContent='';started=performance.now();statusEl.textContent='检测中，请保持前台';log('ENV',{version:'20261014-2',stage:afterReload?'AFTER_RELOAD':'SAME_PAGE',at:new Date().toISOString(),url:location.origin+location.pathname,ua:navigator.userAgent,online:navigator.onLine,visibility:document.visibilityState});
+try{
+if(afterReload){const r=await probe('RELOAD_SOUTH','120.24.21.224',2200);await closeSocket(r.ws,true);}else{
+let r=await probe('FIRST_SOUTH','120.24.21.224',2200);await closeSocket(r.ws,true);await delay(1000);
+r=await probe('REPEAT_SOUTH','120.24.21.224',2200);await closeSocket(r.ws,true);}
+log('DONE');statusEl.textContent=afterReload?'检测完成，请复制全部结果发回':'同页检测完成，请点击刷新后单连';
+}catch(e){log('SCRIPT_ERROR',{name:e.name,message:e.message});statusEl.textContent='检测异常，请复制结果';}finally{for(const ws of sockets)try{ws.close(1000,'test ended');}catch{}running=false;startButton.disabled=false;document.getElementById('reload').disabled=false;}}
+startButton.onclick=()=>run(false);
+const reloadKey='sp.ws.check.20261014.reload';
+document.getElementById('reload').onclick=()=>{if(running)return;try{sessionStorage.setItem(reloadKey,JSON.stringify({text:logEl.textContent,at:Date.now()}));location.reload();}catch{statusEl.textContent='无法保存检测记录，请先复制结果再手动刷新';}};
+try{const saved=sessionStorage.getItem(reloadKey);sessionStorage.removeItem(reloadKey);if(saved){const value=JSON.parse(saved);if(typeof value.text==='string'&&value.text.length<100000&&Date.now()-value.at<600000){logEl.textContent=value.text+'\n--- PAGE RELOAD ---\n';setTimeout(()=>run(true),800);}}}catch{}
+document.getElementById('copy').onclick=async()=>{const text=logEl.textContent;if(!text){statusEl.textContent='请先开始检测';return;}try{await navigator.clipboard.writeText(text);statusEl.textContent='已复制，请粘贴发回';}catch{const area=document.getElementById('manual');area.hidden=false;area.value=text;area.focus();area.select();statusEl.textContent='请长按下方文字，全选复制后发回';}};
+document.addEventListener('visibilitychange',()=>{if(running)log('VISIBILITY',{state:document.visibilityState});});
+window.addEventListener('pagehide',()=>{for(const ws of sockets)try{ws.close(1000,'page hidden');}catch{}});
+</script></body></html>
