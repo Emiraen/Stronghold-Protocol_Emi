@@ -18,7 +18,7 @@
 //   阿戈尔 egirShip      members max HP +(base_max_hp + max_hp_per_stack·L) (直接乘算); battle start devour (see devour():
 //                        the marker's gained base ATK is a 最终加算, `atkFinal`, not scaled by its ATK +%);
 //                        5: max_free_respawn_cnt free redeploys, one per member on its first knock-out — the devour's
-//                        knock-outs by board position once every devour is over (egirReviveScan), later ones at once
+//                        opening knock-outs in devour order once every devour pass is over, later ones at once
 //   叙拉古 siracusaShip  every member deployment: ASPD +(base + per·L) for (base_duration + per·L) s; 6: 隐匿 for the same
 //                        time, and while hidden / end_duration s after, every 普通伤害 hit (siracusaRolls) procs (PRD,
 //                        nominal `prob`) base_damage + damage_per_stack·L true damage + fear `fear` s
@@ -342,16 +342,6 @@ function installLaterano(battle, pid, bb, members) {
 const boardCol = (u) => (u.player && u.player.mirror ? -u.tileC : u.tileC);
 const egirOrder = (a, b) => boardCol(a) - boardCol(b) || b.tileR - a.tileR || a.id - b.id;
 
-// 5-tier revives of the battle-start devour's knock-outs: the player's scan 「检测左下到右上哪些鱼睡着了给他复活」 (a
-// community report the owner relayed on 2026-10-07, DESIGN §25.22.5) — on the player's own board as the player sees it:
-// row 0 is the bottom of the screen (render/projection.js: nearest the camera), col 0 its left; a mirrored player from its
-// own left, the field's right, as egirOrder. [ASSUMED] the columns from the left, bottom first inside a column (the
-// act-2 positional orders — the deployment and egirOrder — go column by column from the left). The other reading, the
-// rows from the bottom with left first inside a row (act 1's deployment order), is
-// `a.tileR - b.tileR || boardCol(a) - boardCol(b) || a.id - b.id`; test/content/bonds_core.test.js '阿戈尔 5 (community
-// report, 2026-10-07) step 3: …' pins this one (its layout leaves a different member down under each reading).
-const egirReviveScan = (a, b) => boardCol(a) - boardCol(b) || a.tileR - b.tileR || a.id - b.id;
-
 /**
  * The battle-start devour window, shared by every player's 阿戈尔 on the field: `passes` = devour passes still to run
  * (one per player with the bond active, counted at install), `depth` > 0 while one resolves, `flush` = the 5-tier
@@ -488,10 +478,9 @@ function installEgir(battle, pid, bb, members) {
   // 复活名额"; the owner's decision of 2026-10-05). Which knock-outs take them — a community report the owner relayed on
   // 2026-10-07 (DESIGN §25.22.5): 「第一步给所有鱼加盟约的血量，第二步是开始一个个大鱼吃小鱼，第三步是检测左下到右上哪些鱼睡着了
   // 给他复活」. The members the battle-start devour knocks out wait until every player's devour pass on the field is over
-  // (`egirStart`); then those still down are revived by board position (egirReviveScan) while slots last, and the others
-  // stay down, their first knock-out spent. A knock-out later in the fight takes a slot left, at once, in time order.
-  // Until 0.2.0 the devour's knock-outs took the slots in knock-out order (DESIGN §24.3), so the food knocked out first
-  // — often the end of a chain, marked by every 阿戈尔 behind it — took them while a member further left stayed down.
+  // (`egirStart`); the first three distinct members still down are revived in knock-out order, starting with the
+  // fish head's first swallowed target. A member revived by another effect during the pass does not spend a slot.
+  // A knock-out later in the fight takes a slot left, at once, in time order.
   // Within the window a knock-out is otherwise like any other: 被击倒 triggers fire (克莱门莎, 幽灵鲨 …) and 不屈 rolls
   // (priority 10); a member it redeploys is awake at the scan and takes no slot [ASSUMED: the scan takes the members
   // still down, 「哪些鱼睡着了」]. However many members mark one, its pending marks are cancelled once it is knocked out
@@ -533,16 +522,21 @@ function installEgir(battle, pid, bb, members) {
     S.fxOn(battle, 'revive', u, 'bond:egirShip', 'respawn', { n: revives });
   };
   start.flush.push(() => {
-    for (const u of batch.splice(0).filter((x) => !x.alive && !x.removed).sort(egirReviveScan)) {
+    for (const u of batch.splice(0)) {
+      if (u.alive || u.removed) continue;
       if (revives >= max) break;
+      knockedOut.add(u);
       revive(u);
     }
   });
   battle.on('death', (c) => {
     const u = c.unit;
     if (c.reason !== 'killed' || c.revivedBy || !memberOps.has(u) || knockedOut.has(u)) return;
+    if (start.depth > 0) {
+      if (!batch.includes(u)) batch.push(u);
+      return;
+    }
     knockedOut.add(u);
-    if (start.depth > 0) { batch.push(u); return; }
     if (revives >= max || u.alive || u.removed) return;
     revive(u);
   }, { priority: 11 });

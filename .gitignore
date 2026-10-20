@@ -18,6 +18,11 @@ match-history.json
 player-registry.json
 ranked-profiles.json
 profile-replication-main.json
+profile-replication-*.json
+profile-pending-*.json
+runtime-state*.json
+server-state*.json
+sessions*.json
 
 # --- Python (optional local-client extraction) ----------------------------------------------------
 .venv*/
@@ -42,6 +47,8 @@ update-webgl-comment.mjs
 scripts/service.env.cmd
 .env
 .env.*
+plugins/.studio-key
+plugins/config.json
 
 # --- OS / editor clutter ---------------------------------------------------------------------------
 .DS_Store

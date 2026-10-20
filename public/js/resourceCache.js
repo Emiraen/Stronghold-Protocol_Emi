@@ -80,6 +80,17 @@ function message(error) {
   return error?.message || '资源缓存操作失败，请重试。';
 }
 
+function gameHostedRequiredAudio(item) {
+  const origin = globalThis.location?.origin;
+  if (!origin || !item?.groups?.includes('required')) return null;
+  try {
+    const url = new URL(item.url, origin);
+    if (url.pathname === '/media/sfx/battle/b_ui/b_ui_alarmenter') return url.href;
+    if (url.pathname !== '/assets/audio/sfx/battle/b_ui/b_ui_alarmenter.mp3') return null;
+    return new URL(mediaUrl(url.href, origin), origin).href;
+  } catch { return null; }
+}
+
 function key(url) {
   try {
     const parsed = new URL(url, globalThis.location?.href || 'http://localhost/');
@@ -716,6 +727,10 @@ async function prepareDownloadSource(group, manual = false, signal) {
 }
 
 async function resourceResponse(item, start, source, signal) {
+  const gameUrl = gameHostedRequiredAudio(item);
+  if (gameUrl) {
+    return fetch(gameUrl, { cache: 'no-store', signal, headers: start ? { Range: `bytes=${start}-` } : {} });
+  }
   const packed = source && !source.rawOnly && !source.failed.has(item.key) && source.records.get(item.key);
   if (packed) {
     try {

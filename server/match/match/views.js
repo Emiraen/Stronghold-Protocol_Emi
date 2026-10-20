@@ -10,6 +10,15 @@ import { bountySpawns, previewOf } from "../waves.js";
 
 import { timelineAt } from "../fields.js";
 import { battleProgress, uniteLeft } from "../../sim/spec.js";
+import { createRng, deriveSeed } from "../../sim/rng.js";
+
+/** Choose once from the match seed, independently of all gameplay random streams. */
+export function battleBgmFor(stageId, seed) {
+  const tracks = stageId === 'act2autochess_m01' ? ['siracusa_bgm1']
+    : stageId === 'act2autochess_m03' ? ['kashimir_bgm1', 'kashimir_bgm2']
+      : /^(?:act1autochess_m0[1-7]|act2autochess_m0[24])$/.test(stageId || '') ? ['sand_bgm1', 'sand_bgm2'] : [];
+  return tracks.length ? createRng(deriveSeed(seed, 'map-bgm')).pick(tracks) : null;
+}
 
 export class MatchViews {
   statusOf(ps) {
@@ -60,6 +69,7 @@ export class MatchViews {
       difficulty: this.difficulty,
       ranked: this.ranked,
       stageId: this.stageId,
+      battleBgm: battleBgmFor(this.stageId, this.seed),
       setupRevision: this.setupRevision,
       rerollVote: !this.ranked && this.setupVote ? { id: this.setupVote.id, proposerId: this.setupVote.proposerId, voters: this.setupVote.voters.slice(), agreed: [...this.setupVote.agreed] } : null,
       factions: this.factions.slice(),

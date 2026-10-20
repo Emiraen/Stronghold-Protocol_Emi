@@ -36,7 +36,7 @@
 
 import { PHASE } from '../../shared/constants.js';
 import { mediaUrl } from './media.js';
-import { cachedFetch } from './resourceCache.js';
+import { cachedFetch, resourceCache } from './resourceCache.js';
 import { voiceLangFor } from './voicePrefs.js';
 
 const MAX_VOICES = 8;
@@ -74,10 +74,12 @@ export function bgmKeyFor(route, pub) {
     case PHASE.INFO_CHECK: case PHASE.BAND_DRAFT: case PHASE.BATTLE_CHECK: case PHASE.RESULT: case PHASE.LOBBY:
       return 'lobby';
     case PHASE.COMBAT: case PHASE.UNITE:
-      return 'combat';
+      return pub.battleBgm ? `battle:${pub.battleBgm}` : 'combat';
     case PHASE.FINAL_ASSAULT:
+      if (pub.battleBgm) return `battle:${pub.battleBgm}`;
       return pub.bossId ? `boss:${pub.bossId}` : 'boss';
     case PHASE.HIDDEN_CORE:
+      if (pub.battleBgm) return `battle:${pub.battleBgm}`;
       return pub.hiddenBossId ? `boss:${pub.hiddenBossId}` : pub.bossId ? `boss:${pub.bossId}` : 'boss';
     default:
       return 'prep';
@@ -94,7 +96,8 @@ export function resolveBgm(manifest, key) {
   const a = manifest?.audio;
   if (!a || !key) return null;
   let t = null;
-  if (key.startsWith('boss:')) t = a.bossBgm?.[key.slice(5)] || a.bgm?.boss;
+  if (key.startsWith('battle:')) t = a.bgm?.battleTracks?.[key.slice(7)];
+  else if (key.startsWith('boss:')) t = a.bossBgm?.[key.slice(5)] || a.bgm?.boss;
   else t = a.bgm?.[key];
   if (!t || typeof t.loop !== 'string') return null;
   return { intro: typeof t.intro === 'string' ? t.intro : null, loop: t.loop };
@@ -595,7 +598,13 @@ export class AudioManager {
 
   async _startBgm(key, track, token) {
     const [intro, loop] = await Promise.all([track.intro ? this._buffer(track.intro) : null, this._buffer(track.loop)]);
-    if (token !== this.bgmToken || !this.ctx || !loop) return;
+    if (token !== this.bgmToken || !this.ctx) return;
+    if (!loop) {
+      // Personal music is cache-only; keep the original BGM when it has not been preloaded.
+      const fallback = key?.startsWith('battle:') ? resolveBgm(this.getManifest(), 'combat') : null;
+      if (fallback && fallback.loop !== track.loop) return this._startBgm(key, fallback, token);
+      return;
+    }
     try {
       const ctx = this.ctx;
       const gain = ctx.createGain();
@@ -649,13 +658,13 @@ export class AudioManager {
 
   // ---- SFX ------------------------------------------------------------------------------------------------
 
-  _play(url, { volume = 1, rate = 1, limited = false, unitKey = null } = {}) {
+  _play(url, { volume = 1, rate = 1, limited = false, unitKey = null, priority = false } = {}) {
     if (!this.ctx || !url || this.volumes.muted || this.volumes.sfx <= 0) return;
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (limited) { if (!this.limiter.tryAcquire(now, unitKey, url)) return; }
-    else if (this.uiVoices >= 12) return;
-    else this.uiVoices += 1;
-    const release = () => { if (limited) this.limiter.release(url); else this.uiVoices = Math.max(0, this.uiVoices - 1); };
+    else if (!priority && this.uiVoices >= 12) return;
+    else if (!priority) this.uiVoices += 1;
+    const release = () => { if (limited) this.limiter.release(url); else if (!priority) this.uiVoices = Math.max(0, this.uiVoices - 1); };
     this._buffer(url).then((buf) => {
       if (!buf || !this.ctx) { release(); return; }
       try {
@@ -809,7 +818,7 @@ export class AudioManager {
     if (!this.ctx || this.volumes.muted || this.volumes.sfx <= 0) { this.landWarm = true; return; }
     this.landWarm = false;
     const b = this.getManifest()?.audio?.sfx?.battle;
-    for (const url of [b?.deploy, b?.tokenDeploy]) if (typeof url === 'string') this._buffer(url);
+    for (const url of [b?.deploy, b?.tokenDeploy, b?.leak]) if (typeof url === 'string') this._buffer(url);
   }
 
   // 来源版本的双语台词解析，通道忙时丢弃，不抢占、不排队。
@@ -894,7 +903,10 @@ export class AudioManager {
         if (!Array.isArray(e)) continue;
         const kind = e[0];
         if (kind === 'spawn') { this._track(e[1]); continue; }
-        if (kind === 'atk') {
+        if (kind === 'leak') {
+          // Every leaked enemy gets a sound, even several in one tick; unit/UI voice caps do not apply.
+          this._play(this.getManifest()?.audio?.sfx?.battle?.leak, { volume: 0.7, priority: true });
+        } else if (kind === 'atk') {
           // a chain bounce: its first id is the previous target, whose attack sound this is not (see header)
           if (CHAIN_KINDS.has(e[3])) { this.lastAttacker.delete(e[2]); continue; }
           const src = this.units.get(e[1]);
@@ -994,13 +1006,28 @@ export function installAudio(deps) {
     if (deps?.settings) audio.setVolumes(deps.settings);
     if (typeof deps?.subscribe === 'function' && typeof deps?.getState === 'function') {
       const sync = (s) => {
-        try { audio.playBgm(bgmKeyFor(deps.selectRoute(s), s.match?.public)); } catch { /* ignore */ }
+        try {
+          const pub = s.match?.public;
+          const route = deps.selectRoute(s);
+          if (route === 'game' && pub?.battleBgm) {
+            const track = resolveBgm(manifestGetter(), `battle:${pub.battleBgm}`);
+            if (track && resourceCache.isCached(track.loop)) audio.preload([track.loop]);
+          }
+          audio.playBgm(bgmKeyFor(route, pub));
+        } catch { /* ignore */ }
       };
       sync(deps.getState());
-      return deps.subscribe((s, prev) => {
+      const offStore = deps.subscribe((s, prev) => {
         if (s.match?.public?.phase !== prev?.match?.public?.phase || s.room !== prev?.room || s.session !== prev?.session
-          || s.match?.public?.bossId !== prev?.match?.public?.bossId) sync(s);
+          || s.match?.public?.bossId !== prev?.match?.public?.bossId || s.match?.public?.hiddenBossId !== prev?.match?.public?.hiddenBossId
+          || s.match?.public?.battleBgm !== prev?.match?.public?.battleBgm || s.match?.public?.stageId !== prev?.match?.public?.stageId) sync(s);
       });
+      const offResources = resourceCache.subscribe(() => {
+        const key = audio.lastBgmKey;
+        const track = key?.startsWith('battle:') ? resolveBgm(manifestGetter(), key) : null;
+        if (track && resourceCache.isCached(track.loop) && audio.bgm && audio.bgm.loopUrl !== track.loop) audio.refreshBgm();
+      });
+      return () => { offStore(); offResources(); };
     }
   } catch (err) { console.warn('[audio] install failed', err); }
   return () => {};
