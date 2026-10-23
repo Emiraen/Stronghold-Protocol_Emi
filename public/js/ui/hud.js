@@ -291,32 +291,39 @@ export function pendingTip(lp, pending, { unite = false, cap = 10, left = null }
 /**
  * Pieces waiting in the temp overflow row (m.private temp): how many, and how many are items.
  * @param {any} priv m.private
+ * @param {boolean} [unlimitedItems=false] Only entertainment modes retain items in this row.
  * @returns {{ count: number, items: number }}
  */
-export function tempInfo(priv) {
-  const list = (Array.isArray(priv?.temp) ? priv.temp : []).filter((p) => p && typeof p === 'object' && p.kind !== 'item');
-  return { count: list.length, items: 0 };
+export function tempInfo(priv, unlimitedItems = false) {
+  const list = (Array.isArray(priv?.temp) ? priv.temp : []).filter((p) => p && typeof p === 'object' && (!unlimitedItems || p.kind !== 'item'));
+  return { count: list.length, items: list.filter((p) => p.kind === 'item').length };
+}
+
+/** Only the three explicit entertainment variants allow unlimited temporary item storage. */
+export function unlimitedItemStorage(variant, ranked = false) {
+  return !ranked && (variant === 'entertainment_multi' || variant === 'entertainment_cyclops' || variant === 'entertainment_endless');
 }
 
 /** What the temp row asks of the player (the ready button's reason, the row's label). */
-export const TEMP_RULE = N_("道具永久保留且不影响准备；临时整备区的干员和召唤物需放入整备区或战场，休整期结束时仍在此处的将被销毁");
+export const TEMP_RULE = N_("临时整备区的单位和道具需移出、使用或销毁；休整期结束时仍在此处的将被销毁");
+const ENTERTAINMENT_TEMP_RULE = N_("道具永久保留且不影响准备；临时整备区的干员和召唤物需放入整备区或战场，休整期结束时仍在此处的将被销毁");
 
 /** Why 准备就绪 is refused while the temp row holds pieces (null when it is empty). */
-export function tempReadyReason(priv) {
-  const t = tempInfo(priv);
-  return t.count ? trA("临时整备区还有 {count} 个单位：{rule}", { "count": (t.count), "rule": (trA(TEMP_RULE)) }) : null;
+export function tempReadyReason(priv, unlimitedItems = false) {
+  const t = tempInfo(priv, unlimitedItems);
+  return t.count ? trA("临时整备区还有 {count} 个单位：{rule}", { "count": (t.count), "rule": (trA(unlimitedItems ? ENTERTAINMENT_TEMP_RULE : TEMP_RULE)) }) : null;
 }
 
 /**
  * Ready toggle (PREP only). Disabled while the temp row holds pieces or a personal choice (教鞭) is open — the reason shows
  * under it (not only on hover): "临时整备区 N 个单位待处理" (user playtest #3 item 3), "请先完成教鞭选择".
- * @param {{ priv:any, onToggle:(ready:boolean)=>void, busy?:boolean, readyCount?:number, total?:number }} props
+ * @param {{ priv:any, onToggle:(ready:boolean)=>void, busy?:boolean, readyCount?:number, total?:number, unlimitedItems?:boolean }} props
  */
-export function ReadyToggle({ priv, onToggle, busy, readyCount, total }) {
+export function ReadyToggle({ priv, onToggle, busy, readyCount, total, unlimitedItems = false }) {
   const ready = !!priv?.ready;
-  const temp = tempInfo(priv);
+  const temp = tempInfo(priv, unlimitedItems);
   const choice = !!priv?.personalChoice;
-  const reason = !ready ? (choice ? trA('请先完成教鞭选择') : tempReadyReason(priv) || shopBlockReason('ready', { priv, editable: true })) : null;
+  const reason = !ready ? (choice ? trA('请先完成教鞭选择') : tempReadyReason(priv, unlimitedItems) || shopBlockReason('ready', { priv, editable: true })) : null;
   const btn = html`<button type="button" class=${cx('readybtn', 'tapx', ready && 'is-on', busy && 'is-busy')} disabled=${!!reason || busy}
       aria-pressed=${ready ? 'true' : 'false'} aria-describedby=${!ready && (choice || temp.count) ? 'readywrap-why' : undefined} onClick=${() => onToggle(!ready)}>
     <span class="readybtn__box">${ready ? html`<${Icon} name="check" />` : null}</span>
@@ -492,7 +499,7 @@ export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, 
         ${pause && (pause.show || pause.paused) ? html`<${PauseButton} paused=${!!pause.paused} busy=${pause.busy} onToggle=${pause.onToggle} />` : null}
       </div>
       <${OvertimeWarning} ot=${ot} />
-      ${showReady ? html`<${ReadyToggle} priv=${priv} onToggle=${onReady} busy=${readyBusy} readyCount=${readyCount} total=${playerCount} />` : null}
+      ${showReady ? html`<${ReadyToggle} priv=${priv} unlimitedItems=${unlimitedItemStorage(pub?.variant, pub?.ranked)} onToggle=${onReady} busy=${readyBusy} readyCount=${readyCount} total=${playerCount} />` : null}
     </div>
   </header>`;
 }

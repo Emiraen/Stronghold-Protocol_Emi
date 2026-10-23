@@ -6,6 +6,7 @@ import { HeadlessJob, syntheticResult, validateClientResult, HARD_CAP_SECONDS } 
 import { resultDigest, compactResult as compactForVerify } from "../../sim/spec.js";
 
 import { OK, fail } from "./common.js";
+import { queueLocalSimulation } from "../localSimulationQueue.js";
 export class MatchReports {
   _fieldByBattle(battleId) {
     return typeof battleId === 'string' ? this.fields.find((f) => f.cc && f.battleId === battleId) || null : null;
@@ -167,20 +168,29 @@ export class MatchReports {
       }
       const job = new HeadlessJob(this._specBattle(f.spec), { players: f.players, onError: (e) => this.reportError('verify', e) });
       if (required) f.verifyJob = job;
-      const schedule = () => { const timer = this.later(0, slice); if (required) f.verifyTimer = timer; };
-      const slice = () => {
+      const slice = (budgetMs = this.headlessSliceMs) => {
         if (required) f.verifyTimer = null;
-        if (this.disposed || this.ended || !valid() || (required && f.verifyJob !== job)) return;
+        if (this.disposed || this.ended || !valid() || (required && f.verifyJob !== job)) return true;
         try {
-          if (!job.run(this.headlessSliceMs)) { schedule(); return; }
+          if (!job.run(Math.min(budgetMs, this.headlessSliceMs))) return false;
+          if (required) f.localTask = null;
           finish(job.output().result);
         } catch (e) {
           this.reportError('verify', e);
           if (required) { this._clearFieldTimers(f); this._runOnServer(f, 'verify-error', { local: true }); }
         }
+        return true;
       };
-      if (Number.isFinite(this.headlessSliceMs)) schedule();
-      else slice();
+      if (!Number.isFinite(this.headlessSliceMs)) slice();
+      else if (this.sched.virtual) {
+        const advance = () => { if (!slice()) scheduleAdvance(); };
+        const scheduleAdvance = () => { const timer = this.later(0, advance); if (required) f.verifyTimer = timer; };
+        scheduleAdvance();
+      } else {
+        const task = queueLocalSimulation(this, slice, { valid: () => valid() && (!required || f.verifyJob === job),
+          onError: (e) => this.reportError('verify', e) });
+        if (required) f.localTask = task;
+      }
     };
     if (required) {
       f.verifying = true;

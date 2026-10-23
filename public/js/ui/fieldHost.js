@@ -150,6 +150,12 @@ export function hudBands(kind, size, opts) {
       if (chatToggle?.width > 0 && chatToggle.height > 0) bottom = Math.max(bottom, h - chatToggle.top + gap);
     }
   } catch { /* 无 DOM 时沿用上游尺寸 */ }
+  const pager = document.querySelector('.gm.has-inventory-pager .gm__inventory-pages')?.getBoundingClientRect();
+  if (pager?.width > 0 && pager.height > 0) { const touchFit = !!phoneFrame;
+    const clearance = Math.max(0, (size?.width || globalThis.innerWidth || 1920) - pager.left + 8);
+    phoneFrame = { ...phoneFrame, fit: true, left: Math.max(phoneFrame?.left || rem * 2.25, rem * 2.25), right: Math.max(phoneFrame?.right || 0, clearance) };
+    if (touchFit) bottom = Math.max(bottom, h - pager.top + 2);
+  }
   return {
     top: Math.min(h * 0.4, mobileTop ?? safeTop + rem * HUD_REM.bondStripBottom),
     bottom,
@@ -341,6 +347,13 @@ export function useFieldView(hostRef) {
     }, (err) => { if (!dead && !controller.signal.aborted) console.error('[field] mount failed', err); });
     const unsub = settingsStore.subscribe((s) => viewRef.current?.setSettings?.(s));
     const onResize = () => {
+      // A physical right-side viewport exclusion: the board cannot draw beneath the pager.
+      const gm = host.closest('.gm');
+      const pager = gm?.querySelector('.gm__inventory-pages')?.getBoundingClientRect();
+      const frameRect = gm?.getBoundingClientRect();
+      const clearance = pager?.width > 0 && frameRect ? Math.ceil(frameRect.right - pager.left + 8) : 0;
+      const cssClearance = clearance + 'px';
+      if (gm && gm.style.getPropertyValue('--inventory-side-clearance') !== cssClearance) gm.style.setProperty('--inventory-side-clearance', cssClearance);
       const hud = host?.parentElement?.querySelector('.gm__hud');
       const corner = hud?.querySelector('.gm__corner')?.getBoundingClientRect();
       const bounds = hud?.getBoundingClientRect();
@@ -375,7 +388,8 @@ export function useFieldView(hostRef) {
     const observeHud = () => {
       geometryObserver.disconnect();
       if (hud) geometryObserver.observe(hud);
-      for (const el of hud?.querySelectorAll('.shopbar__row, .shopbar__tools, .shopbar-tab, .gm__corner') || []) geometryObserver.observe(el);
+      if (host) geometryObserver.observe(host);
+      for (const el of hud?.querySelectorAll('.shopbar, .shopbar__row, .shopbar__tools, .shopbar-tab, .shopbar__capacity, .gm__inventory-pages, .gm__corner') || []) geometryObserver.observe(el);
       const chatToggle = document.querySelector('.sp-chat--match .sp-chat__toggle');
       if (chatToggle) geometryObserver.observe(chatToggle);
       scheduleFit();

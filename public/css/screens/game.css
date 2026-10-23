@@ -416,6 +416,9 @@
 .team__identity .team__name { min-width: 0; }
 .team__rank { width: 1em; height: 1em; flex: 0 0 1em; object-fit: contain; }
 .team__name { font-size: .15rem; font-weight: 500; color: var(--text-md); max-width: 1.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.team__strategy { display: flex; align-items: center; gap: .05rem; min-width: 0; max-width: 1.9rem; color: var(--mint-400); font-size: .12rem; line-height: 1.15; }
+.team__strategy .bandicon { --bi: .2rem; }
+.team__strategy-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .team__line { display: flex; align-items: center; gap: .1rem; }
 .team__status { width: .26rem; height: .26rem; display: grid; place-items: center; border: 1px solid currentColor; background: rgba(0, 0, 0, .5); }
 .team__status .icon { width: .18rem; height: .18rem; }
@@ -440,7 +443,7 @@
 .team__ob .btn__label, .team__back .btn__label { letter-spacing: .12em; }
 .team__back { border-color: rgba(255, 255, 255, .7); color: #fff; }
 
-/* player avatar (band icon / glyph) */
+/* player avatar (profile art in the team panel; glyph when unavailable) */
 .pavatar {
   --pa: .8rem;
   position: relative; display: block; width: var(--pa); height: var(--pa); flex: none;

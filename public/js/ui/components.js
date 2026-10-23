@@ -32,7 +32,13 @@ export function hFresh(type, props, ...children) {
   if (this && typeof this === 'object') this[0] = 3;
   // Small same-origin gift icons ship with the client, outside the bulk preload packs.
   const giftIcon = type === 'img' && /^\/assets\/local\/ui\/(?:cyclopsIcon|tftAugment)\/[A-Za-z0-9_-]+\.(?:svg|png)$/.test(props?.src || '');
-  return h(type === 'img' && !giftIcon ? CachedImage : type, props, ...children);
+  const nameCardStatic = type === 'img' && (props?.src === '/assets/local/playercards/good-boy/avatar.png'
+    || props?.src === '/assets/local/playercards/good-boy/poster.webp'
+    || props?.src === '/assets/local/playercards/trickster-outbreak/avatar.png'
+    || props?.src === '/assets/local/playercards/trickster-outbreak/poster.png'
+    || /^\/assets\/local\/playercards\/(?:duck-(?:burnard|flower|brioche)|paintbrush-tactics|soft-and-deadly|hatchbudz-quacked|commander-bruno)\/(?:avatar|poster)\.png$/.test(props?.src || '')
+    || /^\/assets\/local\/playercards\/evori-(?:solari|lunari|amari|terrari|evori)\/(?:avatar|card)\.png$/.test(props?.src || ''));
+  return h(type === 'img' && !giftIcon && !nameCardStatic ? CachedImage : type, props, ...children);
 }
 
 /** Tagged-template JSX replacement bound to Preact's h() (no shared static vnodes, see hFresh). */
@@ -875,9 +881,10 @@ export function DifficultyTag({ difficulty, size = 'md', class: cls, code }) {
  * Bracketed text input.
  * @param {{ label?: any, micro?: string, value: string, onInput: (v: string) => void, onEnter?: Function,
  *   placeholder?: string, maxLength?: number, transform?: (v: string) => string, autoFocus?: boolean,
- *   disabled?: boolean, size?: 'md'|'lg'|'code', icon?: string, class?: string, inputRef?: any, name?: string }} props
+ *   disabled?: boolean, size?: 'md'|'lg'|'code', icon?: string, class?: string, inputRef?: any, name?: string,
+ *   type?: string, autocomplete?: string }} props
  */
-export function TextField({ label, micro, value, onInput, onEnter, placeholder, maxLength, transform, autoFocus, disabled, size = 'md', icon, class: cls, inputRef, name, hint, invalid }) {
+export function TextField({ label, micro, value, onInput, onEnter, placeholder, maxLength, transform, autoFocus, disabled, size = 'md', icon, class: cls, inputRef, name, hint, invalid, type = 'text', autocomplete = 'off' }) {
   const localRef = useRef(null);
   const ref = inputRef || localRef;
   const composing = useRef(false);
@@ -899,8 +906,8 @@ export function TextField({ label, micro, value, onInput, onEnter, placeholder, 
     ${label || micro ? html`<span class="field__label">${label}${micro ? html`<span class="micro">${micro}</span>` : null}</span>` : null}
     <span class="field__box brackets">
       ${icon ? html`<${Icon} name=${icon} class="field__icon" />` : null}
-      <input id=${id} ref=${ref} class="field__input" name=${name} value=${value} placeholder=${placeholder}
-        maxLength=${maxLength} disabled=${disabled} autocomplete="off" spellcheck=${false}
+      <input id=${id} ref=${ref} class="field__input" name=${name} type=${type} value=${value} placeholder=${placeholder}
+        maxLength=${maxLength} disabled=${disabled} autocomplete=${autocomplete} spellcheck=${false}
         onInput=${handle}
         oncompositionstart=${() => { composing.current = true; }}
         oncompositionend=${(e) => { composing.current = false; handle(e); }}

@@ -16,6 +16,8 @@ data/local-assets.json
 .state/
 match-history.json
 player-registry.json
+account-auth.json
+account-auth.json.*.tmp
 ranked-profiles.json
 profile-replication-main.json
 profile-replication-*.json

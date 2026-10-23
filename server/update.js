@@ -49,6 +49,7 @@ export function isProtectedEastPath(rel) {
   const parts = p.split('/'), base = parts.at(-1);
   if (parts.some(s => ['.state', '.static-compressed', 'logs', 'backups', 'saves'].includes(s))) return true;
   if (/^(?:player-registry|ranked-profiles|match-history|announcement)(?:[.-].*)?\.json$/.test(base)) return true;
+  if (/^account-auth\.json(?:\..*)?$/.test(base)) return true;
   if (/^(?:profile-(?:pending|replication)|server-state|runtime-state|sessions)(?:[.-].*)?\.json$/.test(base)) return true;
   if (/^(?:plugins\/config\.json|scripts\/service\.env\.cmd)$/.test(p)) return true;
   return parts.some(s => s === '.env' || s.startsWith('.env.'));

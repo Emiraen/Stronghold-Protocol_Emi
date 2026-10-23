@@ -203,11 +203,11 @@ export class BattleTiles {
    * WAIT_TILE is a safeguard only.
    */
   _downState(u) {
-    if (this.time + 1e-9 < u.respawnAt) return DOWN_STATE.COUNTING;
+    if (!u.mem?.indomFreeDeploy && this.time + 1e-9 < u.respawnAt) return DOWN_STATE.COUNTING;
     const [r, c] = this.restTile(u);
     const occ = this._occ[r * COLS + c];
     if ((occ && occ.alive && occ !== u) || this.downOn(r, c, u)) return DOWN_STATE.WAIT_TILE;
     const ps = this.getPlayer(u.ownerId);
-    return !ps || ps.dp + 1e-9 < u.base.cost ? DOWN_STATE.WAIT_DP : DOWN_STATE.COUNTING;
+    return !u.mem?.indomFreeDeploy && (!ps || ps.dp + 1e-9 < u.base.cost) ? DOWN_STATE.WAIT_DP : DOWN_STATE.COUNTING;
   }
 }

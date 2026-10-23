@@ -23,7 +23,7 @@ import { store, useStore, shallowEqual, emptyMatch } from '../store.js';
 import { difficultyInfo, RankBadge, ProtoCard, useHallKeyboard } from './lobby.js';
 import { ChatPanel } from './chat.js';
 import { data, useData } from '../data.js';
-import { CardPicker, cardOperators, seatAvatar, seatPortrait } from '../ui/seatArt.js';
+import { CardPicker, cardOperators, seatAvatar, seatPortrait, useSpecialNameCardCache, isSpecialCardPortrait } from '../ui/seatArt.js';
 import { skinsStore, setPlayerCard } from '../ui/skins.js';
 import { ProtocolScene } from '../ui/protocolScene.js';
 import { usePresence, useRise, afterLeave } from '../ui/transitions.js';
@@ -33,6 +33,8 @@ import { isRankedMatch } from '../../../shared/ranks.js';
 import { installedCount } from '../content.js';
 import { PluginTag } from '../ui/pluginTag.js';
 import { UiPluginHost } from '../ui/pluginSlots.js';
+import { rankPyramidMiniView } from '../ui/rankPyramid.js';
+import { RankPyramidGraphic } from '../ui/rankPyramidGraphic.js';
 
 const isEntertainmentRoom = (room) => room?.variant === 'entertainment_multi' || room?.variant === 'entertainment_cyclops' || room?.variant === ENDLESS_VARIANT;
 
@@ -142,7 +144,11 @@ function RoomProtocol({ room, variant, onClose, onPick, busy, leaving = false })
 }
 
 
-function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, onRemoveBot, onKick, onCancelReady, portraits, onPickCard, onInvite }) {
+function RankPyramidBadge({ view }) {
+  return html`<div class="rseat__pyramid"><${RankPyramidGraphic} view=${view} mini=${true} /></div>`;
+}
+
+function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, onRemoveBot, onKick, onCancelReady, portraits, onPickCard, onInvite, pyramid }) {
   const [bad, setBad] = useState(null);
   const flash = useRise(!!seat && (seat.ready || seat.isBot || seat.playerId === room.hostId));
   if (!seat) {
@@ -168,8 +174,9 @@ function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, on
   return html`<article class=${`rseat${ready ? ' is-ready' : ''}${flash ? ' is-flash' : ''}${isMe ? ' is-me' : ''}${isHostSeat ? ' is-host' : ''}${seat.isBot ? ' is-bot' : ''}${offline ? ' is-offline' : ''}`} style=${`--i:${index}`}>
     <span class="rseat__clip" aria-hidden="true"></span>
     <header class="rseat__strip"><i></i><span class="num">P${index + 1}</span></header>
-    <div class=${`rseat__art${canPick ? ' is-pickable' : ''}`}>
+    <div class=${`rseat__art${canPick ? ' is-pickable' : ''}${isSpecialCardPortrait(src) ? ' rseat__art--special' : ''}`}>
       ${src && src !== bad ? html`<img src=${src} alt="" draggable=${false} loading="lazy" onError=${() => setBad(src)} />` : html`<span class="rseat__glyph">${seat.isBot ? html`<${Icon} name="robot" />` : [...(seat.name || '?')][0]}</span>`}
+      ${pyramid ? html`<${RankPyramidBadge} view=${pyramid} />` : null}
       ${canPick ? html`<button type="button" class="rseat__pick" onClick=${onPickCard} aria-label=${trA('更换名片干员')}><${Icon} name="edit" /><span>${trA('更换立绘')}</span></button>` : null}
       ${isHostSeat ? html`<span class="rseat__host">${trA("创建者")}</span>` : null}
       ${offline ? html`<span class="rseat__lost"><${Icon} name="wifiOff" />${trA("连接中断")}</span>` : null}
@@ -223,11 +230,13 @@ function DifficultyPicker({ room, isHost, busy, onPick }) {
 
 /** Room screen component. */
 export function RoomScreen() {
+  useSpecialNameCardCache();
   useStore((s) => s.entries, Object.is, skinsStore);
   useStore((s) => s.portraits, Object.is, skinsStore);
   const room = useStore((s) => s.room);
   const installedPlugins = useStore(installedCount);
   const me = useStore((s) => s.me, shallowEqual);
+  const rank = useStore((s) => s.rank, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
   const [busy, setBusy] = useState(null);
   const [protocolOpen, setProtocolOpen] = useState(false);
@@ -256,6 +265,7 @@ export function RoomScreen() {
   const capacities = cyclops ? CYCLOPS_CAPACITIES : ENTERTAINMENT_CAPACITIES;
   const ranked = !entertainment && isRankedMatch(room.ranked, room.difficulty);
   const facts = roomFacts(room, me.playerId);
+  const showPyramids = ranked && !room.inMatch;
   const myReady = !!facts.mine?.ready;
   const info = difficultyInfo(room.mode, room.difficulty);
   const matching = !!room.matchFill?.searching;
@@ -339,7 +349,7 @@ export function RoomScreen() {
         </div>
       </div>
       <div class="rs-top__right">
-        ${!endless && (installedPlugins > 0 || room.content?.plugins?.length) ? html`<${PluginTag} room=${room} myId=${me.playerId} />` : null}
+        ${!endless && ((!entertainment && room.ranked !== true) || installedPlugins > 0 || room.content?.plugins?.length) ? html`<${PluginTag} room=${room} myId=${me.playerId} />` : null}
         <span class="room-ranked-chip" title=${ranked ? trA("排位赛：结算计入段位分") : trA("不影响段位分、定级进度和隐藏分")}><${Icon} name="shield" />${ranked ? trA("排位赛") : trA("不计排位分")}</span>
 
         ${coop ? html`<${InviteBox} code=${room.code} />` : html`<div class="rs-key rs-key--solo"><${MicroLabel}>SINGLE OPERATOR<//><span>${trA("仅限 1 名博士")}</span></div>`}
@@ -357,6 +367,7 @@ export function RoomScreen() {
     <main class="rs-seats">
       ${facts.seats.map((s, i) => html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
         myId=${me.playerId} busy=${busy} matching=${matching} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick}
+        pyramid=${showPyramids && s && !s.isBot ? rankPyramidMiniView(s.rankPyramid ?? (s.playerId === me.playerId ? rank?.rankPyramid : null)) : null}
         portraits=${portraits} onPickCard=${() => setPicking(true)} onInvite=${invite}
         onCancelReady=${(seat, playerId) => run('cancelReady', () => net.request('room.cancelReady', { seat, playerId }))} />`)}
       ${coop ? null : html`<aside class="solo-brief rs-brief brackets">

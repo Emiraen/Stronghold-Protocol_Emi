@@ -1,22 +1,19 @@
 import { t as trA } from '../../../shared/i18n.js';
-// Title screen: season-style backdrop, big title 卫戍协议：盟约, remembered nickname, 开始.
-//
-// Pressing 开始 validates the nickname (1..NAME_MAX_LEN chars, no control characters), stores it,
-// marks this tab as "entered" (so reloads skip the title) and hands the name to net.js, which
-// sends `hello` (now, or as soon as the socket is open). The router then shows the lobby.
+// Title screen: remembered account name, password login, registration and legacy password reset.
+// Only a successful authenticated welcome enters the game. Reconnects use the tab's auth ticket.
 //
 // Backdrop art: if data/assets.json lists a UI backdrop (`ui.titleBackdrop`, or one of the
 // entry/loading illustration names) it is layered under the CSS art; otherwise the screen is
 // pure CSS/SVG (radar, ridgelines, glow), so it never issues a request that can 404.
 
-import { useEffect, useMemo, useState } from '../../vendor/hooks.module.js';
+import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { NAME_MAX_LEN, APP_VERSION, EMI_BUILD } from '../../../shared/constants.js';
 import { html, Modal, Button, Icon, MicroLabel, TextField, PingPill } from '../ui/components.js';
 import { GuideButton } from '../ui/guide.js';
 import { SettingsModal } from '../ui/settings.js';
 import { openStats } from './stats.js';
 import { toast } from '../ui/toasts.js';
-import { net, identity } from '../net.js';
+import { net, identity, NetError } from '../net.js';
 import { store, useStore, shallowEqual } from '../store.js';
 import { data, useData } from '../data.js';
 import { FullscreenButton, detectFeatures } from '../ui/device.js';
@@ -71,27 +68,37 @@ export function sanitizeName(raw) {
 export const isValidName = (raw) => sanitizeName(raw).length > 0;
 
 /**
- * Enter the game shell with a nickname (title → lobby).
+ * Authenticate before entering the game shell (title → lobby).
  * @param {string} rawName
  * @returns {Promise<boolean>} 昵称无效或资源清单、本地存储尚未就绪时返回 false
  */
-export async function enterSession(rawName) {
+export async function enterSession(rawName, auth = null, resume = null, rememberPassword = false) {
   const name = sanitizeName(rawName);
   if (!name) return false;
   if (!await resourceCache.ensureSessionReady()) {
-    openResourcePreload(() => enterSession(name));
+    // A form may resume its pending submission after the resource dialog is closed.
+    openResourcePreload(resume || (() => identity.getAuth(name) ? enterSession(name).catch(() => false) : false));
     return false;
   }
   if (serversState.get().switching) return false;
+  if (!auth && !identity.getAuth(name)) throw new NetError('AUTH_REQUIRED', '请输入账户密码');
   if (net.name && net.name !== name) net.closeForServerSwitch();
   identity.saveName(name);
   if (!net.url || net.status === 'closed') {
     if (!await prepareServerConnection()) return false;
-    net.connect();
+  }
+  try {
+    await net.login(name, auth);
+    if (auth && typeof auth.password === 'string') {
+      if (rememberPassword) identity.saveRememberedLogin(name, auth.action === 'reset' ? auth.newPassword : auth.password);
+      else identity.clearRememberedLogin();
+    }
+  }
+  finally {
+    if (auth) for (const key of ['password', 'newPassword', 'confirmPassword']) delete auth[key];
   }
   identity.setEntered(true);
   store.set((s) => ({ me: { ...s.me, name }, session: { ...s.session, entered: true } }));
-  net.setName(name);
   return true;
 }
 
@@ -202,7 +209,7 @@ import { LangToggle } from '../ui/lang.js';
 import { serversState, loadServers, switchServer, prepareServerConnection, retryServerConnection } from '../servers.js';
 
 const LOAD_LABELS = { idle: '空闲', normal: '一般', busy: '繁忙', unknown: '状态未知' };
-function ServerPicker({ name }) {
+function ServerPicker({ name, disabled = false }) {
   const state = useStore((s) => s, undefined, serversState);
   const conn = useStore((s) => s.connection, shallowEqual);
   const connecting = conn.status === 'connecting' || conn.status === 'handshaking';
@@ -233,20 +240,92 @@ function ServerPicker({ name }) {
   };
   return html`<div class="title-server">
     <select aria-label="选择服务器" data-testid="server-select" value=${state.directory?.current || ''}
-      disabled=${!state.directory || state.switching} onChange=${choose}>
+      disabled=${disabled || !state.directory || state.switching} onChange=${choose}>
       ${state.directory ? state.directory.servers.map((entry) => html`<option key=${entry.id} value=${entry.id}>${entry.name} · ${LOAD_LABELS[entry.load]}</option>`)
         : html`<option value="">${state.loading ? '正在加载服务器…' : '服务器暂不可用'}</option>`}
     </select>
-    ${state.error || (connecting && retryReady) || ['reconnecting', 'closed'].includes(conn.status) ? html`<button type="button" class="title-server__retry" disabled=${state.loading || state.switching} onClick=${retry}>重试连接</button>` : null}
+    ${state.error || (connecting && retryReady) || ['reconnecting', 'closed'].includes(conn.status) ? html`<button type="button" class="title-server__retry" disabled=${disabled || state.loading || state.switching} onClick=${retry}>重试连接</button>` : null}
     ${state.error ? html`<span role="alert" class="title-server__error">${state.error}</span>` : null}
   </div>`;
+}
+
+const DEFAULT_PASSWORD = '1234567';
+const PASSWORD_MAX_LEN = 128;
+const passwordError = (value) => value.length < 6 || value.length > PASSWORD_MAX_LEN ? '密码长度须为 6–128 个字符' : '';
+
+function AccountModal({ mode, initialName, oldPassword, rememberPassword, onClose }) {
+  const reset = mode === 'reset';
+  const [name, setName] = useState(initialName || '');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const touchUi = useMemo(() => detectFeatures().coarse, []);
+  const close = () => {
+    if (submitting.current) return;
+    setPassword(''); setConfirmPassword('');
+    onClose();
+  };
+  const submit = async (event) => {
+    event?.preventDefault();
+    if (submitting.current) return;
+    const account = sanitizeName(name);
+    let problem = !account ? '请输入账户名称' : passwordError(password);
+    if (!problem && reset && password === DEFAULT_PASSWORD) problem = '新密码不能与默认密码相同';
+    if (!problem && reset && password !== confirmPassword) problem = '两次输入的密码不一致';
+    if (problem) { setError(problem); return; }
+    submitting.current = true;
+    setBusy(true); setError('');
+    try {
+      const auth = reset
+        ? { action: 'reset', password: oldPassword, newPassword: password, confirmPassword }
+        : { action: 'register', password };
+      if (await enterSession(account, auth, () => submit(), rememberPassword)) {
+        setPassword(''); setConfirmPassword(''); onClose();
+      }
+    } catch (err) {
+      setError(err.code === 'AUTH_NAME_TAKEN' ? '名称已被占用' : err.message || '操作失败，请重试');
+    } finally {
+      submitting.current = false; setBusy(false);
+    }
+  };
+  return html`<${Modal} open=${true} onClose=${close} closeDisabled=${busy} closeOnBackdrop=${!busy}
+    title=${reset ? '设置新密码' : '注册账户'} micro=${reset ? 'PASSWORD RESET' : 'NEW ACCOUNT'}
+    class="title-auth-modal" width="min(520px, 94vw)">
+    <form class="title-auth-form" onSubmit=${submit}>
+      ${reset ? html`<p class="title-auth-note">首次登录需要修改默认密码，完成后将自动登录。</p>` : null}
+      <${TextField} label="账户名称" micro="CALLSIGN" name="username" autocomplete="username" value=${name}
+        maxLength=${NAME_MAX_LEN} icon="user" disabled=${reset || busy} autoFocus=${!reset && !touchUi}
+        onInput=${(value) => { setName(value); setError(''); }} />
+      <${TextField} label=${reset ? '新密码' : '密码'} micro="PASSWORD" name="new-password" type="password"
+        autocomplete="new-password" value=${password} maxLength=${PASSWORD_MAX_LEN} icon="key"
+        hint="6–128 个字符" disabled=${busy} autoFocus=${reset && !touchUi}
+        onInput=${(value) => { setPassword(value); setError(''); }} />
+      ${reset ? html`<${TextField} label="确认新密码" micro="CONFIRM PASSWORD" name="confirm-password" type="password"
+        autocomplete="new-password" value=${confirmPassword} maxLength=${PASSWORD_MAX_LEN} icon="key" disabled=${busy}
+        onInput=${(value) => { setConfirmPassword(value); setError(''); }} />` : null}
+      ${error ? html`<p class="title-auth-error" role="alert">${error}</p>` : null}
+      <div class="title-auth-actions">
+        <${Button} variant="secondary" disabled=${busy} onClick=${close}>取消<//>
+        <${Button} variant="primary" type="submit" loading=${busy}>${reset ? '确认并登录' : '注册并登录'}<//>
+      </div>
+    </form>
+  <//>`;
 }
 
 export function TitleScreen() {
   const conn = useStore((s) => s.connection, shallowEqual);
   const pendingJoin = useStore((s) => s.ui.pendingJoin);
   const switching = useStore((s) => s.switching, undefined, serversState);
-  const [name, setName] = useState(() => store.get().me.name || identity.loadName() || '');
+  const rememberedLogin = useMemo(() => identity.loadRememberedLogin(), []);
+  const [name, setName] = useState(() => rememberedLogin?.name || store.get().me.name || identity.loadName() || '');
+  const [password, setPassword] = useState(() => rememberedLogin?.password || '');
+  const [rememberPassword, setRememberPassword] = useState(() => !!rememberedLogin);
+  const [authError, setAuthError] = useState('');
+  const [authModal, setAuthModal] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const assetsSettled = useData('assets');
@@ -265,9 +344,27 @@ export function TitleScreen() {
   const cssRidges = assetsSettled && (!ridges || ridgesFailed);
 
   const valid = isValidName(name);
-  const start = () => {
-    if (!valid) { toast(trA("请输入博士代号"), 'warn'); return; }
-    enterSession(name);
+  const authenticating = busy || conn.status === 'handshaking';
+  useEffect(() => {
+    if (conn.lastError && conn.lastError.code !== 'AUTH_RESET_REQUIRED') setAuthError(conn.lastError.text);
+  }, [conn.lastError?.code, conn.lastError?.text]);
+  const start = async (event) => {
+    event?.preventDefault();
+    if (submitting.current || authenticating || switching || authModal) return;
+    if (!valid) { setAuthError('请输入账户名称'); return; }
+    if (!password) { setAuthError('请输入密码'); return; }
+    submitting.current = true;
+    setBusy(true); setAuthError('');
+    try {
+      if (await enterSession(name, { action: 'login', password }, () => start(), rememberPassword)) setPassword('');
+    } catch (err) {
+      if (err.code === 'AUTH_RESET_REQUIRED') {
+        setAuthModal({ mode: 'reset', initialName: sanitizeName(name), oldPassword: password });
+        setPassword(''); setAuthError('');
+      } else setAuthError(err.message || '登录失败，请重试');
+    } finally {
+      submitting.current = false; setBusy(false);
+    }
   };
 
   const online = conn.status === 'online' || conn.status === 'connected';
@@ -319,16 +416,36 @@ export function TitleScreen() {
       <h1 class="title-cn">${trA("卫戍协议")}<span class="title-cn__colon">：</span><em>${trA("盟约")}</em></h1>
       <p class="title-tag">${trA("调配资金与干员，与同伴协同布防，抵御多波次进攻，直至击败敌方领袖。")}</p>
 
-      <div class="title-login">
+      <form class="title-login" onSubmit=${start}>
         ${pendingJoin ? html`<div class="title-invite">
           <${Icon} name="key" />
-          <span>${trA("收到同盟邀请")}</span><b class="num">${pendingJoin.code || pendingJoin}</b><span class="t-lo">${trA("· 输入代号后将自动加入")}</span>
+          <span>${trA("收到同盟邀请")}</span><b class="num">${pendingJoin.code || pendingJoin}</b><span class="t-lo">· 登录后将自动加入</span>
         </div>` : null}
         <${TextField} label=${trA("博士代号")} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
+          name="username" autocomplete="username" disabled=${authenticating || switching}
           placeholder=${trA('输入你的代号（最多 {NAME_MAX_LEN} 字）', { NAME_MAX_LEN })} autoFocus=${!touchUi}
-          onInput=${setName} onEnter=${start} />
-        <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" disabled=${!valid || switching} onClick=${start}>${trA("开始游戏")}<//>
-        <${ServerPicker} name=${name} />
+          onInput=${(value) => { setName(value); setAuthError(''); }} />
+        <${TextField} label="账户密码" micro="PASSWORD" size="lg" icon="key" value=${password} type="password"
+          name="password" autocomplete="current-password" maxLength=${PASSWORD_MAX_LEN} disabled=${authenticating || switching}
+          placeholder="输入账户密码" hint="已有账户首次登录使用默认密码 1234567"
+          onInput=${(value) => { setPassword(value); setAuthError(''); }} />
+        <label class="title-remember">
+          <input type="checkbox" name="remember-password" checked=${rememberPassword} disabled=${authenticating || switching}
+            onChange=${(event) => {
+              const checked = event.currentTarget.checked;
+              setRememberPassword(checked);
+              if (!checked) identity.clearRememberedLogin();
+            }} />
+          <span>记住密码</span>
+        </label>
+        ${authError ? html`<p class="title-auth-error" role="alert">${authError}</p>` : null}
+        <div class="title-login__submit">
+          <${Button} variant="primary" size="xl" block=${true} type="submit" iconRight="chevrons"
+            loading=${authenticating} disabled=${!valid || !password || switching}>${trA("开始游戏")}<//>
+          <${Button} variant="secondary" size="lg" disabled=${authenticating || switching}
+            onClick=${() => { setPassword(''); setAuthError(''); setAuthModal({ mode: 'register', initialName: name }); }}>注册<//>
+        </div>
+        <${ServerPicker} name=${name} disabled=${authenticating} />
         <div class="title-meta">
           <div class="title-conn">
             <span class=${`status-dot ${dotClass}`}></span>
@@ -341,14 +458,14 @@ export function TitleScreen() {
             <${FullscreenButton} class="title-fs" />
           </div>
         </div>
-      </div>
+      </form>
       <div class="title-actions">
         <${AnnouncementButton} class="title-notice" variant="ghost" testId="notice-entry-title" />
         <${Button} variant="ghost" size="sm" icon="info" onClick=${() => setAboutOpen(true)}>${trA("关于")}<//>
       </div>
     </main>
 
-    <div class="title-preload"><button type="button" class="resource-launcher" onClick=${() => openResourcePreload()}><span class="resource-launcher__icon"><${Icon} name="download" /></span><span><b>${trA('资源管理')}</b><small>LOCAL RESOURCE LIBRARY</small></span><${Icon} name="chevrons" /></button></div>
+    ${authModal ? html`<${AccountModal} ...${authModal} rememberPassword=${rememberPassword} onClose=${() => setAuthModal(null)} />` : null}
     <${Modal} open=${aboutOpen} onClose=${() => setAboutOpen(false)} title=${trA('关于本项目')} micro="STRONGHOLD PROTOCOL · EAST" class="about-panel" width="min(800px, 94vw)">
       <p class="about-intro">${trA('卫戍协议：盟约')} · East</p><p>${trA('East 联机与排位功能，整合新版功能及 PR 643 界面。')}</p>
       <dl class="about-links"><div><dt>${trA('项目仓库')}</dt><dd><a href="https://github.com/sganggs/Stronghold-Protocol" target="_blank" rel="noopener noreferrer">Stronghold-Protocol</a></dd></div><div><dt>${trA('本地资源')}</dt><dd>${trA('音乐、壁纸和下载资源保存在当前设备，可在资源管理中查看。')}</dd></div></dl>

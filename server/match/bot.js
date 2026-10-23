@@ -1384,10 +1384,17 @@ export function* botPrepEndSteps(m, ps, job = null) {
  * merge), else the weakest bench single is sold. A human's seat under AI 托管 never loses an item this way.
  */
 function freeHandSlot(m, ps) {
+  const unlimitedItems = !m.ranked && (m.variant === 'entertainment_multi' || m.variant === 'entertainment_cyclops' || m.variant === 'entertainment_endless');
+  if (!unlimitedItems) return sellWeakestHand(m, ps);
   const item = ps.hand.find((p) => p && p.kind === 'item');
   if (item) {
-    ps._detach(ps.find(item.uid));
-    ps.stow(item, { toTemp: true });
+    // Try to reserve a finite temp slot before detaching.  In ordinary/ranked
+    // rooms a full temp zone must not silently destroy the item while making
+    // room in hand; entertainment variants still retain the unlimited path.
+    const loc = ps.find(item.uid);
+    const where = ps.stow(item, { toTemp: true });
+    if (!where) return false;
+    ps._detach(loc);
     ps.recompute();
     return true;
   }

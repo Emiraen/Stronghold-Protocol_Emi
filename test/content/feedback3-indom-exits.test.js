@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBattle, chessRec, checkInvariants } from '../helpers/battleHarness.js';
-import { FORCED_EXIT } from '../../server/sim/constants.js';
+import { DOWN_STATE, FORCED_EXIT } from '../../server/sim/constants.js';
 
 const close = (a, b, eps = 1e-6, msg = '') => assert.ok(Math.abs(a - b) <= eps, `${msg} expected ${b}, got ${a}`);
 const bondOn = (count, layers = 0, tier = null, thresholds = [3, 6, 9]) => ({
@@ -110,5 +110,104 @@ test('不屈: the switch back to the 本体 rolls too; a zeroed deployment bring
     m.b.dealDamage(null, x, { amount: 1e9, type: 'true' });
     assert.ok(x.alive && !x.mem.indomFreeDeploy, `seed ${seed}: back at once`);
   }
+  checkInvariants(h.b);
+});
+
+test('不屈: knock-outs and both withdrawal reasons redeploy with zero DP', () => {
+  for (const reason of ['killed', 'retreat', 'merchant']) {
+    const h = makeBattle({
+      defs: { chess: { t_a: groundOp('t_a') } }, units: [{ chessId: 't_a', row: 10, col: 4 }],
+      bonds: INDOM(300), autoFinish: false, timeLimit: 60,
+    });
+    h.step();
+    const u = h.unit('t_a'), ps = h.b.getPlayer('p1');
+    ps.dp = 0;
+    if (reason === 'killed') h.b.kill(u);
+    else h.b.retreat(u, { reason });
+    assert.ok(u.alive && u.deployed, `${reason}: no DP gate`);
+    assert.equal(ps.dp, 0, `${reason}: no DP charged`);
+    assert.equal(u.mem.indomFreeDeploy, false, `${reason}: entitlement spent once`);
+    checkInvariants(h.b);
+  }
+});
+
+test('不屈: a zero-DP 傀儡师 consumes her banked free deployment when the 替身 is knocked out', () => {
+  const h = makeBattle({ units: [{ chessId: GH2, row: 10, col: 4 }], bonds: INDOM(300), autoFinish: false, timeLimit: 120 });
+  h.step();
+  const u = h.unit(GH2), ps = h.b.getPlayer('p1');
+  h.b.dealDamage(null, u, { amount: 1e9, type: 'true' });
+  assert.ok(u.alive && u.trait.doll && u.mem.indomFreeDeploy);
+  h.run(2);
+  ps.dp = 0;
+  h.b.dealDamage(null, u, { amount: 1e9, type: 'true' });
+  assert.ok(u.alive && u.deployed && !u.trait.doll);
+  assert.equal(ps.dp, 0);
+  assert.equal(u.mem.indomFreeDeploy, false);
+  checkInvariants(h.b);
+});
+
+test('不屈: a refused immediate deployment retains zero time and cost for the next automatic attempt', () => {
+  const h = makeBattle({
+    defs: { chess: { t_a: groundOp('t_a') } }, units: [{ chessId: 't_a', row: 10, col: 4 }],
+    bonds: INDOM(300), autoFinish: false, timeLimit: 60,
+  });
+  h.step();
+  const u = h.unit('t_a'), ps = h.b.getPlayer('p1');
+  ps.dp = 0;
+  const deploy = h.b._deploy;
+  let refused = 0;
+  h.b._deploy = function (unit, opts) {
+    if (unit === u && refused++ === 0) return false;
+    return deploy.call(this, unit, opts);
+  };
+  try { h.b.kill(u); } finally { h.b._deploy = deploy; }
+  assert.equal(refused, 1, 'the immediate attempt reached deployment');
+  assert.ok(!u.alive && h.b.isDown(u));
+  assert.equal(u.mem.indomFreeDeploy, true, 'failed attempt did not spend the entitlement');
+  assert.equal(u.respawnAt, h.b.time, 'no ordinary redeployment delay');
+  assert.equal(ps.dp, 0);
+  assert.notEqual(h.b._downState(u), DOWN_STATE.WAIT_DP, 'free deployment never waits for DP');
+  h.b._checkRedeploys();
+  assert.ok(u.alive && u.deployed, 'automatic retry needs neither DP nor another death event');
+  assert.equal(ps.dp, 0);
+  assert.equal(u.mem.indomFreeDeploy, false);
+  checkInvariants(h.b);
+});
+
+test('不屈: a banked free deployment overrides an explicitly paid redeploy', () => {
+  const h = makeBattle({
+    defs: { chess: { t_a: groundOp('t_a') } }, units: [{ chessId: 't_a', row: 10, col: 4 }],
+    bonds: INDOM(300), autoFinish: false, timeLimit: 60,
+  });
+  h.step();
+  const u = h.unit('t_a'), ps = h.b.getPlayer('p1');
+  h.b.retreat(u, { reason: 'raid' }); // does not roll or immediately redeploy
+  u.mem.indomFreeDeploy = true;
+  ps.dp = 0;
+  assert.equal(h.b.redeploy(u, { free: false }), true);
+  assert.ok(u.alive && u.deployed);
+  assert.equal(ps.dp, 0);
+  assert.equal(u.mem.indomFreeDeploy, false);
+  checkInvariants(h.b);
+});
+
+test('不屈 payment regression: ordinary paid redeployment charges once and refused attempts charge nothing', () => {
+  const h = makeBattle({
+    defs: { chess: { t_a: groundOp('t_a') } }, units: [{ chessId: 't_a', row: 10, col: 4 }],
+    autoFinish: false, timeLimit: 60,
+  });
+  h.step();
+  const u = h.unit('t_a'), ps = h.b.getPlayer('p1');
+  h.b.retreat(u);
+  ps.dp = 0;
+  assert.equal(h.b.redeploy(u, { free: false }), false, 'ordinary deployment needs DP');
+  assert.equal(ps.dp, 0);
+  ps.dp = u.base.cost + 7;
+  const deploy = h.b._deploy;
+  h.b._deploy = () => false;
+  try { assert.equal(h.b.redeploy(u, { free: false }), false); } finally { h.b._deploy = deploy; }
+  assert.equal(ps.dp, u.base.cost + 7, 'failed deployment refunds the charge');
+  assert.equal(h.b.redeploy(u, { free: false }), true);
+  assert.equal(ps.dp, 7, 'ordinary successful deployment still pays its base cost');
   checkInvariants(h.b);
 });

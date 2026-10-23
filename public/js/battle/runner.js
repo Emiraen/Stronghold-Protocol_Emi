@@ -420,7 +420,8 @@ export function createBattleRunner(deps) {
     if (!force && t - e.lastProgressAt < every) return;
     e.lastProgressAt = t;
     const p = e.sim.spec.battleProgress(e.battle);
-    const msg = { battleId: e.battleId, gt: Math.min(1e5, p.gt), killed: Math.min(p.killed, p.total), total: Math.min(1e5, p.total), done: !!p.done };
+    const msg = { battleId: e.battleId, gt: Math.min(1e5, p.gt), killed: Math.min(p.killed, p.total), total: Math.min(1e5, p.total) };
+    if (p.done) msg.done = true;
     if (bossLike(e)) {
       const pool = e.battle.sharedBoss;
       msg.leaks = Math.min(1e6, e.meter.lp);
@@ -435,6 +436,8 @@ export function createBattleRunner(deps) {
       // 联防来源不是本场参战玩家：保留全部来源，由协议 sources 上限验证。
       if (p.left) msg.left = { ...p.left };
     }
+    // 协议中的零漏怪是可省略的默认值；累计非零值及最终强制上报照常发送。
+    if (msg.leaks === 0) delete msg.leaks;
     try { net.send('b.progress', msg, { periodic: !force }); } catch { /* offline */ }
   }
 

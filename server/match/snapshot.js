@@ -50,6 +50,8 @@ export function canSnapshot(m) {
   if (!m.pool || !(m.pool.entries instanceof Map)) return false;
   if (!SNAPSHOT_PHASES.includes(m.phase)) return false;
   if (m.phase === PHASE.PREP) {
+    // Never persist a partially paid end-of-prep batch; keep the previous safe checkpoint instead.
+    if (m._prepEndAttemptedRound === m.round) return false;
     for (const ps of m.alivePlayers()) if (ps.botControlled && !ps.ready) return false;
   }
   return true;

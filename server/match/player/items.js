@@ -21,6 +21,22 @@ export class PlayerItems {
     const target = tloc.piece;
     if (replaceUid != null && !(Number.isInteger(replaceUid) && (target.items || []).some((x) => x.uid === replaceUid))) return fail(ERR.BAD_TARGET, 'replace: not equipped on the target');
     const consume = typeof rec.kind === 'string' && rec.kind.startsWith('consume_on_equip');
+    const mergeRefused = () => {
+      // Failed merges must leave the original incoming instance in its original inventory slot.
+      this[iloc.area][iloc.idx] = item;
+      this.recompute();
+      return fail(ERR.BAD_TARGET, '装备未合成，原装备已保留');
+    };
+    const same = (target.items || []).find((x) => x.id === item.id);
+    const recipe = itemMergeRecipe(item.id, id => this.gd.item(id), this.gd.itemMergeCount);
+    // Normal 博士投影 stays equipped until next round; merge its twin before applying the delayed effect.
+    if (same && recipe?.count === 2 && (!consume || rec.kind === 'consume_on_equip_or_delayed')) {
+      this._detach(iloc);
+      if (!this._mergeItem(item.id, item, { piece: same, area: 'equipped', holder: target })) return mergeRefused();
+      this.checkItemMerges();
+      this.recompute();
+      return OK;
+    }
     if (consume) {
       const key = 'item:' + itemKey(item.id);
       if (!this.m.registry.has(key)) return fail(ERR.BAD_TARGET, 'effect not available');
@@ -40,21 +56,6 @@ export class PlayerItems {
       return OK;
     }
     this._detach(iloc);
-    const mergeRefused = () => {
-      // Failed merges must leave the original incoming instance in its original inventory slot.
-      this[iloc.area][iloc.idx] = item;
-      this.recompute();
-      return fail(ERR.BAD_TARGET, '装备未合成，原装备已保留');
-    };
-    const same = (target.items || []).find((x) => x.id === item.id);
-    const recipe = itemMergeRecipe(item.id, id => this.gd.item(id), this.gd.itemMergeCount);
-    if (same && recipe?.count === 2) {
-      // 目标身上的同件装备优先与本次配发合成，进阶结果放回备战区。
-      if (!this._mergeItem(item.id, item, { piece: same, area: 'equipped', holder: target })) return mergeRefused();
-      this.checkItemMerges();
-      this.recompute();
-      return OK;
-    }
     if (this.completesItemMerge(item.id)) {
       // 未装备同类仍沿用原合成规则，结果回到手牌区。
       if (this._mergeItem(item.id, item)) { this.recompute(); return OK; }

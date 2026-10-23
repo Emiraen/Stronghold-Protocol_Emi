@@ -371,7 +371,7 @@ function buildResult(victory) {
 
 // ---- RANKED result variants (段位结算动画 / 结果卡段位行复现) --------------------------------------------------
 // shape 与 server/rankedStore.settleMatch 的返回一致。变体：
-//   ranked       root 定级完成+2000（0→2864 赋能战魂 #1）；p3 常规加分跨小段；p4 未定级 1/3
+//   ranked       root 定级完成+2000（0→2864 源能战魂 #1）；p3 常规加分跨小段；p4 未定级 1/3
 //   ranked-walk  p1 常规压缩加分跨小段（从1590起）；胜利基础分0..50
 //   ranked-loss  p1 神话区早死扣44分；p3 低段早退0分
 //   ranked-skip  p1 连续统治级胜利，基础分+跳段100，总涨分可超过50
@@ -405,7 +405,7 @@ function applyRankedVariants(result) {
     p3 = null;
   } else { // ranked: root 定级 +2000
     me = rank({ before: 0, after: 2864, delta: 864, bonus: 2000, kind: 'placement', placementPlayed: 1, placementMatches: 1,
-      tierBefore: '未定级 (0/1)', tierAfter: '赋能战魂 764分 #1', iconAfter: 'radiant', globalRank: 1 });
+      tierBefore: '未定级 (0/1)', tierAfter: '源能战魂 764分 #1', iconAfter: 'radiant', globalRank: 1 });
     p3 = regular(1490);
   }
   const rows = { p1: me, p3, p4: VARIANTS.has('ranked-place') ? null : p4 };

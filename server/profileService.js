@@ -13,6 +13,10 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { ProfileReplication } from './profileReplication.js';
 import { createRecruitmentCache } from './recruitmentDirectory.js';
+import { AccountAuth } from './accountAuth.js';
+import { isAccountAuth } from '../shared/protocol.js';
+import { isSpecialNameCard, canUseSpecialNameCard, SPECIAL_TRICKSTER_CARD } from '../shared/nameCards.js';
+import { GOOD_BOY_LEGACY_GRANTS, isNameCardGrantMigration, TRICKSTER_GRANT_MIGRATION } from './nameCardUnlocks.js';
 
 export const PROFILE_RPC_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -24,7 +28,7 @@ const playerOK = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v)
 const digest = (v) => createHash('sha256').update(v).digest();
 
 export function cardSkinForPresentation(card, presentation, data) {
-  if (!card) return '';
+  if (!card || isSpecialNameCard(card)) return '';
   const records = Array.isArray(data?.chess) ? data.chess : Object.values(data?.chess || {});
   const record = records.find((entry) => entry?.charId === card && !entry.isGolden && !entry.isDiy);
   const key = record?.baseId || record?.chessId || `char:${card}`;
@@ -196,6 +200,11 @@ export function serverDirectory(config, states = {}) {
 
 function validate(op, args) {
   if (!Array.isArray(args)) throw new Error('档案请求参数无效');
+  if (op === 'account.authenticate') {
+    if (args.length !== 2 || typeof args[0] !== 'string' || args[0].length > 64
+      || (args[1] != null && !isAccountAuth(args[1]))) throw new Error('账户请求参数无效');
+    return;
+  }
   if (op === 'profile.bootstrap') {
     if (args.length !== 1 || !args[0] || typeof args[0] !== 'object') throw new Error('全量复制参数无效');
     return;
@@ -220,6 +229,12 @@ function validate(op, args) {
     return;
   }
   if (op === 'leaderboard') return;
+  if (op === 'rank.nameCards') {
+    if (args.length !== 2 || !aidOK(args[0]) || (args[1] !== null && !isNameCardGrantMigration(args[1]))) {
+      throw new Error('名片迁移参数无效');
+    }
+    return;
+  }
   if (op === 'complete') {
     const job = args[0];
     if (!job || !matchOK(job.match?.matchId) || !Array.isArray(job.seats) || !Array.isArray(job.entries)
@@ -247,23 +262,59 @@ function validate(op, args) {
 
 export function createAuthority({ players, ranked, history }, options = {}) {
   const sharedWrites = options.sharedWrites !== false;
+  const accounts = options.accounts || new AccountAuth();
   let serial = Promise.resolve();
+  const checkCardEntitlement = (op, args) => {
+    if (op === 'presentation' && isSpecialNameCard(args[1]?.value?.card)
+      && players.getPresentation(args[0])?.value?.card !== args[1].value.card
+      && !canUseSpecialNameCard(ranked.summary(args[0]), args[1].value.card)) {
+      throw new Error('名片尚未永久解锁');
+    }
+  };
   const regions = createRegionAuthority(options);
   const snapshot = (aid) => {
+    authority.replication?.assertIndependent('read', [aid]);
     const profile = ranked.profile(aid);
     const rank = profile ? { ...profile } : null;
     if (rank) delete rank.settlements;
     const player = players.profiles.get(aid) || null;
-    return { player, rank, summary: ranked.summary(aid, player?.name || ''),
-      authorizedSummary: ranked.summary(aid, player?.name || '', true) };
+    const rankingPending = authority.replication?.hasRankUncertainty() === true;
+    // Retain known personal fields, but never calculate a global position or grant from uncertain ranks.
+    const summary = (authorized) => {
+      const value = ranked.summary(aid, player?.name || '', authorized, rankingPending ? new Map() : null);
+      return rankingPending ? { ...value, globalRank: null, rankUnavailable: true, rankingPending: true } : value;
+    };
+    return { player, rank, summary: summary(false), authorizedSummary: summary(true),
+      ...(rankingPending ? { rankUnavailable: true, rankingPending: true } : {}) };
   };
   async function execute(op, args, replay = false) {
     validate(op, args);
+    if (['login', 'read', 'leaderboard', 'historyList', 'historyDetail', 'record', 'loadout',
+      'presentation', 'rank.nameCards', 'complete', 'historyRecord'].includes(op)) {
+      authority.replication?.assertIndependent(op, op === 'login' ? [args[0].fixedAid] : args);
+    }
+    if (!replay) checkCardEntitlement(op, args);
+    if (op === 'rank.nameCards') {
+      if (args[1] === TRICKSTER_GRANT_MIGRATION) {
+        const cohort = authority.replication?.state.nameCardGrantSnapshots?.[args[1]]
+          || ranked.nameCardGrantSnapshots[args[1]];
+        if (!cohort?.aids.includes(args[0])) throw new Error('玩家不在纪念名片发放名单中');
+      }
+      if (args[1] !== null || ranked.isCurrentlyRadiant(args[0])
+        || authority.replication?.state.pendingNameCardUnlocks?.[args[0]]?.earned === true) {
+        ranked.grantSpecialNameCard(args[0], args[1]);
+      }
+      await ranked.flush();
+      return structuredClone(snapshot(args[0]));
+    }
     if (op === 'login') {
       const lease = regions.current(args[0]);
       if (!lease) return { error: 'BAD_TARGET', detail: '连接租约已失效，请重连' };
-      const aid = lease.aid || (aidOK(args[0].fixedAid) ? args[0].fixedAid
-        : players.resolveName(lease.name, args[0].requestedAid, { ranked, history }));
+      const aid = args[0].fixedAid;
+      if (lease.aid && lease.aid !== aid) {
+        regions.release(args[0]);
+        return { error: 'AUTH_INVALID', detail: '账户身份已变化，请重新登录' };
+      }
       lease.aid = aid;
       if (authority.replication && !sharedWrites) {
         if (authority.canGrant && !authority.canGrant(aid, lease.serverId)) {
@@ -336,10 +387,133 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     return structuredClone({ result, profiles: [...new Set(job.seats.filter((s) => !s.isBot && aidOK(s.aid)).map((s) => s.aid))]
       .map((aid) => ({ aid, ...snapshot(aid) })) });
   }
+  const persistNameCardUnlock = async (aid, migration = null) => {
+    if (authority.replication?.state?.owners?.[aid]?.serverId === 'secondary') {
+      await authority.replication.deferNameCardUnlock(aid, migration);
+      return false;
+    }
+    if (authority.replication) {
+      await authority.replication.transact('rank.nameCards', [aid, migration]);
+      await authority.replication.completeDeferredNameCardUnlock(aid, migration);
+    }
+    else await execute('rank.nameCards', [aid, migration]);
+    return true;
+  };
+  const reconcileEarnedNameCard = async (aid) => {
+    if (authority.replication?.hasRankUncertainty()) return false;
+    let changed = false;
+    if (aidOK(aid) && !ranked.hasSpecialNameCard(aid) && ranked.isCurrentlyRadiant(aid)) {
+      changed = await persistNameCardUnlock(aid);
+    }
+    if (aidOK(aid) && ranked.globalRank(aid) === 1 && !ranked.hasSpecialNameCard(aid, 'special_paintbrush_tactics')) {
+      changed = await persistNameCardUnlock(aid, 'paintbrush-first-v1:20261022') || changed;
+    }
+    return changed;
+  };
+  const reconcileCurrentRadiants = async () => {
+    authority.replication?.assertIndependent('leaderboard');
+    for (const aid of ranked.currentRadiantAids()) {
+      if (!ranked.hasSpecialNameCard(aid)) await persistNameCardUnlock(aid);
+    }
+    for (const entry of ranked.leaderboard({ includeAid: true })) {
+      if (entry.position !== 1) break;
+      if (!ranked.hasSpecialNameCard(entry.aid, 'special_paintbrush_tactics')) {
+        await persistNameCardUnlock(entry.aid, 'paintbrush-first-v1:20261022');
+      }
+    }
+  };
+  let deferredNameCardRetry = null;
   const authority = { regions, adminStateSource: null, replication: null,
     executeLocal: execute, snapshot,
+    retryDeferredNameCards() {
+      if (deferredNameCardRetry) return deferredNameCardRetry;
+      if (!Object.keys(authority.replication?.state.pendingNameCardUnlocks || {}).length) return Promise.resolve();
+      const next = serial.then(async () => {
+        authority.replication?.assertIndependent('leaderboard');
+        for (const [aid, pending] of Object.entries(authority.replication.state.pendingNameCardUnlocks || {})) {
+          if (authority.replication.state.owners[aid]?.serverId === 'secondary') continue;
+          if (pending.earned) await persistNameCardUnlock(aid);
+          for (const migration of pending.migrations) await persistNameCardUnlock(aid, migration);
+        }
+      });
+      serial = next.catch(() => {});
+      deferredNameCardRetry = next.finally(() => { deferredNameCardRetry = null; });
+      return deferredNameCardRetry;
+    },
+    migrateNameCards() {
+      const paintbrushNames = arguments[0]?.paintbrushNames;
+      const next = serial.then(async () => {
+        authority.replication?.assertIndependent('leaderboard');
+        const report = { granted: [], unresolvedNames: [], deferredAids: [] };
+        if (Array.isArray(paintbrushNames)) {
+          const aids = new Set();
+          for (const name of new Set(paintbrushNames)) {
+            const identity = accounts.resolveExistingName(name, { players, ranked, history });
+            if (identity) aids.add(identity.aid);
+            else report.unresolvedNames.push(name);
+          }
+          for (const entry of ranked.leaderboard({ includeAid: true })) {
+            if (entry.position !== 1) break;
+            aids.add(entry.aid);
+          }
+          for (const aid of aids) {
+            if (ranked.hasSpecialNameCard(aid, 'special_paintbrush_tactics')) continue;
+            if (await persistNameCardUnlock(aid, 'paintbrush-first-v1:20261022')) report.granted.push(aid);
+            else report.deferredAids.push(aid);
+          }
+          return report;
+        }
+        for (const aid of ranked.currentRadiantAids()) {
+          if (!ranked.hasSpecialNameCard(aid)) {
+            if (await persistNameCardUnlock(aid)) report.granted.push(aid);
+            else report.deferredAids.push(aid);
+          }
+        }
+        for (const { name, migration } of GOOD_BOY_LEGACY_GRANTS) {
+          // Completed assignments survive renames and prevent later reuse of an old name.
+          const assigned = [...ranked.profiles.values()].find((profile) => profile.nameCardGrantMigrations?.includes(migration));
+          if (assigned && ranked.hasSpecialNameCard(assigned.aid)) continue;
+          const identity = assigned || accounts.resolveExistingName(name, { players, ranked, history });
+          if (!identity) { report.unresolvedNames.push(name); continue; }
+          if (await persistNameCardUnlock(identity.aid, migration)) report.granted.push(identity.aid);
+          else report.deferredAids.push(identity.aid);
+        }
+        return report;
+      });
+      serial = next.catch(() => {});
+      return next;
+    },
+    async migrateTricksterNameCards() {
+      const freeze = serial.then(async () => {
+        // Freeze only real stored aids; the durable cohort never expands on later runs.
+        const existing = [...new Set([
+          ...(accounts.existingAids?.() || []),
+          ...[players, ranked, history].flatMap((store) => [...(store?.profiles?.keys() || [])]),
+        ])].filter(aidOK);
+        return authority.replication
+          ? await authority.replication.freezeNameCardGrantSnapshot(TRICKSTER_GRANT_MIGRATION, existing)
+          : await ranked.freezeNameCardGrantSnapshot(TRICKSTER_GRANT_MIGRATION, existing);
+      });
+      serial = freeze.catch(() => {});
+      const cohort = await freeze;
+      const report = { total: cohort.length, granted: [], deferredAids: [] };
+      for (const aid of cohort) {
+        const next = serial.then(async () => {
+          if (ranked.hasSpecialNameCard(aid, SPECIAL_TRICKSTER_CARD)) return null;
+          return persistNameCardUnlock(aid, TRICKSTER_GRANT_MIGRATION);
+        });
+        serial = next.catch(() => {});
+        const granted = await next;
+        if (granted === true) report.granted.push(aid);
+        else if (granted === false) report.deferredAids.push(aid);
+      }
+      return report;
+    },
     call(op, args) {
     validate(op, args);
+    // Only the in-process migration/settlement path may grant persistent entitlements.
+    if (op === 'rank.nameCards') return Promise.reject(new Error('名片迁移仅允许主服内部执行'));
+    if (op === 'account.authenticate') return accounts.authenticate(args[0], args[1], { players, ranked, history });
     if (['admin.announcement.get', 'admin.announcement.publish', 'admin.kick', 'admin.kick.status'].includes(op)) {
       if (!authority.adminControls) return Promise.reject(new Error('管理操作尚未就绪'));
       if (op === 'admin.announcement.get') return authority.adminControls.getAnnouncement();
@@ -364,24 +538,42 @@ export function createAuthority({ players, ranked, history }, options = {}) {
       if (!args[0].replication) return Promise.resolve(withAnnouncement);
       if (args[0].serverId !== 'secondary' || !authority.replication) return Promise.reject(new Error('档案复制未启用'));
       return authority.replication.exchange(args[0].replication, regions)
-        .then((replication) => ({ ...withAnnouncement, replication }));
+        .then(async (replication) => {
+          // exchange has released replication.run; retries enter serial only afterwards.
+          if (!authority.replication.hasRankUncertainty()) await authority.retryDeferredNameCards();
+          return { ...withAnnouncement, replication };
+        });
     }
     if (op === 'chat.history') return Promise.resolve(regions.chatHistory(...args));
     if (op === 'chat.publish') return Promise.resolve(regions.publish(args[0]));
     if (op === 'login') {
+      if (!aidOK(args[0].fixedAid)) return Promise.resolve({ error: 'AUTH_REQUIRED', detail: '请先登录账户' });
       const lease = regions.claim(args[0]);
       if (lease.error) return Promise.resolve(lease);
       args = [{ ...args[0], epoch: lease.epoch }];
     }
-    const next = serial.then(() => {
+    const next = serial.then(async () => {
+      if (authority.replication) await authority.replication.run(() => {});
+      const aid = op === 'login' ? args[0].fixedAid : args[0];
+      if (['login', 'read', 'leaderboard', 'historyList', 'historyDetail', 'record', 'loadout',
+        'presentation', 'rank.nameCards', 'complete', 'historyRecord'].includes(op)) {
+        authority.replication?.assertIndependent(op, op === 'login' ? [aid] : args);
+      }
+      if (['login', 'read', 'presentation'].includes(op)) await reconcileEarnedNameCard(aid);
+      // Validate before replication records a mutation; replicas replay accepted facts.
+      checkCardEntitlement(op, args);
       if (authority.replication && ['record', 'loadout', 'presentation', 'complete', 'historyRecord'].includes(op)) {
         if (['record', 'loadout', 'presentation'].includes(op)) {
           const lease = regions.current(args.at(-1));
           if (!lease || lease.aid !== args[0] || (!sharedWrites && lease.serverId !== 'main')) throw new Error('档案写入租约无效');
         }
-        return authority.replication.transact(op, args);
+        const value = await authority.replication.transact(op, args);
+        if (op === 'complete' && args[0].ranked) await reconcileCurrentRadiants();
+        return value;
       }
-      return execute(op, args);
+      const value = await execute(op, args);
+      if (op === 'complete' && args[0].ranked) await reconcileCurrentRadiants();
+      return value;
     });
     serial = next.catch(() => {});
     return next;
@@ -464,7 +656,7 @@ export function profileRpcHandler(config, authority, log) {
   };
 }
 
-class PendingResults {
+export class PendingResults {
   constructor(file, call, receive, log) {
     this.file = file; this.call = call; this.receive = receive; this.log = log;
     this.jobs = new Map(); this.waiters = new Map(); this.running = false; this.closed = false;
@@ -474,7 +666,11 @@ class PendingResults {
       if (data.version !== 1 || !Array.isArray(data.jobs)) throw new Error('待办格式无效');
       for (const job of data.jobs) {
         if (!['complete', 'historyRecord'].includes(job.op) || typeof job.id !== 'string') throw new Error('待办操作无效');
-        validate(job.op, job.args); this.jobs.set(job.id, job);
+        validate(job.op, job.args);
+        // A process restart cannot prove whether an economic request reached
+        // authority. Even legacy entries without a dispatch marker are unknown.
+        if (job.op === 'complete') job.blocked ||= { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' };
+        this.jobs.set(job.id, job);
       }
     } catch (error) { if (error.code !== 'ENOENT') throw new Error(`不能读取结算待办：${error.message}`); }
   }
@@ -491,14 +687,57 @@ class PendingResults {
     const matchId = op === 'complete' ? args[0].match.matchId : args[0].matchId;
     const id = `${op}:${matchId}`;
     if (!this.jobs.has(id)) {
+      const aids = new Set((args[0]?.seats || []).filter((seat) => !seat.isBot).map((seat) => seat.aid));
+      if ([...this.jobs.values()].some((job) => job.op === 'complete' && job.blocked
+        && ((job.args[0]?.match?.matchId === matchId) || (job.args[0]?.seats || [])
+          .some((seat) => !seat.isBot && aids.has(seat.aid))))) return Promise.reject(this.blockedError());
       this.jobs.set(id, { id, op, args: structuredClone(args) });
       try { this.save(); } catch (error) { this.jobs.delete(id); throw error; }
     }
-    const promise = new Promise((resolve) => {
-      const waiting = this.waiters.get(id) || []; waiting.push(resolve); this.waiters.set(id, waiting);
+    if (this.jobs.get(id).blocked && this.activeId !== id) return Promise.reject(this.blockedError());
+    const promise = new Promise((resolve, reject) => {
+      const waiting = this.waiters.get(id) || []; waiting.push({ resolve, reject }); this.waiters.set(id, waiting);
     });
     void this.drain();
     return promise;
+  }
+  blockedError() {
+    return Object.assign(new Error('结算回执状态不明，已停止自动重试'), { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' });
+  }
+  finishJob(id, job, value) {
+    if (this.jobs.get(id) !== job) return;
+    this.jobs.delete(id);
+    try { this.save(); } catch (error) { this.jobs.set(id, job); throw error; }
+    try { this.receive(job, value); } catch (error) { this.log.error('[profiles] 持久化完成后的通知失败', error); }
+    for (const waiter of this.waiters.get(id) || []) waiter.resolve(value);
+    this.waiters.delete(id);
+  }
+  async dispatch(id, job) {
+    let timer, timedOut = false;
+    // Same bound as the existing profile RPC. It limits waiting, not execution or economic replay.
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(Object.assign(new Error('结算请求等待超时'), { code: 'RESULT_SETTLEMENT_TIMEOUT' }));
+      }, this.requestTimeoutMs ?? 10000);
+    });
+    let request;
+    try { request = Promise.resolve(this.call(job.op, job.args)); }
+    catch (error) { request = Promise.reject(error); }
+    void request.then((value) => {
+      if (!timedOut || job.op !== 'complete') return;
+      // A delayed, real receipt may settle the retained request exactly once; never dispatch it again.
+      try { this.finishJob(id, job, value); }
+      catch (error) { this.log.error('[profiles] 迟到结算回执持久化失败，保留原待办', error); }
+    }, () => {});
+    try { return await Promise.race([request, timeout]); } finally { clearTimeout(timer); }
+  }
+  affectsAid(aid) {
+    return [...this.jobs.values()].some((job) => (job.args[0]?.seats || []).some((seat) => !seat.isBot && seat.aid === aid));
+  }
+  activeAids() {
+    return new Set([...this.jobs.values()].flatMap((job) => (job.args[0]?.seats || [])
+      .filter((seat) => !seat.isBot && aidOK(seat.aid)).map((seat) => seat.aid)));
   }
   start() { void this.drain(); }
   async drain() {
@@ -511,22 +750,41 @@ class PendingResults {
     try {
       for (const [id, job] of this.jobs) {
         if (this.closed) break;
+        if (job.blocked) continue;
         try {
-          const value = await this.call(job.op, job.args);
-          this.jobs.delete(id);
-          try { this.save(); } catch (error) { this.jobs.set(id, job); throw error; }
-          try { this.receive(job, value); } catch (error) { this.log.error('[profiles] 持久化完成后的通知失败', error); }
-          for (const resolve of this.waiters.get(id) || []) resolve(value);
-          this.waiters.delete(id);
+          this.activeId = id;
+          if (job.op === 'complete') {
+            // Persist BEFORE invoking authority: a lost response or process
+            // crash must not turn the next startup into another reward grant.
+            job.blocked = { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' };
+            this.save();
+          }
+          const value = await this.dispatch(id, job);
+          this.finishJob(id, job, value);
         } catch (error) {
+          // A real receipt may have won in the microtask between the wait timeout and this catch.
+          // Never resurrect an already durably completed request as an unknown economic job.
+          if (this.jobs.get(id) !== job) continue;
+          if (job.op === 'complete') {
+            job.blocked ||= { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' };
+            this.jobs.set(id, job);
+            try { this.save(); } catch (saveError) { this.log.error('[profiles] blocked settlement persistence failed', saveError); }
+            this.log.error(`[profiles] 待办 ${id} 回执不明，保留并停止自动重试`, error);
+            for (const waiter of this.waiters.get(id) || []) waiter.reject(this.blockedError());
+            this.waiters.delete(id);
+            try { this.failed?.(job, error); } catch (notifyError) { this.log.error('[profiles] 结算失败通知失败', notifyError); }
+            continue;
+          }
           this.log.error(`[profiles] 待办 ${id} 保留并将在 5 秒后重试`, error);
-          break;
+          continue; // Keep this non-economic job for the next bounded drain, but do not starve independent jobs.
+        } finally {
+          this.activeId = null;
         }
       }
     } finally {
       this.running = false;
       finish();
-      if (this.jobs.size && !this.closed) {
+      if ([...this.jobs.values()].some((job) => !job.blocked) && !this.closed) {
         this.timer = setTimeout(() => this.drain(), 5000); this.timer.unref?.();
       }
     }
@@ -538,20 +796,24 @@ export function createProfileAccess(config, stores, log) {
   if (!['players', 'ranked', 'history'].every((name) => stores[name]?.profiles instanceof Map && stores[name]?.writer)) {
     throw new Error('两服均必须提供完整 players/ranked/history stores');
   }
-  const authority = config.role === 'main' ? createAuthority(stores, { startupGuard: !!config.secret, getData: config.getData }) : null;
+  const dataDir = config.dataDir || dirname(stores.players.file || fileURLToPath(import.meta.url));
+  const inMemory = !config.dataDir && ['players', 'ranked', 'history'].every((name) => !stores[name].file);
+  const accounts = config.role === 'main' ? new AccountAuth({
+    file: config.accountFile !== undefined ? config.accountFile : inMemory ? null : join(dataDir, 'account-auth.json'),
+  }) : null;
+  const authority = config.role === 'main' ? createAuthority(stores, { accounts, startupGuard: !!config.secret, getData: config.getData }) : null;
   const local = authority || createAuthority(stores, { local: true, getData: config.getData });
   const announcementStore = createAnnouncementStore({
     file: authority ? config.announcementFile : null,
     initialFile: config.announcementInitialFile,
   });
   if (authority) authority.announcementProvider = () => announcementStore.read();
-  const dataDir = config.dataDir || dirname(stores.players.file || fileURLToPath(import.meta.url));
-  const inMemory = !config.dataDir && ['players', 'ranked', 'history'].every((name) => !stores[name].file);
   const replication = new ProfileReplication({ role: config.role, stores,
     file: config.replicationFile !== undefined ? config.replicationFile : inMemory ? null : join(dataDir, `profile-replication-${config.id}.json`),
     bootstrapFromCopiedStores: config.bootstrapFromCopiedStores === true,
     execute: (op, args) => local.executeLocal(op, args, true) });
   if (authority) authority.replication = replication;
+  else local.replication = replication;
   const instance = randomUUID();
   const sessions = new Set();
   const logins = new Set();
@@ -595,6 +857,12 @@ export function createProfileAccess(config, stores, log) {
   const pending = new PendingResults(config.pendingFile !== undefined ? config.pendingFile : inMemory ? null
     : join(config.dataDir || dirname(fileURLToPath(import.meta.url)), `profile-pending-${config.id}.json`), localCall,
     (job, value) => { access.onRecovered?.(job, value); }, log);
+  // Runs in the parent even after a sandbox match worker has already been released.
+  pending.failed = (entry) => {
+    const job = entry.args[0];
+    access.onRecovered?.(entry, { failed: true, result: { ...job.result, matchId: job.match.matchId, incomplete: true,
+      settlementErrors: [{ playerId: null, stage: 'persist', code: 'RESULT_SETTLEMENT_FAILED' }] } });
+  };
   const sampleHostLoad = createHostLoadSampler();
   const hostLoad = () => sampleHostLoad(network?.opts?.bandwidthMbps || (config.id === 'main' ? 5 : 3));
   // 登录、续租和档案复制只携带核心字段；可选展示快照另行上报。
@@ -666,6 +934,7 @@ export function createProfileAccess(config, stores, log) {
       for (const [aid, player] of players.profiles) if (player.name === login.name) active.add(aid);
     }
     for (const job of pending.jobs.values()) for (const seat of job.args[0].seats || []) if (!seat.isBot) active.add(seat.aid);
+    for (const aid of replication.quarantinedAids()) active.add(aid);
     for (const room of lobbySource?.rooms?.values?.() || []) {
       if (room.matchCtx?.live && !room.matchCtx.ended) for (const seat of room.matchCtx.seats || []) if (!seat.isBot) active.add(seat.aid);
     }
@@ -715,14 +984,18 @@ export function createProfileAccess(config, stores, log) {
       ...(request ? { replication: { ...request, sharedWrites: true } } : {}) });
     if (authority) { await replication.run(() => {}); return exchange(); }
     if (!replication.initialized) await replication.initialize((request) => call('profile.bootstrap', [request]));
-    return replication.sync(exchange, drain, new Set());
+    return replication.sync(exchange, drain, activeAids());
   };
   const access = {
     players, ranked, authority, replication, adminControls, announcement: () => announcementStore.read(), onRecovered: null,
     get initialized() { return replication.initialized; },
     async ready() {
       await sync(); await pending.drain();
-      if (pending.jobs.size) throw new Error('本服结算待办正在恢复，暂不开放登录');
+      if (authority && !replication.hasRankUncertainty()) {
+        const migration = await authority.migrateNameCards();
+        if (migration.unresolvedNames.length) log.warn('[profiles] 晴雨同汪补发未找到唯一现有账户', migration.unresolvedNames);
+        if (migration.deferredAids.length) log.warn('[profiles] 晴雨同汪补发等待附服档案交接', migration.deferredAids);
+      }
       if (!authority) await sync();
       return access;
     },
@@ -751,13 +1024,19 @@ export function createProfileAccess(config, stores, log) {
         && performance.now() < session.leaseUntil
         && (!authority || !!authority.regions.current(session.loginLease));
     },
-    async login(session, name, requestedAid, socket, identityLocked = false) {
+    async authenticate(name, auth) {
+      if (closed || !replication.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
+      return call('account.authenticate', [name, auth ?? null]);
+    },
+    async login(session, name, requestedAid, socket, identityLocked = false, authenticatedAid = null) {
+      if (!aidOK(authenticatedAid)) return { error: 'AUTH_REQUIRED', detail: '请先登录账户' };
+      if (identityLocked && session.profileBound && session.aid !== authenticatedAid) return { error: 'AUTH_INVALID' };
       if (!replication.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
       if (session.loginReleased || session.loginRevoked) return { error: 'BAD_TARGET', detail: '连接身份已撤销，请重连' };
       const generation = session.loginGeneration = (session.loginGeneration || 0) + 1;
       session.loginOwner ||= `${instance}:${randomUUID()}`;
       const key = { owner: session.loginOwner, generation, serverId: config.id, name, requestedAid,
-        ...(identityLocked && session.profileBound ? { fixedAid: session.aid } : {}) };
+        fixedAid: authenticatedAid };
       let started, data, timer, expired = false;
       const loginTimeoutMs = 7000;
       const deadline = performance.now() + loginTimeoutMs;
@@ -772,7 +1051,8 @@ export function createProfileAccess(config, stores, log) {
       try {
         return await Promise.race([(async () => {
           await pending.drain(); check();
-          if (pending.jobs.size) throw new Error('本服结算待办尚未恢复，拒绝旧档案登录');
+          if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
+          replication.assertIndependent('login', [key.fixedAid]);
           // 待办先完成，再用一次完整同步交接旧 grant。
           await sync(); check();
           logins.add(login);
@@ -780,6 +1060,8 @@ export function createProfileAccess(config, stores, log) {
           data = await call('login', [key]); check();
           if (data.error) return data;
           login.aid = data.aid;
+          if (pending.affectsAid(data.aid)) throw pending.blockedError();
+          replication.assertIndependent('login', [data.aid]);
           if (!authority) {
             // 登录时 main 创建/更新 identity 后，再推进到 grant 的字段版本。
             await sync(); check();
@@ -865,6 +1147,7 @@ export function createProfileAccess(config, stores, log) {
     },
     async refresh(aid) {
       if (!aidOK(aid)) return false;
+      if (pending.affectsAid(aid)) throw pending.blockedError();
       const data = local.snapshot(aid);
       const signature = JSON.stringify([data.player?.loadout, data.player?.presentation, data.summary, data.authorizedSummary]);
       const changed = signatures.get(aid) !== signature;
@@ -881,12 +1164,29 @@ export function createProfileAccess(config, stores, log) {
       if (session.aid !== aid) throw new Error('档案写入身份无效');
       await localCall('presentation', [aid, value, initialize, session.loginLease]);
     },
+    async canSelectNameCard(session, card) {
+      if (!isSpecialNameCard(card)) return true;
+      if (!access.validSession(session)) return false;
+      // Always ask main: only its replicated aid-bound entitlement can authorize a selection.
+      const aid = session.aid;
+      const snapshot = await call('read', [aid]);
+      return session.aid === aid && access.validSession(session) && canUseSpecialNameCard(snapshot.summary, card);
+    },
     leaderboard() {
+      replication.assertIndependent('leaderboard');
       return Promise.resolve(publicLeaderboard(ranked, players, config.getData?.() || null));
     },
     history: {
-      list(aid) { return Promise.resolve(stores.history.list(aid)); },
-      detail(aid, matchId, playerId) { return Promise.resolve(stores.history.detail(aid, matchId, playerId)); },
+      list(aid) {
+        replication.assertIndependent('historyList', [aid]);
+        if (pending.affectsAid(aid)) return Promise.reject(pending.blockedError());
+        return Promise.resolve(stores.history.list(aid));
+      },
+      detail(aid, matchId, playerId) {
+        replication.assertIndependent('historyDetail', [aid, matchId]);
+        if (pending.affectsAid(aid)) return Promise.reject(pending.blockedError());
+        return Promise.resolve(stores.history.detail(aid, matchId, playerId));
+      },
       record(value) {
         if (!replication.initialized) return Promise.reject(new Error('档案尚未初始化'));
         return pending.submit('historyRecord', [value]);

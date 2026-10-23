@@ -69,7 +69,7 @@ export const pluginTagText = (room) => { const n = roomPluginFacts(room, null).c
 /** A label for a catalogue entry's micro line in 设置 (ui/settings.js). @param {any} p */
 export const pluginMicro = (p) => [p?.id, p?.version ? `v${p.version}` : null, Number.isFinite(p?.artBytes) ? sizeText(p.artBytes) : null].filter(Boolean).join(' · ');
 
-/** The tag at the top of the room: 「原版」 or 「插件 ×N」; a tap loads the panel and opens it. */
+/** The tag at the top of the room: 「插件」 or 「插件 ×N」; a tap loads the panel and opens it. */
 export function PluginTag({ room, myId }) {
   // the panel's component once loaded (a function in state: set through an updater)
   const [Panel, setPanel] = useState(null);
@@ -78,8 +78,8 @@ export function PluginTag({ room, myId }) {
     import('./pluginPanel.js').then((m) => setPanel(() => m.PluginPanel), (err) => console.warn('[plugins] the panel did not load', err));
   };
   return html`<button type="button" class=${cx('plugtag', f.count && 'is-modded', f.modded && 'is-unofficial')} data-testid="plugin-tag" onClick=${open}
-      title=${f.modded ? t('本房间使用了改变玩法的插件（非官方）') : t('插件')} aria-label=${f.count ? t('插件 ×{n}', { n: f.count }) : t('原版')}>
-    <${Icon} name=${f.count ? 'edit' : 'check'} />${f.count ? t('插件 ×{n}', { n: f.count }) : t('原版')}${f.modded ? html`<b class="plugtag__mod">${t('非官方')}</b>` : null}
+      title=${f.modded ? t('本房间使用了改变玩法的插件（非官方）') : t('插件')} aria-label=${f.count ? t('插件 ×{n}', { n: f.count }) : t('插件')}>
+    <${Icon} name=${f.count ? 'edit' : 'check'} />${f.count ? t('插件 ×{n}', { n: f.count }) : t('插件')}${f.modded ? html`<b class="plugtag__mod">${t('非官方')}</b>` : null}
   </button>
   ${Panel ? html`<${Panel} open=${true} room=${room} myId=${myId} onClose=${() => setPanel(null)} />` : null}`;
 }

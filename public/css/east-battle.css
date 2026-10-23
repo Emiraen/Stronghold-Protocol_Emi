@@ -155,7 +155,7 @@
 .rrank.is-placement { background: #14120e; box-shadow: 0 0 0 1px rgba(230, 198, 103, .5); }
 .rrank__icon { width: .44rem; height: .44rem; object-fit: contain; flex: none; }
 .rrank__text { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
-.rrank__tier { font-size: .16rem; color: var(--gold, #e6c667); letter-spacing: .04em; line-height: 1.25; overflow-wrap: anywhere; } /* 可换行：长段位名（赋能战魂 764分 #1）不再溢出压到分数上 */
+.rrank__tier { font-size: .16rem; color: var(--gold, #e6c667); letter-spacing: .04em; line-height: 1.25; overflow-wrap: anywhere; } /* 可换行：长段位名（源能战魂 764分 #1）不再溢出压到分数上 */
 .rrank__delta, .rrank__place { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
 .rrank__pts { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
 .rrank__global { font-size: .11rem; color: var(--text-lo); white-space: nowrap; }
@@ -191,9 +191,10 @@
 .rsettle__global { font-size: .14rem; color: var(--text-lo); letter-spacing: .08em; margin-top: -.04rem; }
 .rsettle__barwrap { width: 100%; display: flex; align-items: center; gap: .12rem; }
 .rsettle__bar { position: relative; flex: 1; height: .07rem; background: #0c0f0d; box-shadow: 0 0 0 1px var(--line, #2a322d); border-radius: .04rem; overflow: visible; }
-.rsettle__fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: .04rem; background: linear-gradient(90deg, #b98d2f, #e6c667); box-shadow: 0 0 .1rem rgba(230, 198, 103, .5); }
+.rsettle__fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: left center; border-radius: .04rem; background: linear-gradient(90deg, #b98d2f, #e6c667); box-shadow: 0 0 .1rem rgba(230, 198, 103, .5); }
 .rsettle__fill.is-down { background: linear-gradient(90deg, #2f7d84, #58c2c9); box-shadow: 0 0 .1rem rgba(88, 194, 201, .4); }
-.rsettle__cursor { position: absolute; top: 50%; width: .12rem; height: .16rem; transform: translate(-50%, -50%); background: #fff; border-radius: .02rem; box-shadow: 0 0 .1rem rgba(255, 255, 255, .8); }
+.rsettle__cursor-track { position: absolute; inset: 0; pointer-events: none; }
+.rsettle__cursor { position: absolute; left: 0; top: 50%; width: .12rem; height: .16rem; transform: translate(-50%, -50%); background: #fff; border-radius: .02rem; box-shadow: 0 0 .1rem rgba(255, 255, 255, .8); }
 .rsettle__sub { font-size: .16rem; color: var(--text-hi, #fff); width: max(1rem, 8ch); flex: none; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } /* 固定宽：位数变化不挤压进度条 */
 .rsettle__sub--plain { width: auto; min-width: 0; white-space: nowrap; text-align: center; color: var(--text-lo); }
 .rsettle__delta { font-size: .4rem; font-weight: 900; color: var(--text-md); animation: rset-delta .35s var(--ease-out, ease-out); }
@@ -246,6 +247,20 @@
 .settle .tchip--rank .is-down { color: #58c2c9; }
 .settle .rsettle { z-index: 100; }
 .settle__detail > .result { position: absolute; inset: 0; }
-.gm__inventory-pages { position: absolute; left: 50%; bottom: 1.35rem; transform: translateX(-50%); display: flex; align-items: center; gap: .12rem; pointer-events: auto; padding: .06rem .12rem; background: rgba(6,13,12,.88); border: 1px solid var(--line); font-size: .14rem; }
-.gm__inventory-pages .btn { white-space: nowrap; }
-@media (max-height: 600px) and (pointer: coarse) { .gm__inventory-pages { bottom: 1.5rem; font-size: max(.12rem, 10px); } }
+/* Compact entertainment paging stays immediately above capacity in the right action column. */
+.gm.has-inventory-pager .gm__field { right: var(--inventory-side-clearance, 200px); }
+.shopbar__capacity { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: stretch; justify-self: end; gap: 3px; min-width: 0; }
+.shopbar__capacity > .shopbar__remain { position: static; width: auto; margin: 0; }
+.gm__inventory-pages { position: static; display: flex; align-items: center; justify-content: space-between; gap: 5px; min-width: 0; padding: 2px 4px; box-sizing: border-box; white-space: nowrap; pointer-events: auto; background: rgba(6,13,12,.96); border: 1px solid var(--line); color: var(--text-md); font-size: max(.12rem, 10px); }
+.gm__inventory-pages .btn { flex: none; min-width: 24px; min-height: 22px; padding: 0 4px; font-size: 16px; line-height: 1; }
+.gm__inventory-pages span { min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+.shopbar-tab.has-inventory-pager { display: grid; grid-template-columns: auto auto; }
+.shopbar-tab > .shopbar__capacity { grid-column: 1 / -1; width: 100%; }
+@media (max-height: 600px) and (orientation: landscape) and (pointer: coarse) {
+  .gm.has-inventory-pager .gm__field { right: var(--inventory-side-clearance, 120px); }
+  .gm .shopbar__capacity { gap: 2px; }
+  .gm .shopbar__capacity > .shopbar__remain { position: static; bottom: auto; width: auto; font-size: 9px; padding: 2px 3px; }
+  .gm .gm__inventory-pages { font-size: 10px; padding: 2px 3px; gap: 3px; }
+  .gm .gm__inventory-pages .btn { min-width: 24px; min-height: 24px; height: 24px; font-size: 16px; padding: 0 3px; }
+}
+.gm .gm__inventory-pages > .btn.btn--sm { height: 22px; min-height: 22px; padding: 0 4px; font-size: 16px; line-height: 1; }

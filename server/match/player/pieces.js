@@ -56,6 +56,17 @@ export class PlayerPieces {
   }
 
   stow(piece, { allowTemp = true, toTemp = false, preferIdx = null } = {}) {
+    const unlimitedItem = piece.kind === 'item' && !this.m.ranked && (
+      this.m.variant === 'entertainment_multi' ||
+      this.m.variant === 'entertainment_cyclops' ||
+      this.m.variant === 'entertainment_endless'
+    );
+    // A legacy bot may detach a hand item before trying to free a slot. Keep
+    // that item in the finite hand instead of parking it in ordinary temp.
+    if (toTemp && piece.kind === 'item' && !unlimitedItem && this.botControlled) {
+      const i = freeSlot(this.hand);
+      if (i >= 0) { this.hand[i] = piece; return 'hand'; }
+    }
     if (!toTemp) {
       if (Number.isInteger(preferIdx) && preferIdx >= 0 && preferIdx < this.hand.length && this.hand[preferIdx] == null) {
         this.hand[preferIdx] = piece;
@@ -65,9 +76,9 @@ export class PlayerPieces {
       if (i >= 0) { this.hand[i] = piece; return 'hand'; }
       if (!allowTemp && piece.kind !== 'item') return null;
     }
-    const j = freeSlot(piece.kind === 'item' ? this.temp : this.temp.slice(0, this.gd.tempSize));
+    const j = freeSlot(unlimitedItem ? this.temp : this.temp.slice(0, this.gd.tempSize));
     if (j >= 0) { this._putTemp(j, piece); return 'temp'; }
-    if (piece.kind === 'item') { this._putTemp(this.temp.length, piece); return 'temp'; }
+    if (unlimitedItem) { this._putTemp(this.temp.length, piece); return 'temp'; }
     return null;
   }
 

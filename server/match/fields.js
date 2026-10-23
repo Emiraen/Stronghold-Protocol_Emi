@@ -279,7 +279,7 @@ export function timelineSample(b) {
 /**
  * A server-run battle stepped to its end, in one go or in wall-clock-bounded slices (a low-power host must not stall
  * its event loop for the ~0.1–1 s a whole battle takes, several times at once when bots fight): `run(budgetMs)` steps
- * until the battle ends (→ true) or the budget is used (→ false; checked every 16 ticks). `timeline` grows while it
+ * until the battle ends (→ true) or the budget is used (→ false; checked after each tick). `timeline` grows while it
  * runs (timelineSample: [gt, killed, total(, left)] every TIMELINE_EVERY game seconds, then the final state);
  * `output()` once done gives `{ battle, result, timeline, crashed }`. A throwing battle is force-ended, then replaced by
  * a DeadBattle; the run is bounded by HARD_CAP_SECONDS.
@@ -304,13 +304,11 @@ export class HeadlessJob {
     const t0 = timed ? now() : 0;
     let b = this.battle;
     try {
-      let k = 0;
       while (!b.finished && this.n < this.cap) {
         b.step();
         this.n++;
-        k++;
         if (this.n % this.every === 0) this.timeline.push(timelineSample(b));
-        if (timed && (k & 15) === 0 && !b.finished && now() - t0 >= budgetMs) return false;
+        if (timed && !b.finished && now() - t0 >= budgetMs) return false;
       }
       if (!b.finished) b.forceEnd('timeout');
     } catch (e) {
@@ -783,7 +781,11 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       const p = raw.perPlayer[pid];
       if (!p || typeof p !== 'object') return bad('player');
       const own = B.players.get(pid);
-      if (!Number.isInteger(p.killed) || !Number.isInteger(p.total) || p.killed < 0 || p.killed > p.total || p.total > B.maxTotal) return bad('counts');
+      // total is the scheduled-wave HUD denominator; killed also includes counted splits / summons.
+      // Keep those legitimate kills bounded by the same spec-derived enemy budget, not the HUD total.
+      const killedLimit = B.derived.size ? B.maxTotal : p.total;
+      if (!Number.isInteger(p.killed) || !Number.isInteger(p.total) || p.killed < 0 || p.total < 0
+          || p.killed > killedLimit || p.total > B.maxTotal) return bad('counts');
       const leaked = [];
       for (const l of Array.isArray(p.leaked) ? p.leaked : []) {
         if (!l || typeof l.enemyKey !== 'string') return bad('leak');

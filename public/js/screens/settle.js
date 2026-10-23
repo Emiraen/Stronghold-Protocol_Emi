@@ -15,7 +15,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 
-import { html, Icon, DifficultyTag } from '../ui/components.js';
+import { html, Icon, DifficultyTag, Spinner } from '../ui/components.js';
 import { useGameData, Img, Sprite, PlayerAvatar, BondGlyph, BandIcon } from '../ui/gameComponents.js';
 import { normalizeResult, diyRecordFor, cardStandIn, standInForText } from '../ui/gameLogic.js';
 import { data } from '../data.js';
@@ -40,7 +40,9 @@ export function resultBonds(bonds, bondRec = () => null) {
   const list = (Array.isArray(bonds) ? bonds : []).filter((b) => b && typeof b.bondId === 'string')
     .map((b) => (bondRec(b.bondId)?.noStack ? { ...b, hideLayers: true } : b));
   const shown = (b) => (b.hideLayers ? 0 : b.layers || 0);
-  return list.filter((b) => b.active || shown(b) > 0).sort((a, b) => shown(b) - shown(a)).slice(0, 6);
+  const activeCore = (b) => Number(!!b.active && !!bondRec(b.bondId)?.isCore);
+  return list.filter((b) => b.active || shown(b) > 0)
+    .sort((a, b) => activeCore(b) - activeCore(a) || shown(b) - shown(a));
 }
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -142,6 +144,9 @@ function useCountUp(to, { ms = 700, delay = 0, from = 0, run = true } = {}) {
   }, [target, start, run]);
   return v;
 }
+
+// Keep timer updates inside a text leaf: rebuilding the whole page also re-resolves every operator/card image.
+function CountUp({ to, ...options }) { return useCountUp(to, options); }
 
 /** Scale the 1920×1080 stage (19.2rem × 10.8rem) to fit the screen: sets --k on the element. */
 function useStageFit(ref) {
@@ -371,7 +376,7 @@ function LevelStrip({ prog }) {
     <div class="slv__track">
       ${lv.lv > lv0.lv ? html`<span class="slv__up">LEVEL UP!</span>` : null}
       ${lv.max ? html`<span class="slv__max">MAX</span>` : null}
-      <span class="slv__bar"><i style=${`width:${(lv.exp / LV_EXP) * 100}%`}></i></span>
+      <span class="slv__bar"><i style=${`transform:scaleX(${lv.exp / LV_EXP})`}></i></span>
       <span class="slv__meta"><span class="slv__gain">${t('本局经验')}<b class="num">+${gain}</b></span>
         ${lv.max ? null : html`<span class="slv__exp num"><b>${lv.exp}</b>/${LV_EXP}</span>`}</span>
     </div>
@@ -383,7 +388,6 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
   const rankDelta = settledRankDelta(self.rank);
   const [leaving, setLeaving] = useState(false);
   const nextRef = useRef(null);
-  const rounds = useCountUp(self.roundsPassed, { ms: 700, delay: 350 });
   const boss = cleared && r.bossId ? gd.boss(r.bossId) : null;
   const hidden = cleared && r.hiddenReached && r.hiddenBossId ? gd.boss(r.hiddenBossId) : null;
   const medals = [boss && { kind: 'boss', rec: boss, done: true }, hidden && { kind: 'hidden', rec: hidden, done: r.hiddenCleared }].filter(Boolean);
@@ -409,7 +413,7 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
       <div class="sself__band">${self.bandId ? html`<${BandIcon} bandId=${self.bandId} size="lg" />` : html`<${PlayerAvatar} player=${self} self=${true} />`}<i aria-hidden="true"></i></div>
       <div class="sself__mode"><${ModePill} r=${r} /></div>
       <h1 class="sself__title">${cleared ? t('模拟完成') : t('模拟中断')}</h1>
-      <div class="sself__rounds"><span>${t('通过回合')}</span><b class="num">${rounds}</b></div>
+      <div class="sself__rounds"><span>${t('通过回合')}</span><b class="num"><${CountUp} to=${self.roundsPassed} ms=${700} delay=${350} /></b></div>
       ${medals.length ? html`<div class="sself__medals">${medals.map((m, i) => html`<span key=${m.kind} class=${cx('smedal', `smedal--${m.kind}`, m.done ? 'is-done' : 'is-miss')} style=${`--i:${i}`}
           title=${m.kind === 'boss' ? t('敌方领袖') : t('隐秘核心')}>
         <${Img} src=${enemyIconUrl(gd.m, m.rec.enemyKey)} fallback=${html`<${Icon} name="crown" class="smedal__glyph" />`} />
@@ -499,7 +503,6 @@ function TeamCard({ p, i, gd, self, victory, raw, social }) {
 }
 
 function TeamPage({ r, res, gd, myId, at, rid, backLabel, onBack, onDetail }) {
-  const rounds = useCountUp(r.roundsPassed, { ms: 900, delay: 450 });
   const social = useMatchSocial(rid);
   const backRef = useRef(null);
   const rawOf = (pid) => (Array.isArray(res?.players) ? res.players.find((x) => x && x.playerId === pid) : null) || null;
@@ -518,7 +521,7 @@ function TeamPage({ r, res, gd, myId, at, rid, backLabel, onBack, onDetail }) {
       </div>
       <div class="settle__barbg steam__barbg" aria-hidden="true"></div>
       <div class="steam__outcome"><${ModePill} r=${r} /><b class="steam__title">${r.victory ? t('模拟完成') : t('模拟中断')}</b></div>
-      <div class="steam__rounds"><span>${t('同盟通过回合')}</span><b class="num">${rounds}</b></div>
+      <div class="steam__rounds"><span>${t('同盟通过回合')}</span><b class="num"><${CountUp} to=${r.roundsPassed} ms=${900} delay=${450} /></b></div>
       <div class="steam__when">
         <span class="steam__row"><${SvgPath} d=${CLOCK} />${fmtDuration(r.durationMs)}</span>
         <span class="steam__row"><${SvgPath} d=${CALENDAR} />${fmtDate(at)}</span>
@@ -539,7 +542,7 @@ function TeamPage({ r, res, gd, myId, at, rid, backLabel, onBack, onDetail }) {
  */
 export function SettleFlow({ res, pub = null, myId = null, backLabel, onBack }) {
   const gd = useGameData();
-  const r = { ...normalizeResult(res, pub), variant: res?.variant || pub?.variant || null };
+  const r = useMemo(() => ({ ...normalizeResult(res, pub), variant: res?.variant || pub?.variant || null }), [res, pub]);
   const self = r.players.find((p) => p.playerId === myId) || null;
   const rawSelf = self && Array.isArray(res?.players) ? res.players.find((x) => x && x.playerId === myId) || null : null;
   const [page, setPage] = useState(() => (!self ? 'team' : reducedMotion() ? 'self' : 'intro'));
@@ -575,5 +578,11 @@ export function ResultScreen() {
   const myId = useStore((s) => s.me.playerId);
   const hasRoom = useStore((s) => !!s.room);
   const back = () => store.set({ match: emptyMatch() });
+  // RESULT public state can precede the authoritative receipt. Do not seed the one-shot flow with an empty result.
+  if (!res) return html`<div class="screen gload"><${Spinner} size="lg" label="SETTLING" /><p class="t-lo">${t('正在结算…')}</p>
+    <button type="button" class="btn" onClick=${back}>${hasRoom ? t('返回同盟') : t('返回大厅')}</button></div>`;
+  if (res?.settlementPending || res?.incomplete || res?.settlementErrors?.length || res?.players?.some?.((p) => p?.settlementError || p?.stats === null)) {
+    return html`<${ResultView} result=${res} pub=${pub} myId=${myId} backLabel=${hasRoom ? t('返回同盟') : t('返回大厅')} onBack=${back} />`;
+  }
   return html`<${SettleFlow} res=${res} pub=${pub} myId=${myId} backLabel=${hasRoom ? t('返回同盟') : t('返回大厅')} onBack=${back} />`;
 }

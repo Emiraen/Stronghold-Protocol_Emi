@@ -20,6 +20,7 @@ export class BattleEconomy {
    * clamps the persistent count the same way.
    */
   addLayers(playerId, bondId, n, reason = '', opts = {}) {
+    if (opts.receipt) opts.receipt.added = 0;
     if (!this.flags.layerGainsEnabled || !(n > 0) || !Number.isFinite(n) || playerId == null) return 0;
     const pp = this._pp(playerId);
     if (!pp) return 0;
@@ -33,6 +34,7 @@ export class BattleEconomy {
     const add = layerGainRoom(live, ctx.n, cap);
     if (!(add > 0)) return 0;
     pp.layerGains[bondId] = (pp.layerGains[bondId] ?? 0) + add;
+    if (opts.receipt) opts.receipt.added = add;
     if (ps && ps.bonds[bondId]) ps.bonds[bondId].layers = (ps.bonds[bondId].layers ?? 0) + add;
     this._ev(['layer', playerId, bondId, add]);
     return add;

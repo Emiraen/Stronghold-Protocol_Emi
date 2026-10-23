@@ -6,7 +6,7 @@ import { PHASE, PHASE_NAMES, GEO } from '../../../../shared/constants.js';
 import { html, Spinner, PhaseBanner, Icon, Button, confirmDialog, closeAllDialogs, useTicker } from '../../ui/components.js';
 import { useGameData, GIcon } from '../../ui/gameComponents.js';
 import { useFieldView } from '../../ui/fieldHost.js';
-import { TopBar, liveLp, ownLeaks, uniteRemaining, tempInfo, tempReadyReason } from '../../ui/hud.js';
+import { TopBar, liveLp, ownLeaks, uniteRemaining, tempInfo, tempReadyReason, unlimitedItemStorage } from '../../ui/hud.js';
 import { BondStrip, BondPopup } from '../../ui/bondStrip.js';
 import { TeamPanel } from '../../ui/teamPanel.js';
 import { ShopBar } from '../../ui/shopBar.js';
@@ -74,6 +74,7 @@ export function MatchScreen() {
   const conn = useStore((s) => s.connection, shallowEqual);
   const emotes = useStore((s) => s.emotes);
   const spectator = useStore((s) => s.spectator);
+  const roomSeats = useStore((s) => s.room?.seats || s.spectator?.seats);
   const roomSolo = useStore((s) => s.room?.mode === 'solo');
   const watchBench = useStore((s) => s.match.watchBench);
   const rawData = useGameData();
@@ -1208,7 +1209,7 @@ export function MatchScreen() {
       if (act === 'ready') {
         const refused = !L.priv.ready ? shopBlockReason('ready', { priv: L.priv, editable: true }) : null;
         // the temp overflow row blocks it: say why (the button shows it too — user playtest #3 item 3)
-        if (refused) { audio.sfx('error', { volume: 0.5 }); toast(tempReadyReason(L.priv) || refused, 'warn'); return; }
+        if (refused) { audio.sfx('error', { volume: 0.5 }); toast(tempReadyReason(L.priv, unlimitedItemStorage(L.pub?.variant, L.pub?.ranked)) || refused, 'warn'); return; }
         toggleReady(!L.priv.ready);
         return;
       }
@@ -1284,8 +1285,16 @@ export function MatchScreen() {
   const shopOpen = showShop && !barCollapsed;
   const ufShown = !!(selEntry && editable && !facing && !drag && showPrep && ufGeo);
   // the temp overflow row holds pieces (user playtest #3 item 3): framed and labelled on the own prep board
-  const temp = tempInfo(prepState);
+  const unlimitedItems = unlimitedItemStorage(pub?.variant, pub?.ranked);
+  const temp = tempInfo(prepState, unlimitedItems);
   const tempNotice = temp.count > 0 && !!view && viewKind !== 'loading' && showPrep && (readOnlyPrep || alive) && !pen && !sp;
+  // The compact pager shares the capacity stack; its measured right column is excluded from the field.
+  const showInventoryPager = showPrep && unlimitedItems && tempPages > 1 && showShop;
+  const inventoryPager = html`${showInventoryPager ? html`<div class="gm__inventory-pages" role="group" aria-label="道具存放分页">
+        <button type="button" class="btn btn--sm" disabled=${shownTempPage === 0 || !!drag || !!facing} onClick=${() => { setSel(null); setDetail(null); setTempPage(shownTempPage - 1); }} aria-label="上一页" title="上一页">‹</button>
+        <span title="娱乐模式道具存放 · 不限数量">道具 ${shownTempPage + 1}/${tempPages}</span>
+        <button type="button" class="btn btn--sm" disabled=${shownTempPage >= tempPages - 1 || !!drag || !!facing} onClick=${() => { setSel(null); setDetail(null); setTempPage(shownTempPage + 1); }} aria-label="下一页" title="下一页">›</button>
+      </div>` : null}`;
   // the ready button shows why it is refused under it (ui/hud.js ReadyToggle): the effects column moves down a line
   const readyWhy = phase === PHASE.PREP && alive && !readOnlyPrep && !priv?.ready && temp.count > 0;
   // the frame the panels are laid out in: the HUD layer (client px; inside the safe-area insets of a notched phone),
@@ -1392,20 +1401,15 @@ export function MatchScreen() {
   // bonds this mode never activates (标准: 10 of 23, 奥术 among them) — shown 本局禁用 on cards, chips and the popup
   const offBonds = modeOffBonds(getMode(pub?.modeId));
 
-  return html`<div class=${cx('screen', 'gm', spectator && 'gm--spectator', `gm--${mode}`, drag && 'is-dragging', barCollapsed && 'is-collapsed', (sp || personalChoice) && 'has-sp', sp && 'has-spdraft', pen && 'is-pen', readyWhy && 'has-readywhy')}
+  return html`<div class=${cx('screen', 'gm', showInventoryPager && 'has-inventory-pager', spectator && 'gm--spectator', `gm--${mode}`, drag && 'is-dragging', barCollapsed && 'is-collapsed', (sp || personalChoice) && 'has-sp', sp && 'has-spdraft', pen && 'is-pen', readyWhy && 'has-readywhy')}
       data-camera=${pen ? 'pen' : camKind}>
     <div class="gm__field" ref=${hostRef} onContextMenu=${(e) => e.preventDefault()}></div>
     ${viewKind === 'loading' ? html`<div class="gm__loading"><${Spinner} label="LOADING FIELD" /></div>` : null}
     <div class="gm__vignette" aria-hidden="true"></div>
-    ${tempNotice ? html`<${TempRowNotice} view=${view} count=${temp.count} items=${temp.items} label=${!drag && !facing}
+    ${tempNotice ? html`<${TempRowNotice} view=${view} count=${temp.count} items=${temp.items} label=${!drag && !facing} unlimitedItems=${unlimitedItems}
       ready=${phase === PHASE.PREP && (spectator ? !!players.find((p) => p.playerId === prepOwnerId)?.ready : !!priv?.ready)} />` : null}
 
     <div class="gm__hud" ref=${hudElRef}>
-      ${showPrep && tempPages > 1 ? html`<div class="gm__inventory-pages" role="group" aria-label="道具存放分页">
-        <button type="button" class="btn btn--sm" disabled=${shownTempPage === 0 || !!drag || !!facing} onClick=${() => { setSel(null); setDetail(null); setTempPage(shownTempPage - 1); }}>上一页</button>
-        <span>道具存放 ${shownTempPage + 1}/${tempPages} · 不限数量</span>
-        <button type="button" class="btn btn--sm" disabled=${shownTempPage >= tempPages - 1 || !!drag || !!facing} onClick=${() => { setSel(null); setDetail(null); setTempPage(shownTempPage + 1); }}>下一页</button>
-      </div>` : null}
       ${spectator ? html`<header class="spectator-bar"><b>${trA("观战 ·")} ${spectator.code}</b>
         <span>${trA("第")} ${pub?.round || 0} ${trA("回合 ·")} ${trA(PHASE_NAMES[pub?.phase] || pub?.phase)} ${trA("· 只读")}</span>
         <select aria-label=${trA("观战视角")} disabled=${watchBusy} value=${(watchBusy ? watchWho?.playerId : bench?.playerId) || field?.units?.find((u) => u.ownerId)?.ownerId || players.find((p) => p.fieldId === field?.fieldId)?.playerId || players.find((p) => p.alive)?.playerId || ''}
@@ -1425,7 +1429,7 @@ export function MatchScreen() {
           owner=${strip.name} onOpen=${(id) => openBond(id, strip.ownerId, 'strip')} />
       </div>
 
-      <${TeamPanel} spMarks=${spMarks(sp, { solo })} pub=${pub} myId=${myId} watching=${watchingNow} bubbles=${bubbles} onWatch=${watchPlayer} cap=${gd.config?.lpCapPerRound ?? 10} uniteLocal=${uniteLocal}
+      <${TeamPanel} spMarks=${spMarks(sp, { solo })} pub=${pub} myId=${myId} watching=${watchingNow} bubbles=${bubbles} onWatch=${watchPlayer} cap=${gd.config?.lpCapPerRound ?? 10} uniteLocal=${uniteLocal} seats=${roomSeats}
         self=${Number.isFinite(priv?.lp) ? { lp: priv.lp, pending: liveLpNow.pending, unite: liveLpNow.unite, left: liveLpNow.left } : null}
         observe=${spectator ? { canObserve: (p) => p.alive && p.status !== 'left' ? { fieldId: p.fieldId || ownFieldId(p.playerId) } : { reason: '该阵地已结束' }, observing: true, onBack: null } : cc ? { canObserve: (p) => observeTarget(p, pub, myId, { observing: watchingOther, ownDone: localDone, viewOnly: true }), observing: watchingOther, onBack: backHome } : null} />
 
@@ -1437,7 +1441,7 @@ export function MatchScreen() {
       </div>` : null}
 
       ${showShop ? html`<${ShopBar} refreshBusy=${refreshBusy} priv=${priv} editable=${editable} collapsed=${barCollapsed} onCollapse=${setCollapsed}
-        barRef=${barRef} offBonds=${offBonds}
+        barRef=${barRef} offBonds=${offBonds} inventoryPager=${showInventoryPager ? inventoryPager : null}
         onBuy=${buy} onLevel=${() => actions.levelUp()} onRefresh=${refresh} onFreeze=${() => actions.freeze()}
         onRisk=${(uid) => act('g.cyclopsRisk', uid == null ? {} : { uid })}
         onDetail=${(id, kind, hint, anchor) => setDetail({ kind: kind === 'item' ? 'item' : 'chess', id, hint: hint || null, anchor })}
@@ -1523,5 +1527,6 @@ export function MatchScreen() {
       ownerIds=${shownMembers?.length ? shownMembers : [spectator ? bench?.playerId || field?.units?.find((u) => u.ownerId)?.ownerId : watchingOther ? watchWho?.playerId || field?.units?.find((u) => u.ownerId)?.ownerId : myId].filter(Boolean)} />
     <${SettingsModal} open=${settingsOpen} onClose=${() => setSettingsOpen(false)} />
     <${ExitModal} open=${exitOpen} onClose=${() => setExitOpen(false)} solo=${solo} />
+
   </div>`;
 }

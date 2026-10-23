@@ -9,6 +9,8 @@ const WHITE = 'chess_item_1_02_e_a';
 const GOLD = 'chess_item_1_02_e_b';
 const OTHER = 'chess_item_1_01_e_a';
 const BLOCKED = ['chess_item_5_08_e_a', 'chess_item_6_09_e_a', GOLD];
+const PROJECTION = 'chess_item_5_06_e_a';
+const GOLD_PROJECTION = 'chess_item_5_06_e_b';
 
 function setup(t, data = DATA) {
   const h = makeMatch({ mode: 'solo', fake: true, data }).start();
@@ -25,6 +27,36 @@ function ctxOf(m, ps) {
     getChess: id => m.gd.chess(id), getItem: id => m.gd.item(id), getToken: id => m.gd.token(id) });
 }
 function owned(ps) { return JSON.stringify([ps.hand, ps.temp, [...ps.board.values()], ps.stats.itemMerges]); }
+
+test('two normal Doctor projections merge on a full carrier without consuming the other equipment or promoting the carrier', t => {
+  const { m, ps, carrier } = setup(t);
+  const first = giveItem(m, ps, PROJECTION);
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: first.uid, targetUid: carrier.uid }), { ok: true });
+  const other = giveItem(m, ps, OTHER);
+  m.handle('p_0', { t: 'g.equip', itemUid: other.uid, targetUid: carrier.uid });
+  const incoming = giveItem(m, ps, PROJECTION, 'temp');
+  const ctx = ctxOf(m, ps);
+  assert.equal(equipMerges(ctx, incoming.uid, 2, carrier), true);
+  assert.equal(dropIntent(ctx, incoming.uid, { area: 'hand', idx: ps.find(carrier.uid).idx }).confirmReplace, false);
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: incoming.uid, targetUid: carrier.uid }), { ok: true });
+  assert.equal(m.gd.isGolden(carrier.id), false);
+  assert.deepEqual(carrier.items.map(p => p.uid), [other.uid]);
+  assert.equal([...ps.hand, ...ps.temp].filter(p => p?.id === GOLD_PROJECTION).length, 1);
+  assert.equal(ps.find(first.uid), null);
+  assert.equal(ps.find(incoming.uid), null);
+  assert.equal(ps.stats.itemMerges, 1);
+  checkInvariants(m);
+});
+
+test('a normal Doctor projection still refuses an elite carrier and keeps its inventory slot', t => {
+  const { m, ps } = setup(t);
+  const elite = give(m, ps, m.gd.goldenIdOf('chess_char_1_17_a'));
+  const incoming = giveItem(m, ps, PROJECTION);
+  const before = owned(ps);
+  assert.equal(m.handle('p_0', { t: 'g.equip', itemUid: incoming.uid, targetUid: elite.uid }).error, ERR.BAD_TARGET);
+  assert.equal(owned(ps), before);
+  checkInvariants(m);
+});
 
 test('non-mergeable equipment and golden equipment keep both copies when equipped on the same carrier', t => {
   for (const id of BLOCKED) {

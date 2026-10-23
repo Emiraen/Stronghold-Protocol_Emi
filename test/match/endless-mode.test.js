@@ -41,7 +41,7 @@ test('built-in endless mode scales without a ceiling, repeats boss rounds, and c
   const ps = m.players.get('p0');
   ps.funds = 12;
   ps.endPrep();
-  assert.equal(ps.funds, 12);
+  assert.equal(ps.funds, 0);
   assert.equal(ps.addLayers('victoriaShip', 1000), 1000);
   assert.equal(ps.layers.victoriaShip, 1000);
   ps.pendingLayerGains = { victoriaShip: 1000 };
@@ -70,6 +70,38 @@ test('built-in endless mode scales without a ceiling, repeats boss rounds, and c
   assert.equal(m.ended, false);
   delayed();
   assert.equal(continued, br + 1);
+});
+
+test('endless uses ordinary strategy carry-over and income rules at high rounds', (t) => {
+  for (const bandId of ['band_bldsk', 'band_cannot']) {
+    const matches = [match(t), match(t, null)];
+    const retained = bandId === 'band_cannot' ? 60 : 0;
+    const credited = bandId === 'band_cannot' ? 13 : 12;
+    for (const round of [60, 61, 80, 81, 1000, 1001, 1000000, 1000001]) {
+      for (const m of matches) {
+        const ps = m.players.get('p0');
+        m.round = round;
+        ps.bandId = bandId;
+        ps.funds = 60;
+        ps.endPrep();
+        assert.equal(ps.funds, retained, `${bandId} R${round}: strategy determines balance carry-over`);
+        ps.startRound(round);
+        assert.equal(ps.funds, retained + credited, `${bandId} R${round}: base income and strategy interest`);
+        assert.equal(ps.pendingFunds, 0);
+      }
+      assert.equal(matches[0].players.get('p0').funds, matches[1].players.get('p0').funds);
+    }
+    for (const m of matches) {
+      const ps = m.players.get('p0');
+      ps.funds = 60;
+      ps.pendingFunds = 8;
+      ps.endPrep();
+      assert.equal(ps.pendingFunds, 8, 'earned rewards remain pending');
+      ps.startRound(1000002);
+      assert.equal(ps.funds, retained + credited + 8, 'pending rewards are credited once');
+      assert.equal(ps.pendingFunds, 0);
+    }
+  }
 });
 
 test('ordinary mode keeps its finite rounds and layer cap', (t) => {

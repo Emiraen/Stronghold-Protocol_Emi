@@ -97,8 +97,9 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
   const dueOf = (ps) => { let d = tempDue.get(ps); if (!d) tempDue.set(ps, (d = new Map())); return d; };
   const overdue = (ps, label) => {
     const d = dueOf(ps);
+    const unlimitedItems = !m.ranked && (m.variant === 'entertainment_multi' || m.variant === 'entertainment_cyclops' || m.variant === 'entertainment_endless');
     for (const p of ps.temp) {
-      if (!p || p.kind === 'item') continue;
+      if (!p || (unlimitedItems && p.kind === 'item')) continue;
       const due = d.get(p.uid);
       if (due != null && due < endedOf(ps)) fail(`${ps.playerId}: temp piece ${p.id} (due at prep ${due}) survived ${label} (${endedOf(ps)} preps ended)`);
     }

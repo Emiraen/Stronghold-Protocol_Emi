@@ -367,6 +367,9 @@ function reborn({ dur = 0, hpRatio = 1, invincible = 0, invincibleUntargetable =
   };
   return {
     killed(c, b, e, a) {
+      // Life loss bypasses invulnerability. A second fatal loss during the same rebirth must not skip form 2;
+      // keep the existing rebirth (and its expiry), rather than count this transition as the real death.
+      if (a.state === 'reborn') { e.hp = Math.min(1, e.s.maxHp); return true; }
       if (a.state) return false;
       a.state = 'reborn';
       a.t0 = b.time;

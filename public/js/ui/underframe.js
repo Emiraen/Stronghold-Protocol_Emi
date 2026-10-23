@@ -143,8 +143,12 @@ export function tempRowFrame(a, b, { labelW = 0, gap = 8, vw = Infinity } = {}) 
  * coming prep, and 准备就绪 waits for the row to be cleared. Ready in PREP: Ready is refused while the row holds pieces,
  * so whatever lies there arrived after it — kept through the NEXT prep (cancelling Ready makes it due at this one).
  * @param {boolean} ready m.private ready (during PREP)
+ * @param {boolean} [unlimitedItems=false] Only entertainment items are retained indefinitely.
  */
-export function tempRowRule(ready) {
+export function tempRowRule(ready, unlimitedItems = false) {
+  if (!unlimitedItems) return ready
+    ? trA("已准备后进入临时整备区的单位和道具保留到下个休整期，届时仍在此处的将被销毁")
+    : trA("临时整备区的单位和道具需移出、使用或销毁；休整期结束时仍在此处的将被销毁");
   return ready
     ? trA("道具永久保留且不影响准备；已准备后进入的干员和召唤物保留到下个休整期，届时仍在此处的将被销毁")
     : trA("道具永久保留且不影响准备；干员和召唤物需放入整备区或战场，休整期结束时仍在此处的将被销毁");
@@ -153,9 +157,9 @@ export function tempRowRule(ready) {
 /**
  * The temp row's notice: dashed red frame + label (count, what to do, what happens at the end of the prep — tempRowRule).
  * `label` false (a piece is being dragged / placed): the frame only, nothing over the pieces the player is moving.
- * @param {{ view: any, count: number, items?: number, label?: boolean, ready?: boolean }} props
+ * @param {{ view: any, count: number, items?: number, label?: boolean, ready?: boolean, unlimitedItems?: boolean }} props
  */
-export function TempRowNotice({ view, count, items = 0, label = true, ready = false }) {
+export function TempRowNotice({ view, count, items = 0, label = true, ready = false, unlimitedItems = false }) {
   const a = useTileScreen(view, GEO.TEMP_ROW, GEO.TEMP_C0);
   const b = useTileScreen(view, GEO.TEMP_ROW, GEO.TEMP_C0 + GEO.TEMP_SIZE - 1);
   let rem = 100;
@@ -171,7 +175,7 @@ export function TempRowNotice({ view, count, items = 0, label = true, ready = fa
     <svg class="tempnote__frame" aria-hidden="true"><polygon points=${pts} /></svg>
     ${label ? html`<div class=${`tempnote__label is-${f.side}`} style=${style} role="status">
       <b class="tempnote__title"><${Icon} name="warn" />${trA("临时整备区")} <span class="num">${count}</span> ${what}${trA("待处理")}</b>
-      <span class="tempnote__rule">${tempRowRule(ready)}</span>
+      <span class="tempnote__rule">${tempRowRule(ready, unlimitedItems)}</span>
     </div>` : null}
   </div>`;
 }

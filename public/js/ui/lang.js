@@ -54,7 +54,7 @@ const A_EN = {
   '未定级': 'Unranked', '定级赛': 'Placement', '分': 'pts', '段位结算': 'Rank Settlement',
   '全服排名': 'Server rank', '定级完成': 'Placement Complete', '结算中…': 'Calculating…',
   '黑铁': 'Iron', '青铜': 'Bronze', '白银': 'Silver', '黄金': 'Gold', '白金': 'Platinum',
-  '钻石': 'Diamond', '超凡': 'Ascendant', '神话': 'Immortal', '赋能战魂': 'Radiant',
+  '钻石': 'Diamond', '超凡': 'Ascendant', '神话': 'Immortal', '源能战魂': 'Radiant',
   '等待档案调配…': 'Waiting for profile loadout…', '保存中…': 'Saving…', '同步中…': 'Syncing…',
   '本局已锁定 · 下一局生效': 'Locked for this match · Applies next match', '同步失败': 'Sync failed',
   '正在加载对局素材…': 'Loading match assets…', '本局耗时': 'Match duration', '分钟': 'minutes',

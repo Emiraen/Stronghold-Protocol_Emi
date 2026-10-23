@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes, scryptSync } from 'node:crypto';
-import { startAdmin, adminSnapshot, checkAdminPassword } from '../server/admin.js';
+import { startAdmin, adminSnapshot } from '../server/admin.js';
 
 function fixture() {
   const ranked = { profiles: new Map(), summary: (aid) => ({ rank: { label: aid === 'aaaabbbb' ? '黄金一 20分' : '未定级' } }) };
@@ -20,9 +19,6 @@ function fixture() {
     { aid: 'ccccdddd', name: '乙', firstSeen: 11, lastSeen: 21 }] };
   return { registry, lobby, players };
 }
-const salt = randomBytes(32);
-const pass = 'a-test-only-password-longer-than-sixteen';
-const passwordHash = `scrypt$${salt.toString('hex')}$${scryptSync(pass, salt, 64, { maxmem: 64 * 1024 * 1024 }).toString('hex')}`;
 
 test('admin snapshot exposes current rounds, safe seat names, full ranking, and no secrets', () => {
   const state = adminSnapshot(fixture());
@@ -34,35 +30,45 @@ test('admin snapshot exposes current rounds, safe seat names, full ranking, and 
   assert.doesNotMatch(JSON.stringify(state), /do-not-leak|aaaabbbb|ccccdddd|playerId|secretSeed|token/);
 });
 
-test('admin login, origin, session, logout, retry limit and anti-leak headers', async () => {
-  assert.ok(checkAdminPassword(pass, passwordHash));
-  assert.equal(checkAdminPassword('wrong', passwordHash), false);
-  const admin = await startAdmin({ ...fixture(), passwordHash, port: 0, host: '127.0.0.1', allowInsecureLocal: true, log: { error() {} } });
+test('admin opens without a password or cookie and retains same-origin control checks', async () => {
+  let announcement = null;
+  let kicks = 0;
+  const controls = {
+    getAnnouncement: () => announcement,
+    publishAnnouncement: (body) => (announcement = { ...body, updatedAt: Date.now() }),
+    kick: () => { kicks++; return { ok: true, status: 'kicked' }; },
+    kickStatus: () => ({ ok: true, status: 'kicked' }),
+  };
+  const admin = await startAdmin({ ...fixture(), controls, port: 0, host: '127.0.0.1', allowInsecureLocal: true, log: { error() {} } });
   const url = `http://127.0.0.1:${admin.port}`;
   try {
-    const unauthorized = await fetch(url + '/api/state');
-    assert.equal(unauthorized.status, 401);
-    assert.equal(unauthorized.headers.get('cache-control'), 'no-store');
-    assert.equal((await fetch(url + '/')).status, 200);
-    assert.equal((await fetch(url + '/server/admin.js')).status, 404);
-    const foreign = await fetch(url + '/api/login', { method: 'POST', headers: { origin: 'http://foreign.invalid', 'content-type': 'application/json' }, body: JSON.stringify({ password: pass }) });
-    assert.equal(foreign.status, 403);
-    const headers = { origin: url, 'content-type': 'application/json' };
-    const wrong = await fetch(url + '/api/login', { method: 'POST', headers, body: JSON.stringify({ password: 'wrong' }) });
-    assert.equal(wrong.status, 401);
-    const ok = await fetch(url + '/api/login', { method: 'POST', headers, body: JSON.stringify({ password: pass }) });
-    assert.equal(ok.status, 200);
-    const cookie = ok.headers.get('set-cookie').split(';')[0];
-    const secured = await fetch(url + '/api/state', { headers: { cookie } });
-    assert.equal(secured.status, 200);
-    const data = await secured.json();
+    const state = await fetch(url + '/api/state');
+    assert.equal(state.status, 200);
+    assert.equal(state.headers.get('cache-control'), 'no-store');
+    assert.equal(state.headers.get('set-cookie'), null);
+    const data = await state.json();
     assert.equal(data.summary.matches, 1);
     assert.equal(data.matches[0].phase, 'PREP');
     assert.doesNotMatch(JSON.stringify(data), /aaaabbbb|token|do-not-leak/);
-    const logout = await fetch(url + '/api/logout', { method: 'POST', headers: { cookie, origin: url } });
-    assert.equal(logout.status, 204);
-    assert.equal((await fetch(url + '/api/state', { headers: { cookie } })).status, 401);
-    for (let i = 0; i < 8; i++) await fetch(url + '/api/login', { method: 'POST', headers, body: JSON.stringify({ password: 'wrong' }) });
-    assert.equal((await fetch(url + '/api/login', { method: 'POST', headers, body: JSON.stringify({ password: 'wrong' }) })).status, 429);
+    const page = await fetch(url + '/');
+    assert.equal(page.status, 200);
+    assert.doesNotMatch(await page.text(), /id="loginForm"|type="password"|id="logoutButton"/);
+    assert.equal((await fetch(url + '/server/admin.js')).status, 404);
+    const headers = { origin: url, 'content-type': 'application/json' };
+    const content = JSON.stringify({ title: '新公告', content: '无需管理密码' });
+    for (const origin of [undefined, 'http://foreign.invalid']) {
+      const response = await fetch(url + '/api/announcement', { method: 'POST',
+        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: content });
+      assert.equal(response.status, 403);
+    }
+    assert.equal(announcement, null);
+    assert.equal((await fetch(url + '/api/announcement', { method: 'POST', headers, body: content })).status, 200);
+    assert.equal((await (await fetch(url + '/api/announcement')).json()).announcement.title, '新公告');
+    assert.equal((await fetch(url + '/api/announcement', { method: 'POST', headers, body: '{}' })).status, 400);
+    const target = JSON.stringify({ serverId: 'main', targetId: 'c_' + 'a'.repeat(32) });
+    assert.equal((await fetch(url + '/api/kick', { method: 'POST', headers, body: target })).status, 200);
+    assert.equal(kicks, 1);
+    assert.equal((await fetch(url + '/api/login', { method: 'POST', headers, body: '{}' })).status, 404);
+    assert.equal((await fetch(url + '/api/logout', { method: 'POST', headers })).status, 404);
   } finally { await admin.close(); }
 });

@@ -386,14 +386,27 @@ export class MatchPhases {
     } else {
       this.wave = buildNormalWave(this.gd, this.rngWaves, this.factions, r);
     }
-    for (const ps of alive) ps.startRound(r);
-    for (const ps of alive) this.dispatch(ps, 'onRoundStart', { round: r });
+    // A player's partially applied income/shop refresh cannot be retried. Do not let it suppress the other
+    // players' round hooks, and do not run that player's dependent hooks on an incomplete round start.
+    const started = [];
+    for (const ps of alive) {
+      try { ps.startRound(r); started.push(ps); }
+      catch (e) { this.reportError(`startRound R${r} player ${ps.playerId}`, e); }
+    }
+    const dispatched = [];
+    for (const ps of started) {
+      try { this.dispatch(ps, 'onRoundStart', { round: r }); dispatched.push(ps); }
+      catch (e) { this.reportError(`onRoundStart R${r} player ${ps.playerId}`, e); }
+    }
     // an eliminated player's pending 信标 gift still goes to its teammate (effects flagged afterElimination; GitHub #86)
     for (const ps of this.order) {
       if (ps.alive) continue;
       try { this.dispatcher.dispatchEliminated(ps, 'onRoundStart', { round: r }); } catch (e) { this.reportError('dispatch onRoundStart (eliminated)', e); }
     }
-    for (const ps of alive) ps.recompute();
+    for (const ps of dispatched) {
+      try { ps.recompute(); }
+      catch (e) { this.reportError(`roundStart recompute R${r} player ${ps.playerId}`, e); }
+    }
     this.setDeadline(DELAYS.ROUND_START / 1000, () => this.afterRoundStart(), { silent: this.soloUntimed });
     this.markPublic();
   }

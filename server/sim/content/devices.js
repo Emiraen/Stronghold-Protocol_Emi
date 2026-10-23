@@ -38,6 +38,7 @@ import { performAttack, attackCountdown } from '../ai.js';
 import { sortEnemyTargets } from '../targeting.js';
 import { DIR_VEC, normDir, oppositeDir } from '../dir.js';
 import { hypot } from '../detmath.js';
+import { isolateContentCallback } from './support/index.js';
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : (typeof v === 'string' && v.trim() !== '' && Number.isFinite(+v) ? +v : d));
 /** ASPD blackboard values: a fraction (|v| < 1, e.g. −0.6 / −0.05) is ×100 ASPD, otherwise flat (+20). */
@@ -486,10 +487,10 @@ function ensureTick(battle, st) {
   st.ticking = true;
   battle.on('tick', ({ dt }) => {
     if (st.hasTerrain || st.flow.size) {
-      for (const u of battle.allyUnits) refreshUnit(battle, st, u);
-      for (const e of battle.enemies) refreshUnit(battle, st, e);
+      for (const u of battle.allyUnits) isolateContentCallback(battle, () => refreshUnit(battle, st, u), 'devices:refresh', u);
+      for (const e of battle.enemies) isolateContentCallback(battle, () => refreshUnit(battle, st, e), 'devices:refresh', e);
     }
-    for (const u of st.turrets.values()) tickTurret(battle, u, dt);
+    for (const u of st.turrets.values()) isolateContentCallback(battle, () => tickTurret(battle, u, dt), 'devices:turret', u);
   });
   // a unit that (re)deploys / spawns starts fresh (death drops its buffs) and gets its tile's terrain at once: smog
   // must already hide an operator from the first enemy shot of the battle. A 【移动】 (ctx.move: 乌尔比安 S3,

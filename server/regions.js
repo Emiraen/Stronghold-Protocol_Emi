@@ -36,7 +36,7 @@ export function loadLevel(sample, now = performance.now()) {
 }
 
 // 内部运行快照不包含档案、凭据或客户端提供的统计小计。
-export function validateRuntime(value, serverId) {
+export function validateRuntime(value, serverId, copy = true) {
   const object = (v, keys) => v && typeof v === 'object' && !Array.isArray(v)
     && Object.keys(v).length === keys.length && keys.every((key) => Object.hasOwn(v, key));
   const text = (v) => typeof v === 'string' && v.length <= 64 && !/[\u0000-\u001f\u007f]/.test(v);
@@ -66,11 +66,11 @@ export function validateRuntime(value, serverId) {
         || typeof seat.isBot !== 'boolean' || typeof seat.connected !== 'boolean') throw new Error('座位快照无效');
     }
   }
-  return structuredClone(value);
+  return copy ? structuredClone(value) : value;
 }
 
 // 公开目录独立于管理 runtime；拒绝附加字段，而不是在公开时临时删密钥。
-export function validateSpectatorItems(value, serverId) {
+export function validateSpectatorItems(value, serverId, copy = true) {
   const object = (v, keys) => v && typeof v === 'object' && !Array.isArray(v)
     && Object.keys(v).length === keys.length && keys.every((key) => Object.hasOwn(v, key));
   const integer = (v, max) => Number.isSafeInteger(v) && v >= 0 && v <= max;
@@ -99,7 +99,7 @@ export function validateSpectatorItems(value, serverId) {
       players.add(seat.playerId);
     }
   }
-  return structuredClone(value);
+  return copy ? structuredClone(value) : value;
 }
 
 export function createSpectatorCache(serverId, now = () => performance.now()) {
@@ -159,8 +159,9 @@ export function validateHeartbeat(value) {
       || Object.keys(report).some((key) => !['epoch', ...directoryKinds].includes(key))
       || directoryKinds.some((kind) => report[kind] !== undefined && !hashOK(report[kind]))) throw new Error('目录确认无效');
   }
-  if (value.runtime !== undefined) validateRuntime(value.runtime, value.serverId);
-  if (value.spectatorItems !== undefined) validateSpectatorItems(value.spectatorItems, value.serverId);
+  // This pass only checks fields; storage and public callers still receive isolated copies.
+  if (value.runtime !== undefined) validateRuntime(value.runtime, value.serverId, false);
+  if (value.spectatorItems !== undefined) validateSpectatorItems(value.spectatorItems, value.serverId, false);
   if (value.recruitmentItems !== undefined) validateRecruitmentItems(value.recruitmentItems, value.serverId);
 }
 

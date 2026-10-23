@@ -1,5 +1,6 @@
 import { t as trA } from '../../../shared/i18n.js';
-// Left team panel (research 06 §11.1, research 09 §3.1): one row per seat — avatar (band icon once picked), name, LP
+// Left team panel (research 06 §11.1, research 09 §3.1): one row per seat — selected profile avatar,
+// current match strategy icon/name, player name, LP
 // tower, status glyph (… acting / ✓ ready / ⌛ deciding / ⚔ combat / door left / ✕ dead), AI badge, "you" marker, the
 // field being watched (eye badge), and emote bubbles.
 // 局内点击队友头像直接请求切换视角，可用性校验与错误通知仍由 onWatch 处理。
@@ -14,15 +15,16 @@ import { t as trA } from '../../../shared/i18n.js';
 // report, ~1 Hz).
 
 import { PHASE } from '../../../shared/constants.js';
-import { rankIconUrl } from '../../../shared/ranks.js';
+import { rankIconUrl, normalizeRankLabel } from '../../../shared/ranks.js';
 import { html, Icon, Tooltip, Button } from './components.js';
-import { useState } from '../../vendor/hooks.module.js';
+import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { actions } from './gameActions.js';
-import { PlayerAvatar, LpTower, GIcon, LocalSprite } from './gameComponents.js';
+import { PlayerAvatar, BandIcon, LpTower, GIcon, LocalSprite } from './gameComponents.js';
+import { cardOperators, seatAvatar } from './seatArt.js';
 import { TeamEmoteBubble } from './emotes.js';
 import { STATUS_META, sortedPlayers } from './gameLogic.js';
 import { MissTag, uniteRemaining } from './hud.js';
-import { localAsset } from '../data.js';
+import { data, localAsset } from '../data.js';
 
 function MultiUnite({ unite, myId }) {
   const [busy, setBusy] = useState(false);
@@ -113,12 +115,17 @@ export function rowLpTip(lp, cap = 10) {
 /**
  * @param {{ pub:any, myId:string, watching:string|null, bubbles: Map<string,{id:string,seq:number}>, onWatch:(p:any)=>void,
  *   compact?: boolean, teamLp?: number|null, self?: { lp?: number|null, pending: number, unite: boolean, left?: number|null } | null,
- *   cap?: number, uniteLocal?: Record<string, number> | null,
+ *   cap?: number, uniteLocal?: Record<string, number> | null, seats?: any[] | null,
  *   observe?: null | { canObserve: (p:any) => { fieldId?: string, reason?: string|null, back?: boolean }, observing: boolean, onBack: () => void } }} props
  *   uniteLocal: the local 联防 replica's per-leaker counts while it is on screen (battle runner state().uniteLeft), else null
  */
-export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = false, observe = null, self: selfLive = null, cap = 10, uniteLocal = null, spMarks = null }) {
+export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = false, observe = null, self: selfLive = null, cap = 10, uniteLocal = null, spMarks = null, seats = null }) {
   const players = sortedPlayers(pub);
+  const roomSeats = useMemo(() => new Map((Array.isArray(seats) ? seats : [])
+    .filter((seat) => seat?.playerId).map((seat) => [seat.playerId, seat])), [seats]);
+  const cardPool = useMemo(() => cardOperators(data.list('chess'), data.get('backups')),
+    [data.get('chess'), data.get('backups')]);
+  const cardsByChar = useMemo(() => new Map(cardPool.map((card) => [card.charId, card])), [cardPool]);
   if (!players.length) return null;
   const click = (p, self) => {
     if (observe && self) { if (observe.observing) observe.onBack(); return; }
@@ -143,10 +150,14 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
       const back = !!observe && self && observe.observing;
       const title = observe ? (self ? (observe.observing ? trA("返回战场") : trA("你自己")) : trA("查看 {name} 的战场", { "name": (p.name) })) : (self ? trA("查看自己的阵地") : trA("查看 {name} 的阵地", { "name": (p.name) }));
       const lp = rowLp(p, pub, self ? selfLive : null, { uniteLocal, cap });
+      const seat = roomSeats.get(p.playerId);
+      const avatarSrc = seat && !p.isBot ? seatAvatar(seat, { pool: cardPool, byChar: cardsByChar,
+        m: data.get('assets'), myId, myCard: null }) : null;
+      const strategy = p.bandId ? data.lookup('bands', p.bandId)?.name || p.bandId : null;
       return html`<div key=${p.playerId} class=${cx('team__row', self && 'is-self', watched && 'is-watched', p.alive === false && 'is-dead', framed.has(p.playerId) && 'is-team')}
         style=${frameArt && framed.has(p.playerId) ? `--team-frame:url("${frameArt}")` : null}>
         <button type="button" class="team__btn" onClick=${() => click(p, self)} title=${title}>
-          <${PlayerAvatar} player=${p} self=${self} />
+          <${PlayerAvatar} player=${p} self=${self} avatarSrc=${avatarSrc} />
           ${framed.has(p.playerId) ? html`<span class=${cx('team__frame', !frameArt && 'team__frame--plain')} style=${frameArt ? `--frame:url("${frameArt}")` : undefined} aria-hidden="true"></span>` : null}
           <span class="team__seat num">P${(p.seat ?? 0) + 1}</span>
           ${p.isBot ? html`<span class="team__ai">AI</span>` : null}
@@ -156,7 +167,8 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
         </button>
         <div class="team__info">
           <span class="team__identity"><span class="team__name">${p.name || trA("博士")}</span>${pub.ranked && !p.isBot && p.rank?.icon
-            ? html`<img class="team__rank" src=${rankIconUrl(p.rank.icon)} alt=${p.rank.label} title=${p.rank.label} />` : null}</span>
+            ? html`<img class="team__rank" src=${rankIconUrl(p.rank.icon)} alt=${normalizeRankLabel(p.rank.label)} title=${normalizeRankLabel(p.rank.label)} />` : null}</span>
+          ${strategy ? html`<span class="team__strategy" title=${strategy}><${BandIcon} bandId=${p.bandId} size="xs" /><span class="team__strategy-name">${strategy}</span></span>` : null}
           ${multi && p.poolGroupId ? html`<small class="team__pool-id">卡池 ${p.poolGroupId}</small>` : null}
           <div class="team__line">
             <${LpTower} value=${lp.lp} size="sm" tone=${Number.isFinite(lp.lp) && lp.lp - lp.pending <= 5 ? 'danger' : null} pending=${lp.pending}

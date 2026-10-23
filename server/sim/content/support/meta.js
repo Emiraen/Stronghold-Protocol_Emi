@@ -19,6 +19,19 @@
 
 import { frontOf } from '../../dir.js';
 
+/** Independent recipients must not lose their reward because an earlier recipient failed.
+ * Keep errors on the owning dispatcher; never retry a callback that may have partly committed.
+ * Data preparation and dependent steps remain outside this boundary.
+ */
+export function forEachMeta(ctx, label, values, apply) {
+  for (const value of values) {
+    try { apply(value); } catch (error) {
+      if (typeof ctx.reportError !== 'function') throw error;
+      ctx.reportError(label, error);
+    }
+  }
+}
+
 export function registerSupportMeta(registry) {
   registry.global('contentb_info', {
     onBattleStart(ctx, ev) {

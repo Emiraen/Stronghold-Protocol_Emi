@@ -8,6 +8,7 @@ import { skinSummonUrls } from '../tokenSkins.js';
 import { audio } from '../audio.js';
 import { defaultPresentation, isPresentation, checkPresentation, skinKeyForRecord } from '../../../shared/protocol.js';
 import { toast } from './toasts.js';
+import { isSpecialNameCard } from '../../../shared/nameCards.js';
 
 export const PORTRAITS_PREF = 'skinPortraits';
 const CARD_PREF = 'room.card';
@@ -48,7 +49,8 @@ export function setPortraits(entries) {
   return true;
 }
 export function setPlayerCard(card, choice) {
-  if (!skinsStore.get().profileReady || (card !== '' && !/^char_[A-Za-z0-9_]+$/.test(card))) return false;
+  if (!skinsStore.get().profileReady || (card !== '' && !isSpecialNameCard(card) && !/^char_[A-Za-z0-9_]+$/.test(card))) return false;
+  if (isSpecialNameCard(card)) { skinsStore.set({ card }); return true; }
   if (card && choice !== undefined) {
     const art = data.get('assets')?.chars?.[card];
     if (!art || (choice !== 'original' && choice !== 'e2' && !art.skins?.[choice]?.portrait)) return false;

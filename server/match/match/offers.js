@@ -5,6 +5,7 @@ import { ERR } from '../../../shared/constants.js';
 import { offerAt, offersAt } from '../../../shared/plugins/offers.js';
 import { createRng, deriveSeed } from '../../sim/rng.js';
 import { OK, fail } from './common.js';
+import { grantLayersVerified, REWARD_FAILURE_TEXT } from '../rewardRecovery.js';
 
 export const OFFER_CLOSED = Object.freeze(['settled', 'timeout', 'none']);
 
@@ -76,11 +77,14 @@ export class MatchOffers {
     const w = this._openOffer(offerId, identity);
     const refusal = this._offerCanPick(ps, w, idx, identity?.cardId);
     if (refusal) return refusal;
-    if (!this._offerApply(ps, w, idx)) return fail(ERR.BAD_TARGET);
-    w.picks.set(ps.playerId, { idx });
+    let failed = false;
+    try {
+      if (!this._offerApply(ps, w, idx)) return fail(ERR.BAD_TARGET);
+      w.picks.set(ps.playerId, { idx });
+    } catch (error) { failed = true; this._offerFailPick(ps, w, idx, error, false); }
     this._offerSettleIfDone(w);
     this._offerProgress();
-    return OK;
+    return failed ? fail(ERR.BAD_TARGET, REWARD_FAILURE_TEXT) : OK;
   }
 
   _offerCanPick(ps, w, idx, cardId) {
@@ -127,7 +131,8 @@ export class MatchOffers {
     if (effect.funds !== undefined) ps.addFunds(effect.funds, { reason });
     else if (effect.pendingFunds !== undefined) ps.pendingFunds += effect.pendingFunds;
     else if (effect.freeRefresh !== undefined) ps.shop.freeRefreshes += effect.freeRefresh;
-    else if (effect.layers) ps.addLayers(effect.layers.bond, effect.layers.count, { reason });
+    else if (effect.layers) grantLayersVerified(this, ps, effect.layers.bond, effect.layers.count, { reason },
+      { source: reason, hook: 'offerPick' });
     else if (effect.item && !ps.acquireItem(effect.item, { source: reason })) return false;
     else if (effect.chess && !ps.acquireChess(effect.chess, { source: reason })) return false;
     ps.dirty();
@@ -138,10 +143,27 @@ export class MatchOffers {
     if (w.picks.has(ps.playerId)) return;
     // [ASSUMED] Try current slots in order; if none can grant, close with an explicit skipped pick.
     let idx = null;
-    if (w.onTimeout !== 'skip') for (let i = 0; i < w.slots; i++) {
-      if (this._offerApply(ps, w, i)) { idx = i; break; }
+    try {
+      if (w.onTimeout !== 'skip') for (let i = 0; i < w.slots; i++) {
+        idx = i;
+        if (this._offerApply(ps, w, i)) break;
+        idx = null;
+      }
+    } catch (error) {
+      this._offerFailPick(ps, w, idx, error, true);
+      return; // This card may have partly committed. Never try another card or replay it.
     }
     w.picks.set(ps.playerId, { idx, timeout: true });
+  }
+
+  _offerFailPick(ps, w, idx, error, timeout) {
+    w.picks.set(ps.playerId, { idx, timeout, failed: true });
+    try { this.reportError(`offer ${w.pluginId}:${w.id} player ${ps.playerId}`, error); } catch {}
+    try {
+      this.sendTo(ps.playerId, { t: 'm.toast', kind: 'error', text: REWARD_FAILURE_TEXT,
+        diagnostic: { code: 'OFFER_GRANT_FAILED', round: this.round, pluginId: w.pluginId,
+          offerId: w.id, seq: w.seq, idx, receipt: 'unverified' } });
+    } catch { /* Failure reporting must not block healthy recipients or close/progress. */ }
   }
 
   _offerSettleIfDone(w) {
@@ -159,7 +181,10 @@ export class MatchOffers {
 
   _closeOffer(w) {
     if (w.closed) return;
-    for (const ps of this._offerWaiting(w)) this._offerDefault(ps, w);
+    for (const ps of this._offerWaiting(w)) {
+      try { this._offerDefault(ps, w); }
+      catch (error) { this._offerFailPick(ps, w, null, error, true); }
+    }
     w.closed = true;
     this.cancel(this._offerTimers.get(w));
     this._offerTimers.delete(w);
@@ -169,8 +194,15 @@ export class MatchOffers {
   /** Autoplay and departed seats cannot leave a window stalled. */
   offersChanged() {
     for (const w of this.offerWin) {
-      for (const ps of this._offerWaiting(w)) if (ps.botControlled) this._offerDefault(ps, w);
-      this._offerSettleIfDone(w);
+      try {
+        for (const ps of this._offerWaiting(w)) if (ps.botControlled) {
+          try { this._offerDefault(ps, w); }
+          catch (error) { this._offerFailPick(ps, w, null, error, true); }
+        }
+        this._offerSettleIfDone(w);
+      } catch (error) {
+        try { this.reportError(`offer ${w.pluginId}:${w.id} changed`, error); } catch {}
+      }
     }
     this._offerProgress();
   }

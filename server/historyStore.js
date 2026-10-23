@@ -72,6 +72,10 @@ export class StoreWriter {
     this.log = log;
     this.label = label;
     this.revision = 0;
+    // A revision is reusable by replication only after its atomic rename completed.
+    // New writer instances must not claim that a previous process flushed anything.
+    this.persistedRevision = -1;
+    this.persistenceObservers = new Set();
     this.dirty = false;
     this.pending = null;
   }
@@ -94,11 +98,14 @@ export class StoreWriter {
           this.dirty = false;
           try {
             const data = JSON.stringify(this.snapshot());
+            const proofs = this.capturePersistence();
             await mkdir(dirname(this.file), { recursive: true });
             await writeFile(tmp, data, { encoding: 'utf8', mode: 0o600 });
             // 检查与换名必须同一同步段，不能覆盖期间成功保存的新配置。
-            if (revision === this.revision) renameSync(tmp, this.file);
-            else await unlink(tmp);
+            if (revision === this.revision) {
+              renameSync(tmp, this.file);
+              this.confirmPersistence(revision, proofs);
+            } else await unlink(tmp);
           } catch (error) {
             try { await unlink(tmp); } catch { /* 临时文件可能尚未创建 */ }
             if (revision !== this.revision) continue;
@@ -124,8 +131,11 @@ export class StoreWriter {
     const tmp = `${this.file}.${randomBytes(8).toString('hex')}.tmp`;
     try {
       mkdirSync(dirname(this.file), { recursive: true });
-      writeFileSync(tmp, JSON.stringify(this.snapshot()), { encoding: 'utf8', mode: 0o600 });
+      const data = JSON.stringify(this.snapshot());
+      const proofs = this.capturePersistence();
+      writeFileSync(tmp, data, { encoding: 'utf8', mode: 0o600 });
       renameSync(tmp, this.file);
+      this.confirmPersistence(this.revision, proofs);
       this.dirty = false;
       return true;
     } catch (error) {
@@ -140,6 +150,31 @@ export class StoreWriter {
     if (!this.file) return;
     const ok = await (this.pending || (this.dirty ? this.start() : true));
     if (!ok) throw this.error;
+  }
+
+  persistedSince(revision) {
+    return !!this.file && this.revision > revision && this.persistedRevision === this.revision
+      && !this.dirty && !this.pending;
+  }
+
+  observePersisted(capture) {
+    const observer = { capture, revision: -1, value: null,
+      stop: () => this.persistenceObservers.delete(observer) };
+    this.persistenceObservers.add(observer);
+    return observer;
+  }
+
+  capturePersistence() {
+    // Capture only transaction fields in the same synchronous segment as serialization.
+    return [...this.persistenceObservers].map((observer) => [observer, observer.capture()]);
+  }
+
+  confirmPersistence(revision, proofs) {
+    this.persistedRevision = revision;
+    for (const [observer, value] of proofs) if (this.persistenceObservers.has(observer)) {
+      observer.revision = revision;
+      observer.value = value;
+    }
   }
 }
 

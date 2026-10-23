@@ -282,7 +282,7 @@ export function RewardCards({ offer, priv, editable, onPick, onDetail, onLater, 
  *   the bonds this mode never activates (gameLogic modeOffBonds), struck through on the operator cards
  */
 export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onCollapse, onBuy, onLevel, onRefresh, onFreeze, onDetail, onDetailClose, onRefuse, barRef,
-  reward = null, onReward, onRewardLater, onArm = null, offBonds = null, onRisk = null }) {
+  reward = null, onReward, onRewardLater, onArm = null, offBonds = null, onRisk = null, inventoryPager = null }) {
   const shop = priv?.shop || {};
   const slots = Array.isArray(shop.slots) ? shop.slots : [];
   const layout = shop.layout && Number.isInteger(shop.layout.chess) && Number.isInteger(shop.layout.item) ? shop.layout : null;
@@ -332,7 +332,8 @@ export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onColl
   };
 
   if (collapsed) {
-    return html`<div class="shopbar-tab" ref=${barRef}>
+    return html`<div class=${cx('shopbar-tab', inventoryPager && 'has-inventory-pager')} ref=${barRef}>
+      ${inventoryPager ? html`<div class="shopbar__capacity">${inventoryPager}<span class="shopbar__remain">${t('剩余可放置角色：')}<b class="num">${remaining}</b></span></div>` : null}
       <div class="shopbar-tab__funds"><${CoinGlyph} /><b class="num">${funds}</b></div>
       <button type="button" class="shopbar-tab__btn" onClick=${() => onCollapse(false)}><${Icon} name="chevronLeft" />${t('展开商店')}</button>
     </div>`;
@@ -345,7 +346,7 @@ export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onColl
         ${risk.quality === 'gold' ? html`<select aria-label="献祭干员" value=${riskUid} onChange=${e => setRiskUid(e.target.value)} style="max-width:140px;background:#182327;color:white"><option value="">选择献祭干员</option>${sacrifice.map(p => html`<option value=${p.uid}>${data.lookup('chess', p.id)?.name || p.id}</option>`)}</select>` : null}
         <button type="button" class="toolbtn toolbtn--amber" disabled=${!editable || (risk.quality === 'gold' && !riskUid)} title=${risk.quality === 'gold' ? '本回合献祭一次，基础招募价的2倍、最多8金币' : '消耗当前生命值的10%（向上取整，至少4点），整局最多3次，须能存活'} onClick=${() => onRisk(risk.quality === 'gold' ? Number(riskUid) : null)}>${risk.quality === 'gold' ? '献祭' : '消耗生命换12金币'}</button>
       </span>` : null}
-      <span class="shopbar__remain">${t('剩余可放置角色：')}<b class=${cx('num', remaining === 0 && 't-orange')}>${remaining}</b></span>
+      ${inventoryPager ? html`<div class="shopbar__capacity">${inventoryPager}<span class="shopbar__remain">${t('剩余可放置角色：')}<b class=${cx('num', remaining === 0 && 't-orange')}>${remaining}</b></span></div>` : html`<span class="shopbar__remain">${t('剩余可放置角色：')}<b class=${cx('num', remaining === 0 && 't-orange')}>${remaining}</b></span>`}
       <button type="button" class=${cx('toolbtn', 'toolbtn--ice', frozen && 'is-on')} disabled=${!!frzReason} onClick=${onFreeze}
         title=${frzReason || (frozen ? t('解冻商店 · {key}', { key: hk.freeze }) : t('冻结商店（下回合保留） · {key}', { key: hk.freeze }))}>
         <${Img} src=${uiUrl(data.get('assets'), frozen ? 'shopPanel/frozen_icon2' : 'shopPanel/frozen_icon')} class="toolbtn__img" fallback=${html`<${Icon} name="snow" />`} />

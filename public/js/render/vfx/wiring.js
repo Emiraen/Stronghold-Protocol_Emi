@@ -76,8 +76,6 @@ const BLOCK_REACH = 0.75, BLOCK_REACH_AIR = 0.95;
 const HP_TYPES = new Set(['phys', 'arts', 'true']);
 
 const lc = (k) => (typeof k === 'string' && k ? k.toLowerCase() : null);
-// Indigo uses the built-in procedural effects in every promotion and skin.
-const PROCEDURAL_ONLY = /^(?:char_469_indigo|chess_char_1_17)(?:$|[_#@])/i;
 /** Torappu.SharedConsts.Direction order (a directional emitter row's `slots`). */
 const DIRS = ['UP', 'RIGHT', 'DOWN', 'LEFT'];
 /** Cast rows starting at these ability events start with the cast (0 ON_ATTACHED, 2 ON_CAST_START); 4 ON_SPELL_ON … at the strike. */
@@ -244,7 +242,6 @@ export class FxWiring {
       // (a point on the ground — a kit fx's tile, SkillFx — has no info and no unit)
       const cands = this.opts.unitKey && v.info ? [].concat(this.opts.unitKey(v.info) || []) : [];
       cands.push(v.info?.spine, v.info?.defId);
-      if (this._proceduralOnly(v, cands)) { this.keyCache.set(id, null); return null; }
       for (const c of cands) {
         if (!c) continue;
         if (this.idx.units[c]) { k = c; break; }
@@ -254,13 +251,6 @@ export class FxWiring {
       this.keyCache.set(id, k);
     }
     return k;
-  }
-
-  /** An operator whose optional effects must never replace the procedural layer. */
-  _proceduralOnly(v, candidates = null) {
-    const info = v?.info;
-    const cands = candidates || (this.opts.unitKey && info ? [].concat(this.opts.unitKey(info) || []) : []);
-    return [info?.spine, info?.defId, info?.diy?.charId, ...cands].some((k) => typeof k === 'string' && PROCEDURAL_ONLY.test(k));
   }
 
   /** The index unit of a view (by its info), cached per battle id. */
@@ -1317,7 +1307,6 @@ export class FxWiring {
     const slot = `${id}|${name}`;
     const prev = this.loops.get(slot);
     if (!on) { if (prev) { prev.stop(); this.loops.delete(slot); } return !!prev; }
-    if (this._proceduralOnly(v)) return false;
     if (!this.ofx.active) return false;
     if (prev && prev.alive) return true;
     const key = this.idx.generic?.status?.[name];
@@ -1382,7 +1371,6 @@ export class FxWiring {
   death(v) {
     if (!v) return false;
     this.release(v);
-    if (this._proceduralOnly(v)) return false;
     if (!this.ofx.active || !this.idx) return false;
     const u = this.unitOf(v);
     const m = u ? this.mode(u, v) : null;
@@ -1394,7 +1382,6 @@ export class FxWiring {
   /** b.ev 'deploy': the unit's own start effect or the generic deploy (operators and summons). */
   deploy(v) {
     if (!v || !this.idx) return false;
-    if (this._proceduralOnly(v)) return false;
     this.talents.deployed(v);  // the deploy talents' one-shots (耀骑士临光's birth), once per life
     if (!this.ofx.active || v.isEnemy) { this.skills.deployed(v); return false; }
     const u = this.unitOf(v);

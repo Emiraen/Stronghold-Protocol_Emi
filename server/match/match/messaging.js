@@ -24,11 +24,17 @@ export class MatchMessaging {
     if (this.disposed) return;
     try { this.broadcastFn(msg); } catch (e) { this.reportError('broadcast', e); }
     if (msg?.t === 'm.public') {
-      for (const pid of this.observers.keys()) this.refreshObserver(pid);
+      for (const pid of this.observers.keys()) {
+        try { this.refreshObserver(pid); }
+        catch (e) { this.reportError(`broadcast observer ${pid}`, e); }
+      }
       if (!this.fields.length) for (const [pid, fid] of this.watchers) {
         if (this.observers.has(pid) || !fid.startsWith('n:')) continue;
         const target = this.players.get(fid.slice(2));
-        if (target?.alive && !target.left) this._sendObserverBench(pid, target, fid);
+        if (target?.alive && !target.left) {
+          try { this._sendObserverBench(pid, target, fid); }
+          catch (e) { this.reportError(`broadcast scout ${pid}`, e); }
+        }
       }
     }
   }
@@ -68,10 +74,17 @@ export class MatchMessaging {
       const list = [...this._privDirty];
       this._privDirty.clear();
       for (const ps of list) {
-        if (!(ps.isBot || ps.left || !ps.connected)) this._sendPrivate(ps, false, boundary);
-        this._notifyPrepScouts(ps);
+        if (!(ps.isBot || ps.left || !ps.connected)) {
+          try { this._sendPrivate(ps, false, boundary); }
+          catch (e) { this._privDirty.add(ps); this.reportError(`flush private player ${ps.playerId}`, e); }
+        }
+        try { this._notifyPrepScouts(ps); }
+        catch (e) { this._privDirty.add(ps); this.reportError(`flush scouts player ${ps.playerId}`, e); }
         // 库存变化可能不改变公开视图，仍须更新正在看该玩家的外部观众。
-        for (const [pid, observer] of this.observers) if (observer.target === ps.playerId) this.refreshObserver(pid);
+        for (const [pid, observer] of this.observers) if (observer.target === ps.playerId) {
+          try { this.refreshObserver(pid); }
+          catch (e) { this._privDirty.add(ps); this.reportError(`flush observer ${pid} player ${ps.playerId}`, e); }
+        }
       }
     }
     if (this._pubDirty || forcePublic) this._maybeSendPublic(forcePublic);
@@ -81,14 +94,18 @@ export class MatchMessaging {
     let view;
     try { view = ps.privateView(); } catch (e) {
       if (force) throw e;
+      this._privDirty.add(ps);
       this.reportError('privateView', e); return;
     }
     const json = JSON.stringify(view);
     if (!core && json === ps._lastPriv) return;
-    ps._lastPriv = json;
-    this.sendTo(ps.playerId, markSend(view, {
+    const sent = this.sendTo(ps.playerId, markSend(view, {
       priority: core ? 'high' : 'medium', key: 'm.private', periodic: !core,
     }));
+    if (sent) ps._lastPriv = json;
+    // A failed online send must not turn into a successful de-duplication on
+    // the next flush. Offline players receive a forced full view on reconnect.
+    else if (ps.connected && !ps.isBot && !ps.left) this._privDirty.add(ps);
   }
 
   _maybeSendPublic(force) {
@@ -105,11 +122,17 @@ export class MatchMessaging {
       }
       return;
     }
+    let view, json;
+    try {
+      view = this.publicView();
+      const { serverNow, ...rest } = view;
+      json = JSON.stringify(rest);
+    } catch (e) {
+      this._pubDirty = true;
+      this.reportError('publicView', e);
+      return;
+    }
     this._pubDirty = false;
-    let view;
-    try { view = this.publicView(); } catch (e) { this.reportError('publicView', e); return; }
-    const { serverNow, ...rest } = view;
-    const json = JSON.stringify(rest);
     if (!force && json === this._lastPubJson) return;
     this._lastPubJson = json;
     this._lastPubAt = now;

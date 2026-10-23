@@ -11,11 +11,15 @@ const special = u => rank(u) === 'ELITE' || rank(u) === 'BOSS' || u?.isBoss;
 const hasBaseItem = (u, baseId) => S.itemsOf(u).some(id => (S.itemRecord(id)?.baseId || id) === baseId);
 
 export function install(b) {
-  for (const ps of b.players) {
-    if (!ps.input?.cyclops) continue;
+  for (const ps of b.players) S.isolateContentCallback(b, () => {
+    if (!ps.input?.cyclops) return;
     const pid = ps.playerId;
-    const refs = ps.playerEffects.filter(e => e.data?.tacticKind === 'cyclops');
-    if (!refs.length) continue;
+    const refs = [];
+    for (const e of ps.playerEffects) S.isolateContentCallback(b, () => {
+      if (e.data?.tacticKind === 'cyclops') refs.push(e);
+    }, 'cyclops:reference');
+    if (!refs.length) return;
+    const installedSiracusa = [];
     const ops = () => b.allyUnits.filter(u => u.ownerId === pid && u.kind === 'op');
     const enemies = () => b.enemies.filter(e => onField(e) && (e.ownerId === pid || b.players.length === 1));
     const own = u => u?.side === 'ally' && u.ownerId === pid;
@@ -28,7 +32,7 @@ export function install(b) {
       pp.cyclopsKills ||= {};
       pp.cyclopsKills[id] = (pp.cyclopsKills[id] || 0) + delta;
     };
-    for (const ref of refs) {
+    for (const ref of refs) S.isolateContentCallback(b, () => {
       const fam = ref.data.family, q = ref.data.quality;
       const gold = q === 'gold', prism = q === 'prismatic', silver = q === 'silver';
       const p = ref.params || (ref.params = {});
@@ -40,11 +44,15 @@ export function install(b) {
       let kills = Math.min(fam === 'egir' ? 15 : 12, Math.max(0, p.kills || 0)), deaths = 0;
       let skillLayers = 0, teamSpAt = -Infinity, bountyCoins = 0;
       const killSpAt = new Map(), savedUnits = new Set(), bountyVictims = new Set();
-      const members = () => ops().filter(u => member(u, fam));
+      const members = () => {
+        const out = [];
+        for (const u of ops()) S.isolateContentCallback(b, () => { if (member(u, fam)) out.push(u); }, 'cyclops:member', u);
+        return out;
+      };
       const casterOf = () => members().find(u => onField(u) && u.hp > 0);
       const sync = () => {
         const n = N();
-        for (const u of (fam === 'yan' ? ops() : members())) {
+        for (const u of (fam === 'yan' ? ops() : members())) S.isolateContentCallback(b, () => {
           const mods = {};
           if (fam === 'victoria') {
             const boost = silver && S.itemsOf(u).length ? 1.5 : 1;
@@ -76,8 +84,10 @@ export function install(b) {
             const old = u.mem.hexCd[key] || 1;
             if (old !== factor) { u.skill.spCostMul = u.skill.spCostMul / old * factor; u.mem.hexCd[key] = factor; }
           }
-        }
-        if (fam === 'egir' && prism && deaths) for (const u of ops().filter(u => !member(u, fam))) b.addBuff(u, { key, mods: { atkPct: deaths * 0.05 }, allowDead: true, persist: true });
+        }, 'cyclops:sync', u);
+        if (fam === 'egir' && prism && deaths) for (const u of ops()) S.isolateContentCallback(b, () => {
+          if (!member(u, fam)) b.addBuff(u, { key, mods: { atkPct: deaths * 0.05 }, allowDead: true, persist: true });
+        }, 'cyclops:egir:sync', u);
       };
       if (bond) {
         sync();
@@ -95,7 +105,7 @@ export function install(b) {
       if (fam === 'streak' && prism) {
         const n = Math.min(5, Math.max(0, p.winStacks || 0));
         const apply = u => { if (own(u) && u.kind === 'op') b.addBuff(u, { key, persist: true, allowDead: true, mods: { atkPct: n * 0.03, hpPct: n * 0.03, defPct: n * 0.03, aspd: n * 3, resFlat: n * 0.03 * u.base.res, spRecoveryMul: 1 + n * 0.03, moveMul: 1 + n * 0.03 } }); };
-        for (const u of ops()) apply(u);
+        for (const u of ops()) S.isolateContentCallback(b, () => apply(u), 'cyclops:streak:sync', u);
         b.on('deploy', ({ unit }) => apply(unit));
       }
       if (fam === 'kazimierz') {
@@ -132,7 +142,7 @@ export function install(b) {
         });
         if (gold) b.every(3, () => {
           const caster = casterOf();
-          if (caster) for (const e of enemies()) b.applyStatus(e, 'cold', { duration: 2, source: caster });
+          if (caster) for (const e of enemies()) S.isolateContentCallback(b, () => b.applyStatus(e, 'cold', { duration: 2, source: caster }), 'cyclops:cold', e);
         });
         if (prism) b.on('statusApplied', c => {
           if (c.status !== 'freeze' || !c.entered || !enemies().includes(c.target)) return;
@@ -152,16 +162,18 @@ export function install(b) {
         // Snapshot before spreading: newly ignited enemies wait for the next tick and inherit the old expiry.
         const targets = enemies();
         const burning = targets.map(e => [e, e.mem.hexBurn?.[pid] || 0]).filter(([, until]) => until > b.time);
-        for (const [e, until] of burning) {
-          if (!onField(e) || !(e.hp > 0)) continue;
-          if (prism && rank(e) !== 'BOSS' && !e.isBoss && e.hp / e.s.maxHp < 0.05) { b.kill(e, caster); continue; }
+        for (const [e, until] of burning) S.isolateContentCallback(b, () => {
+          if (!onField(e) || !(e.hp > 0)) return;
+          if (prism && rank(e) !== 'BOSS' && !e.isBoss && e.hp / e.s.maxHp < 0.05) { b.kill(e, caster); return; }
           const ratio = Math.min(silver ? 0.01 : gold ? 0.015 : 0.02, n * (silver ? 0.004 : gold ? 0.008 : 0.006));
           hurt(caster, e, Math.min(e.s.maxHp * ratio, caster.s.atk * (silver ? 1 : gold ? 1.5 : 2)), 'arts');
-          if (gold) for (const other of targets) if (onField(other) && hypot(other.x - e.x, other.y - e.y) <= 1.01) {
-            other.mem.hexBurn ||= {};
-            other.mem.hexBurn[pid] = Math.max(other.mem.hexBurn[pid] || 0, until);
-          }
-        }
+          if (gold) for (const other of targets) S.isolateContentCallback(b, () => {
+            if (onField(other) && hypot(other.x - e.x, other.y - e.y) <= 1.01) {
+              other.mem.hexBurn ||= {};
+              other.mem.hexBurn[pid] = Math.max(other.mem.hexBurn[pid] || 0, until);
+            }
+          }, 'cyclops:burn:spread', other);
+        }, 'cyclops:burn', e);
       });
       // 伤害前：暴击、法术强度、技能增伤与针对冻结的伤害。
       b.on('hit', c => {
@@ -180,9 +192,9 @@ export function install(b) {
         if (fam === 'siracusa' && member(u, fam)) {
           // Each quality is selected independently: gold must grant its own stated attack bonus.
           if (gold && c.dmg.isAttack && !c.dmg.isSkill) c.dmg.mul *= 1 + n * 0.03;
-          const chance = refs.filter(e => e.data.family === 'siracusa' && e.data.quality === 'silver').reduce((sum) => sum + Math.min(40, L()) * 0.012, 0);
+          const chance = installedSiracusa.filter(quality => quality === 'silver').reduce(sum => sum + Math.min(40, L()) * 0.012, 0);
           if (prism || (silver && b.rng() < Math.min(1, chance))) {
-            const critBonus = refs.filter(e => e.data.family === 'siracusa').reduce((sum, e) => sum + Math.min(e.data.quality === 'silver' ? 40 : e.data.quality === 'gold' ? 80 : 120, L()) * (e.data.quality === 'silver' ? 0.02 : e.data.quality === 'prismatic' ? 0.06 : 0), 0);
+            const critBonus = installedSiracusa.reduce((sum, quality) => sum + Math.min(quality === 'silver' ? 40 : quality === 'gold' ? 80 : 120, L()) * (quality === 'silver' ? 0.02 : quality === 'prismatic' ? 0.06 : 0), 0);
             if (!c.dmg.cyclopsCrit) c.dmg.mul *= Math.min(3, 1.5 + critBonus);
             c.dmg.cyclopsCrit = true;
           }
@@ -219,11 +231,15 @@ export function install(b) {
         if (isMember && fam === 'kjerag' && prism && t.s.flags.freeze) hurt(u, t, c.amount * Math.min(0.3, n * 0.01));
         if (fam === 'yan' && member(u, fam)) { t.mem.hexBurn ||= {}; t.mem.hexBurn[pid] = b.time + 4; }
         if (fam === 'morph' && silver && c.dmg.isAttack) {
-          if (hasBaseItem(u, 'chess_item_1_01_e_a')) for (const other of enemies()) if (other !== t && hypot(other.x - t.x, other.y - t.y) <= 1.01) hurt(u, other, c.amount * 0.05, c.dmg.type);
+          if (hasBaseItem(u, 'chess_item_1_01_e_a')) for (const other of enemies()) S.isolateContentCallback(b, () => {
+            if (other !== t && hypot(other.x - t.x, other.y - t.y) <= 1.01) hurt(u, other, c.amount * 0.05, c.dmg.type);
+          }, 'cyclops:morph:damage', other);
         }
       });
       if (fam === 'morph' && silver) b.every(1, () => {
-        for (const u of ops().filter(onField)) if (hasBaseItem(u, 'chess_item_1_05_e_a')) b.heal(u, u, u.s.maxHp * 0.01, { self: true });
+        for (const u of ops().filter(onField)) S.isolateContentCallback(b, () => {
+          if (hasBaseItem(u, 'chess_item_1_05_e_a')) b.heal(u, u, u.s.maxHp * 0.01, { self: true });
+        }, 'cyclops:morph:heal', u);
       });
       if (fam === 'siracusa' && gold) b.on('beforeAttack', c => {
         if (!member(c.attacker, fam) || c.profile?.heal) return;
@@ -263,7 +279,9 @@ export function install(b) {
         if (!member(killer, fam)) return;
         if (fam === 'sargon' && prism && b.time >= teamSpAt) {
           teamSpAt = b.time + 2;
-          for (const u of members()) if (onField(u) && u.skill) u.skill.gainSp(u.skill.spCost * 0.25, 'cyclops');
+          for (const u of members()) S.isolateContentCallback(b, () => {
+            if (onField(u) && u.skill) u.skill.gainSp(u.skill.spCost * 0.25, 'cyclops');
+          }, 'cyclops:teamSp', u);
         }
         if (fam === 'laterano' && gold && killer.skill && b.time >= (killSpAt.get(killer) ?? -Infinity)) {
           killSpAt.set(killer, b.time + 2);
@@ -277,6 +295,7 @@ export function install(b) {
       if (fam === 'egir' && prism) b.on('death', ({ unit, reason }) => {
         if (own(unit) && unit.kind === 'op' && reason === 'killed' && deaths < 6) { deaths++; sync(); }
       });
-    }
-  }
+      if (fam === 'siracusa') installedSiracusa.push(q);
+    }, 'cyclops:gift');
+  }, 'cyclops:player');
 }

@@ -10,7 +10,7 @@ import { t as trA, N_ } from '../../../shared/i18n.js';
 
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, PHASE_NAMES, ROOM_CODE_LEN, MAX_SEATS, ENTERTAINMENT_DEFAULT_SEATS, ENTERTAINMENT_CAPACITIES, CYCLOPS_DEFAULT_SEATS, CYCLOPS_CAPACITIES, ENDLESS_VARIANT, modeIdFor } from '../../../shared/constants.js';
-import { isRankedMatch, rankIconUrl, rankBoundaries, rankOf } from '../../../shared/ranks.js';
+import { isRankedMatch, rankIconUrl, rankBoundaries, rankOf, normalizeRankLabel } from '../../../shared/ranks.js';
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo, Modal, Overlay, isTopOverlay } from '../ui/components.js';
 import { toast, toastError, describeError } from '../ui/toasts.js';
 import { GuideButton, openGuide } from '../ui/guide.js';
@@ -34,6 +34,10 @@ import { ChatPanel } from './chat.js';
 import { RecruitmentPreview, RecruitmentHall, recruitmentKey, recruitmentTarget } from '../ui/recruitment.js';
 import { CardPicker, cardOperators, seatAvatar } from '../ui/seatArt.js';
 import { skinsStore, setPlayerCard } from '../ui/skins.js';
+import { rankPyramidView } from '../ui/rankPyramid.js';
+import { RankPyramidGraphic, rankPyramidCaption } from '../ui/rankPyramidGraphic.js';
+import { rankingPending } from '../ui/rankStatus.js';
+import { useNameCardNotice } from '../ui/nameCardNotices.js';
 
 /** Official mode texts (activity_table act2autochess.modeDataDict), fallback when config.json is absent. */
 export const MODE_TEXT = {
@@ -197,15 +201,21 @@ function TipsPanel() {
 
 /** 排位段位徽章（大厅/结算用）：图标 + 段位名。
  *  label 由服务端拼好（含小段小分；未定级为「未定级 (x/y)」；神话以上尾部带「#N」全服排名）。 */
-export function RankBadge({ rank, size = 'md' }) {
+export function RankBadge({ rank, size = 'md', onIconClick, expanded = false, controls, showLabel = true }) {
   const r = rank && typeof rank === 'object' ? rank : null;
-  const label = r?.rank?.label || r?.label || trA("未定级");
+  const pending = rankingPending(r);
+  const label = normalizeRankLabel(r?.rank?.label || r?.label || trA("未定级"));
   const icon = r?.rank?.icon || r?.icon || 'unranked';
   return html`<span class="rank-badge rank-badge--${size}">
-    <img class="rank-badge__icon" src=${rankIconUrl(icon)} alt=${label} loading="lazy" />
-    <span class="rank-badge__text">
+    ${onIconClick ? html`<button type="button" class="rank-badge__toggle" onClick=${onIconClick}
+      aria-label=${expanded ? trA('返回段位说明') : trA('查看排位金字塔')} aria-pressed=${expanded} aria-controls=${controls}
+      title=${expanded ? trA('点击返回段位说明') : trA('点击查看排位金字塔')}>
+      <img class="rank-badge__icon" src=${rankIconUrl(icon)} alt=${label} loading="lazy" />
+    </button>` : html`<img class="rank-badge__icon" src=${rankIconUrl(icon)} alt=${label} loading="lazy" />`}
+    ${showLabel ? html`<span class="rank-badge__text">
       <b class="rank-badge__label">${label}</b>
-    </span>
+      ${pending ? html`<small role="status">${trA('全服排名待确认')}</small>` : null}
+    </span>` : null}
   </span>`;
 }
 
@@ -274,7 +284,7 @@ export function HistoryScreen({ playerId, name, onBack }) {
             class="history-entry" disabled=${loading} onClick=${() => open(item)}>
             <span class="history-entry__result ${item.victory ? 'is-win' : 'is-lose'}">${item.victory ? trA("模拟完成") : trA("模拟失败")}</span>
             <span class="history-entry__info"><b>${item.variant === ENDLESS_VARIANT ? '娱乐 · 无尽模式' : item.variant === 'entertainment_multi' ? '娱乐 · 多人同盟' : item.ranked ? trA("排位赛") : trA("普通模拟")} · ${trA(DIFFICULTY_NAMES[item.difficulty] || item.difficulty || trA("未知难度"))}</b>
-              <small>${(/^(mode_)?single/.test(item.modeId || '')) ? trA("独立模拟") : (/^(mode_)?multi/.test(item.modeId || '')) ? trA("同盟模拟") : trA("模拟")} ${trA("· 通过")} ${item.roundsPassed ?? 0} ${trA("回合")}${item.rank?.tierAfter ? ` · ${item.rank.tierAfter}` : ''}</small></span>
+              <small>${(/^(mode_)?single/.test(item.modeId || '')) ? trA("独立模拟") : (/^(mode_)?multi/.test(item.modeId || '')) ? trA("同盟模拟") : trA("模拟")} ${trA("· 通过")} ${item.roundsPassed ?? 0} ${trA("回合")}${item.rank?.tierAfter ? ` · ${normalizeRankLabel(item.rank.tierAfter)}` : ''}</small></span>
             <time class="history-entry__time num">${historyDate(item.at)}</time>
             <${Icon} name="chevronRight" />
           </button>`)}</div>`}
@@ -343,15 +353,17 @@ const RANK_BOUNDARIES = rankBoundaries();
 function RankHelp({ open, onClose }) {
   return html`<${Modal} open=${open} onClose=${onClose} title=${trA("段位积分边界")} micro="RANK POINTS" class="rank-help" overlayClass="rank-help-overlay"
     actions=${html`<${Button} variant="primary" onClick=${onClose}>${trA("关闭")}<//>`}>
-    <p>${trA("当前段位以结算结果为准。")}</p>
+    <p>${trA("源能战魂需达到神话450分（总积分2550），且位列全服前50名；积分达标但未进入前50名时仍为神话三。")}</p>
     <table class="rank-help__table"><thead><tr><th>${trA("段位")}</th><th>${trA("总积分范围")}</th></tr></thead>
-      <tbody>${RANK_BOUNDARIES.map((r) => html`<tr key=${r.icon}><td>${r.label}</td><td class="num">${r.to == null ? `≥ ${r.from}` : `${r.from}–${r.to}`}</td></tr>`)}</tbody>
+      <tbody>${RANK_BOUNDARIES.map((r) => html`<tr key=${r.icon}><td>${r.label}</td><td class="num">${r.icon === 'radiant' ? trA("≥ {points}，且全服前50名", { points: r.from }) : r.icon === 'immortal_3' ? trA("≥ {points}（未满足赋能条件时保留）", { points: r.from }) : r.to == null ? `≥ ${r.from}` : `${r.from}–${r.to}`}</td></tr>`)}</tbody>
     </table>
   <//>`;
 }
 
 export function RankLeaderboard({ onClose }) {
+  const myName = useStore((s) => s.me.name);
   const [items, setItems] = useState([]);
+  const [radiantThreshold, setRadiantThreshold] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const mounted = useRef(true);
@@ -363,7 +375,10 @@ export function RankLeaderboard({ onClose }) {
     setError('');
     try {
       const reply = await net.request('rank.list', {});
-      if (mounted.current) setItems(reply.items || []);
+      if (mounted.current) {
+        setItems(reply.items || []);
+        setRadiantThreshold(reply.radiantThreshold || null);
+      }
     } catch (err) {
       if (mounted.current) setError(err?.message || trA("排行榜加载失败，请重试"));
     } finally {
@@ -377,21 +392,23 @@ export function RankLeaderboard({ onClose }) {
   const byChar = useMemo(() => new Map(cardList.map((c) => [c.charId, c])), [cardList]);
   return html`<${HallFrame} title=${trA("全服排名")} en="GLOBAL RANKING" onBack=${onClose} class="east-rank-leaderboard">
     <main class="rank-leaderboard-screen">
-      <header class="rank-leaderboard-screen__head"><div><${MicroLabel} tone="mint">MYTHIC LADDER<//><p>${trA("神话及以上玩家的全服排位。排名按积分及最近活跃时间确定。下拉列表可查看更多名次。")}</p></div>
+      <header class="rank-leaderboard-screen__head"><div><${MicroLabel} tone="mint">MYTHIC LADDER<//><p>${trA("神话及以上玩家的全服排位。排名按积分及最近活跃时间确定。下拉列表可查看更多名次。")}</p>
+        ${Number.isFinite(radiantThreshold?.mythicPoints) ? html`<small class="rank-leaderboard-screen__threshold" title=${trA('积分门槛取基础要求与全服第50名的较高值；同分仍按最近活跃时间确定排名')}>${trA('当前源能战魂最低阈值：神话三 {points} 分', { points: radiantThreshold.mythicPoints })}</small>` : null}</div>
         <${Button} size="sm" variant="secondary" loading=${loading} disabled=${loading} onClick=${refresh}>${trA("刷新")}<//></header>
       ${loading ? html`<div class="rank-leaderboard-screen__state" role="status"><${Spinner} size="sm" label=${trA("正在加载排行榜")} /></div>`
         : error ? html`<p class="rank-leaderboard-screen__state" role="alert">${error}</p>`
         : !items.length ? html`<p class="rank-leaderboard-screen__state" role="status">${trA("暂无神话及以上玩家")}</p>`
         : html`<div class="rank-leaderboard-screen__table-wrap"><div class="rank-leaderboard-screen__row rank-leaderboard-screen__row--head"><span>${trA("排名")}</span><span>${trA("头像")}</span><span>${trA("昵称")}</span><span>${trA("段位")}</span><span>${trA("分数")}</span><span>${trA("胜场")}</span></div>
-          ${items.map((item, idx) => { const seat = { playerId: item.position || idx + 1, card: item.card, cardSkin: item.cardSkin || 'original' };
+          <div class="rank-leaderboard-screen__rows">${items.map((item, idx) => { const seat = { playerId: item.position || idx + 1, card: item.card, cardSkin: item.cardSkin || 'original' };
+            const isSelf = !!myName && item.name === myName;
             const avatar = seatAvatar(seat, { pool: cardList, byChar, m, myId: null, myCard: null });
             const fallbackAvatar = item.cardSkin && item.cardSkin !== 'original'
               ? seatAvatar({ ...seat, cardSkin: 'original' }, { pool: cardList, byChar, m, myId: null, myCard: null }) : null;
-            return html`<div key=${item.position || idx} class=${`rank-leaderboard-screen__row rank-leaderboard-screen__row--r${Math.min(item.position || idx + 1, 3)}`}>
+            return html`<div key=${item.position || idx} class=${`rank-leaderboard-screen__row rank-leaderboard-screen__row--r${Math.min(item.position || idx + 1, 3)}${isSelf ? ' is-self' : ''}`} aria-current=${isSelf ? 'true' : undefined} title=${isSelf ? trA('本账号') : undefined}>
               <span class="rank-leaderboard-screen__rank num">${item.position}</span><span class="rank-leaderboard-screen__avatar"><${AvatarFrame} size="sm" name=${item.name || trA('博士')} src=${avatar} fallbackSrc=${fallbackAvatar} fallbackIcon="user" seat=${idx} /></span>
-              <span class="rank-leaderboard-screen__name">${item.name || trA('博士')}</span><span class="rank-leaderboard-screen__tier"><img src=${rankIconUrl(item.rank.icon)} alt=${item.rank.label} /><b>${item.rank.label}</b></span>
+              <span class="rank-leaderboard-screen__name">${item.name || trA('博士')}</span><span class="rank-leaderboard-screen__tier"><img src=${rankIconUrl(item.rank.icon)} alt=${normalizeRankLabel(item.rank.label)} /><b>${normalizeRankLabel(item.rank.label)}</b></span>
               <span class="rank-leaderboard-screen__points num">${item.points}</span><span class="rank-leaderboard-screen__wins num">${item.wins || 0}</span>
-            </div>`; })}</div>`}
+            </div>`; })}</div></div>`}
     </main>
   <//>`;
 }
@@ -671,14 +688,14 @@ function RankHistory({ playerId, name, online }) {
           : items.map(item => {
             const delta = rankHistoryDelta(item.rank);
             const placement = item.rank?.kind === 'placement';
-            const afterIcon = item.rank?.iconAfter || (Number.isFinite(item.rank?.after) && (!placement || item.rank.placementPlayed >= (item.rank.placementMatches || 3)) ? rankOf(item.rank.after).icon : 'unranked');
+            const afterIcon = item.rank?.iconAfter || (Number.isFinite(item.rank?.after) && (!placement || item.rank.placementPlayed >= (item.rank.placementMatches || 3)) ? rankOf(item.rank.after, item.rank.globalRank).icon : 'unranked');
             return html`<button key=${`${item.matchId}:${item.playerId}`} type="button" class=${`rank-record${item.victory ? ' is-win' : ' is-lose'}`} disabled=${!!loading} onClick=${() => open(item)}>
               <span class="rank-record__result"><i></i>${item.victory ? trA('胜利') : trA('失利')}</span>
               <span class="rank-record__info"><b>${trA(DIFFICULTY_NAMES[item.difficulty] || item.difficulty || '未知难度')}<span>${item.mode === 'solo' || /^(mode_)?single/.test(item.modeId || '') ? trA('独立模拟') : trA('同盟模拟')}</span></b>
                 <small>${historyDate(item.at)} · ${trA('通过')} ${item.roundsPassed ?? 0} ${trA('回合')}</small>
-                ${item.rank ? html`<span class="rank-record__tier">${item.rank.tierAfter || ''}${placement ? ` · ${trA('定级')} ${item.rank.placementPlayed || 0}/${item.rank.placementMatches || 3}` : ''}</span>` : null}</span>
+                ${item.rank ? html`<span class="rank-record__tier">${normalizeRankLabel(item.rank.tierAfter) || ''}${placement ? ` · ${trA('定级')} ${item.rank.placementPlayed || 0}/${item.rank.placementMatches || 3}` : ''}</span>` : null}</span>
               <span class=${`rank-record__points${delta > 0 ? ' is-up' : delta < 0 ? ' is-down' : ''}`}>
-                <span class="rank-record__delta"><img class="rank-record__after-icon" src=${rankIconUrl(afterIcon)} alt=${item.rank?.tierAfter || trA('未定级')} title=${item.rank?.tierAfter || trA('未定级')} /><b class="num">${delta === null ? '—' : `${delta >= 0 ? '+' : ''}${delta}`}</b></span><small>${trA('排位分')}</small>
+                <span class="rank-record__delta"><img class="rank-record__after-icon" src=${rankIconUrl(afterIcon)} alt=${normalizeRankLabel(item.rank?.tierAfter) || trA('未定级')} title=${normalizeRankLabel(item.rank?.tierAfter) || trA('未定级')} /><b class="num">${delta === null ? '—' : `${delta >= 0 ? '+' : ''}${delta}`}</b></span><small>${trA('排位分')}</small>
                 ${Number.isFinite(item.rank?.before) && Number.isFinite(item.rank?.after) ? html`<em class="num">${item.rank.before} → ${item.rank.after}</em>` : null}</span>
               <span class="rank-record__go">${loading === item.matchId ? html`<${Spinner} size="sm" />` : html`<${Icon} name="chevronRight" />`}</span>
             </button>`;
@@ -691,14 +708,44 @@ function RankHistory({ playerId, name, online }) {
 }
 
 function RankHall({ rank, me, online, onBack, onStart, onLeaderboard, onHelp }) {
+  const [showPyramid, setShowPyramid] = useState(false);
+  const pending = rankingPending(rank);
+  const pyramid = rankPyramidView(rank?.rankPyramid);
   return html`<${HallFrame} title=${trA('排位大厅')} en="RANKED PROTOCOL" onBack=${onBack} class="east-ranked">
     <main class="east-ranked__body"><section class="east-ranked__identity">
-      <${MicroLabel} tone="mint">RANKED SIMULATION<//><${RankBadge} rank=${rank} /><h2>${trA('以同盟之名，攀登巅峰')}</h2>
-      <p>${trA('险境、绝境、终极模拟计入排位。标准模拟不计排位分与定级。')}</p>
-      <div class="east-ranked__tools"><${Button} icon="crown" disabled=${!online} onClick=${onLeaderboard}>${trA('全服排行榜')}<//><${Button} icon="info" onClick=${onHelp}>${trA('段位规则')}<//></div>
-      <div class="east-ranked__start"><${Button} icon="user" disabled=${!online} onClick=${() => onStart('solo')}>${trA('创建独立排位')}<//><${Button} variant="secondary" icon="users" disabled=${!online} onClick=${() => onStart('coop')}>${trA('创建同盟排位')}<//></div>
+      <${MicroLabel} tone="mint">RANKED SIMULATION<//>
+      <${RankBadge} rank=${rank} onIconClick=${() => setShowPyramid(value => !value)} expanded=${showPyramid} controls="ranked-identity-details" showLabel=${!showPyramid} />
+      <div id="ranked-identity-details" class="east-ranked__details">
+        ${showPyramid ? html`<${RankPyramidPanel} view=${pyramid} />` : html`
+          <h2>${trA('以同盟之名，攀登巅峰')}</h2>
+          <p>${trA('险境、绝境、终极模拟计入排位。标准模拟不计排位分与定级。')}</p>`}
+      </div>
+      ${pending ? html`<p role="status">${trA('全服排名待确认，排位与排行榜暂不可用；其他模拟不受影响。')}</p>` : null}
+      <div class="east-ranked__tools"><${Button} icon="crown" disabled=${!online || pending} onClick=${onLeaderboard}>${trA('全服排行榜')}<//><${Button} icon="info" onClick=${onHelp}>${trA('段位规则')}<//></div>
+      <div class="east-ranked__start"><${Button} icon="user" disabled=${!online || pending} onClick=${() => onStart('solo')}>${trA('创建独立排位')}<//><${Button} variant="secondary" icon="users" disabled=${!online || pending} onClick=${() => onStart('coop')}>${trA('创建同盟排位')}<//></div>
     </section><${RankHistory} key=${me?.playerId || ''} playerId=${me?.playerId} name=${me?.name} online=${online} /></main>
   <//>`;
+}
+
+function RankPyramidPanel({ view }) {
+  const filled = view.filledWins ?? view.rows.flat().filter(Boolean).length;
+  const total = view.totalWins ?? filled;
+  const caption = rankPyramidCaption(view.best);
+  return html`<section class="rank-pyramid-panel" aria-label=${trA('排位金字塔')}>
+    <div class="rank-pyramid-panel__head">
+      <div><${MicroLabel} tone="mint">ACT RANK<//><h3>${trA('排位金字塔')}</h3></div>
+    </div>
+    <${RankPyramidGraphic} view=${view} />
+    ${view.best ? html`<div class="rank-pyramid-panel__caption" style=${{ color: caption.color }}>
+      <span class="rank-pyramid-panel__name">${caption.name}</span>
+      ${caption.placement ? html`<span class="rank-pyramid-panel__placement">${caption.placement}</span>` : null}
+    </div>` : null}
+    <div class="rank-pyramid-panel__progress">
+      <span title=${trA('排位结算实际得分大于 0 时计入，每场填 1 格')}>${trA('总得分场次')} <strong>${total}</strong> ${trA('场')}</span>
+      <span>${view.nextLayer ? html`${trA('距离下一层填满还差')} <strong>${view.winsToNextLayer}</strong> ${trA('场')}` : trA('七层已填满')}</span>
+    </div>
+    <div class="rank-pyramid-panel__footer"><small class="rank-pyramid-panel__note">${total < 9 ? trA('累计 9 场得分对局后在本人卡面展示') : trA('最多保留 49 格，高段位格子优先置顶')}</small><small class="rank-pyramid-panel__count">${filled} / 49</small></div>
+  </section>`;
 }
 
 export function LobbyScreen() {
@@ -712,6 +759,9 @@ export function LobbyScreen() {
   useStore((s) => s.portraits, Object.is, skinsStore);
   const cardList = useMemo(() => cardOperators(data.list('chess'), data.get('backups')), [data.get('chess'), data.get('backups')]);
   const myCard = useStore((s) => s.card, Object.is, skinsStore);
+  const profileId = useStore((s) => s.profileId, Object.is, skinsStore);
+  const profileReady = useStore((s) => s.profileReady, Object.is, skinsStore);
+  const unreadNameCards = useNameCardNotice(profileReady ? profileId : null, rank);
   const avatarSrc = seatAvatar({playerId:me.playerId,card:myCard}, {pool:cardList,byChar:new Map(cardList.map(c=>[c.charId,c])),m:data.get('assets'),myId:me.playerId,myCard});
   const bg = useHubBackdrop();
   const [hall, setHall] = useState(null);
@@ -736,10 +786,12 @@ export function LobbyScreen() {
   const entertainment = variant !== null;
   const cyclops = variant === 'entertainment_cyclops';
   const rankedEligible = !entertainment && isRankedMatch(ranked, difficulty);
+  const rankPending = rankingPending(rank);
   const codeOk = CODE_RE.test(normalizeCode(code));
   const pickDifficulty = (d) => { setDifficulty(d); savePref('lobby.difficulty', d); };
-  const toggleRanked = () => { setRanked(!ranked); savePref('lobby.ranked', !ranked); };
+  const toggleRanked = () => { if (rankPending && !ranked) return; setRanked(!ranked); savePref('lobby.ranked', !ranked); };
   const openMode = (mode, rankedStart = false) => {
+    if (rankedStart && rankPending) return;
     setRoomMode(mode); setVariant(null); setHall('protocol'); savePref('lobby.mode', mode);
     if (rankedStart) { setRanked(true); savePref('lobby.ranked', true); if (difficulty === 'FUNNY') pickDifficulty('NORMAL'); }
   };
@@ -751,9 +803,12 @@ export function LobbyScreen() {
     try { await fn(); } catch (err) { toastError(err); }
     finally { inFlight.current = false; if (alive.current) setBusy(null); }
   };
-  const create = () => run('create', () => net.request('room.create', entertainment
-    ? { mode: 'coop', variant, capacity: cyclops ? cyclopsCapacity : capacity, difficulty, ranked: false }
-    : { mode: roomMode, difficulty, ranked }));
+  const create = () => {
+    if (rankPending && rankedEligible) { toast(trA('全服排名待确认，请先关闭排位赛'), 'warn'); return; }
+    return run('create', () => net.request('room.create', entertainment
+      ? { mode: 'coop', variant, capacity: cyclops ? cyclopsCapacity : capacity, difficulty, ranked: false }
+      : { mode: roomMode, difficulty, ranked }));
+  };
   const join = () => {
     if (!codeOk) { toast(trA('同盟密钥为 {ROOM_CODE_LEN} 位字母或数字', { ROOM_CODE_LEN }), 'warn'); return; }
     return run('join', () => joinRoom(code));
@@ -775,7 +830,7 @@ export function LobbyScreen() {
           <${Button} variant="secondary" size="sm" square=${true} onClick=${() => setDialog('backdrop')} title=${trA('大厅背景')} aria-label=${trA('大厅背景')}><${BackdropGlyph} /><//>
           <${LobbyMusicButton} /><${FullscreenButton} class="btn btn--secondary btn--sm btn--square" />
         </div></div>
-      <div class="topbar__right"><button type="button" class="me-chip me-chip--btn" onClick=${() => setDialog('card')} aria-label=${trA('名片编辑')} title=${trA('名片编辑')}><${AvatarFrame} size="sm" name=${me.name} src=${avatarSrc} fallbackIcon="user" seat=${0} self=${true} /><div class="me-chip__text"><span class="me-chip__name">${me.name || trA('博士')}</span><${MicroLabel}>${me.playerId != null ? `DOCTOR #${doctorNo(me.playerId)}` : 'DOCTOR'}<//></div></button></div>
+      <div class="topbar__right"><button type="button" class="me-chip me-chip--btn" onClick=${() => setDialog('card')} aria-label=${trA(unreadNameCards ? '名片编辑 · 有新获得的卡面' : '名片编辑')} title=${trA(unreadNameCards ? '名片编辑 · 有新获得的卡面' : '名片编辑')}><span class="me-chip__avatar"><${AvatarFrame} size="sm" name=${me.name} src=${avatarSrc} fallbackIcon="user" seat=${0} self=${true} />${unreadNameCards ? html`<span class="me-chip__unread" aria-hidden="true"></span>` : null}</span><div class="me-chip__text"><span class="me-chip__name">${me.name || trA('博士')}</span><${MicroLabel}>${me.playerId != null ? `DOCTOR #${doctorNo(me.playerId)}` : 'DOCTOR'}<//></div></button></div>
     </header>
     <main class="hub-stage">
       <div class="hub-center"><div class="hub-center__mark"><${HubRadar} bg=${bg} /><${Emblem} /></div><div class="hub-center__en">STRONGHOLD PROTOCOL <b>ALLIANCE</b></div><h1 class="hub-center__title">${trA('卫戍协议：盟约')}</h1></div>
@@ -811,9 +866,9 @@ export function LobbyScreen() {
       <div class="proto-body"><section class="proto-stage"><${ProtocolScene} key=${difficulty} difficulty=${difficulty} /><div class="proto-brief"><span class="proto-brief__code num">${variant === ENDLESS_VARIANT ? 'ENDLESS' : difficultyInfo(roomMode, difficulty).code}</span><b class="proto-brief__name">${trA(variant === ENDLESS_VARIANT ? '无尽模式' : DIFFICULTY_NAMES[difficulty])}</b><p>${variant === ENDLESS_VARIANT ? '标准起始规则 · 击败最终首领后持续推进 · 每五回合首领战 · 不计排位' : cyclops ? '21 回合 · 装备奖励 · R10 征召 · 经验升级' : entertainment ? '多人同盟 · 分组卡池与轮选 · 不计排位' : roomMode === 'solo' ? '独自调配阵容，以自己的节奏完成模拟。' : '邀请同伴或手动添加 AI，共同抵御敌潮。'}</p></div></section>
       <section class="proto-side">${variant === ENDLESS_VARIANT ? html`<div class="proto-list" aria-label="无尽模式规则"><article class="pcard is-on pcard--endless"><span class="pcard__glow" aria-hidden="true"></span><span class="pcard__head"><${Icon} name="hourglass" class="pcard__glyph" /><span class="pcard__name">${trA('无尽模式')}</span></span><span class="pcard__desc">${trA('击败原版最终首领后继续推进')}</span><span class="pcard__effects"><span>${trA('每五回合迎来新的首领')}</span><span>${trA('敌方强度持续提升，无数值上限')}</span></span><span class="pcard__meta"><span class="num">ENDLESS</span><span><b class="num">∞</b> ${trA('回合')}</span><span>${trA('固定标准起始规则')}</span></span><span class="pcard__stamp" aria-hidden="true"><${StampRing} /><span class="pcard__tick"><${Icon} name="check" /></span><span class="pcard__ok">${trA('已选定')}</span></span></article></div>` : html`<div class="proto-list" aria-label=${trA('模拟难度')}>${DIFFICULTIES.map((d) => html`<${ProtoCard} key=${d} roomMode=${roomMode} difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} cyclops=${cyclops} />`)}</div>`}
         <div class="proto-foot">
-          ${entertainment ? html`<label class="east-capacity">${trA('房间人数')}<select aria-label=${cyclops ? '舟铲铲之战房间人数' : variant === ENDLESS_VARIANT ? '无尽模式房间人数' : '娱乐房间容量'} value=${cyclops ? cyclopsCapacity : capacity} onChange=${(e) => (cyclops ? setCyclopsCapacity : setCapacity)(Number(e.currentTarget.value))}>${(cyclops ? CYCLOPS_CAPACITIES : ENTERTAINMENT_CAPACITIES).map((n) => html`<option key=${n} value=${n}>${n} ${trA('人')}</option>`)}</select><span>${trA('娱乐模式 · 不计排位')}</span></label>` : html`<label class="east-ranked-toggle"><input type="checkbox" checked=${ranked} onChange=${toggleRanked} /><span>${trA('开启排位赛')}</span><small>${difficulty === 'FUNNY' ? trA('标准不计排位分 / 不计定级') : rankedEligible ? 'RANKED' : trA('普通模拟')}</small></label>`}
+          ${entertainment ? html`<label class="east-capacity">${trA('房间人数')}<select aria-label=${cyclops ? '舟铲铲之战房间人数' : variant === ENDLESS_VARIANT ? '无尽模式房间人数' : '娱乐房间容量'} value=${cyclops ? cyclopsCapacity : capacity} onChange=${(e) => (cyclops ? setCyclopsCapacity : setCapacity)(Number(e.currentTarget.value))}>${(cyclops ? CYCLOPS_CAPACITIES : ENTERTAINMENT_CAPACITIES).map((n) => html`<option key=${n} value=${n}>${n} ${trA('人')}</option>`)}</select><span>${trA('娱乐模式 · 不计排位')}</span></label>` : html`<label class="east-ranked-toggle"><input type="checkbox" checked=${ranked} disabled=${rankPending && !ranked} onChange=${toggleRanked} /><span>${trA('开启排位赛')}</span><small>${difficulty === 'FUNNY' ? trA('标准不计排位分 / 不计定级') : rankedEligible ? 'RANKED' : trA('普通模拟')}</small></label>`}
           <p class="proto-hint">${!online ? trA('正在连接服务器…') : entertainment ? trA('房间码邀请 / 手动添加 AI · 不参与自动匹配') : trA('创建后可通过聊天发送房间码，邀请同伴加入。')}</p>
-          <button type="button" class="proto-start" disabled=${!online || !!busy} onClick=${create}><span class="proto-start__mark" aria-hidden="true"><span class="proto-start__rook"><i>[</i><${Icon} name="rook" /><i>]</i></span><small>STRONGHOLD<br />PROTOCOL</small></span><span class="proto-start__label">${busy === 'create' ? trA('创建中…') : variant === ENDLESS_VARIANT ? trA('创建无尽模式房间') : entertainment ? trA('创建娱乐同盟') : roomMode === 'solo' ? trA('开始独立模拟') : trA('创建同盟')}</span><span class="proto-start__deco" aria-hidden="true"></span></button>
+          <button type="button" class="proto-start" disabled=${!online || !!busy || rankPending && rankedEligible} onClick=${create}><span class="proto-start__mark" aria-hidden="true"><span class="proto-start__rook"><i>[</i><${Icon} name="rook" /><i>]</i></span><small>STRONGHOLD<br />PROTOCOL</small></span><span class="proto-start__label">${busy === 'create' ? trA('创建中…') : variant === ENDLESS_VARIANT ? trA('创建无尽模式房间') : entertainment ? trA('创建娱乐同盟') : roomMode === 'solo' ? trA('开始独立模拟') : trA('创建同盟')}</span><span class="proto-start__deco" aria-hidden="true"></span></button>
         </div>
       </section></div>
     <//>` : null}

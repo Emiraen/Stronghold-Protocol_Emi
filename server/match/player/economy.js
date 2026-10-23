@@ -4,6 +4,7 @@ import { freeSlot } from "../board.js";
 
 import { OK, fail } from "./common.js";
 import { cyclopsLayerGain, cyclopsVictoriaRewards, cyclopsRefreshChance, cyclopsRefreshHooks, cyclopsPaidRefreshRewards } from '../cyclops.js';
+import { isolateRewardStep } from '../rewardRecovery.js';
 export class PlayerEconomy {
   addFunds(n, { reason = '' } = {}) {
     if (!Number.isFinite(n) || n === 0) return 0;
@@ -30,16 +31,31 @@ export class PlayerEconomy {
     this.m.dispatch(this, 'onSpend', { amount, reason, total: this.stats.gold });
   }
 
-  addLayers(bondId, n, { requireActive = false, reason = '' } = {}) {
-    if (!this.gd.bond(bondId) || !Number.isFinite(n) || n <= 0) return 0;
-    if (requireActive && !(this.bonds[bondId] && this.bonds[bondId].active)) return 0;
+  addLayers(bondId, n, { requireActive = false, reason = '', receipt = null } = {}) {
+    if (receipt) receipt.stage = 'preflight';
+    if (!this.gd.bond(bondId) || !Number.isFinite(n) || n <= 0) {
+      if (receipt) receipt.noop = 'invalid';
+      return 0;
+    }
+    if (requireActive && !(this.bonds[bondId] && this.bonds[bondId].active)) {
+      if (receipt) receipt.noop = 'inactive';
+      return 0;
+    }
     const before = this.layers[bondId] || 0;
+    // Cyclops modifiers may consume fractional remainders before the layer write; never blindly replay them.
+    if (receipt && this.m.isCyclops) receipt.stage = 'preparing';
     const add = layerGainRoom(before, Math.floor(this.m.isCyclops ? cyclopsLayerGain(this, bondId, n) : n), this.m.isEndless ? Infinity : undefined);
-    if (add <= 0) return 0;
+    if (add <= 0) {
+      if (receipt) receipt.noop = 'no-layer-room';
+      return 0;
+    }
+    if (receipt) receipt.stage = 'committing';
     this.layers[bondId] = before + add;
-    this.recompute();
-    this.m.dispatch(this, 'onLayers', { bondId, from: before, to: before + add, reason });
-    cyclopsVictoriaRewards(this.m, this);
+    if (receipt) receipt.stage = 'committed';
+    isolateRewardStep(this.m, `layers:${bondId}:recompute`, () => this.recompute());
+    isolateRewardStep(this.m, `layers:${bondId}:onLayers`, () =>
+      this.m.dispatch(this, 'onLayers', { bondId, from: before, to: before + add, reason }));
+    isolateRewardStep(this.m, `layers:${bondId}:victoria`, () => cyclopsVictoriaRewards(this.m, this));
     return add;
   }
 

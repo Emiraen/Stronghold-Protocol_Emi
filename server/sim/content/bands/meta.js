@@ -37,7 +37,7 @@ import { GEO } from '../../../../shared/constants.js';
 import { bbCap } from '../../../../shared/plugins/officialBounds.js';
 import { burstLimit } from '../../../../shared/plugins/steps.js';
 import { buffsOf, num, bandRecord, bandEffectId, gameData } from '../support/index.js';
-import { metaBonds } from '../support/meta.js';
+import { metaBonds, forEachMeta } from '../support/meta.js';
 import * as garrisons from '../garrisons.js';
 
 const int = (v, d = 0) => Math.trunc(num(v, d));
@@ -106,10 +106,12 @@ K.prep_finish_char_bond_add_layer = (ps) => ({
       if (!byTier.has(t)) byTier.set(t, []);
       byTier.get(t).push(p);
     }
-    for (const t of [...byTier.keys()].sort((a, b) => a - b)) {
+    forEachMeta(ctx, 'warfarin:tier', [...byTier.keys()].sort((a, b) => a - b), (t) => {
       const p = ctx.rng.pick(byTier.get(t));
-      for (const b of metaBonds(ctx, p)) ctx.addLayers(b, n, { requireActive: false, reason: 'band' });
-    }
+      forEachMeta(ctx, 'warfarin:bond', metaBonds(ctx, p), (b) => {
+        ctx.addLayers(b, n, { requireActive: false, reason: 'band' });
+      });
+    });
   },
 });
 
@@ -274,10 +276,10 @@ K.round_start_bond_check_gain_layer = (ps) => ({
     if (ctx.round !== int(p.round, -1)) return;
     const active = Object.entries(ctx.bonds()).filter(([, b]) => b && b.active).map(([id]) => id);
     const n = active.length === int(p.factioncount, 1) ? int(p.count1, 0) : int(p.count2, 0);
-    for (const b of active) {
-      if (ctx.gd.bond(b)?.noStack) continue;
+    forEachMeta(ctx, 'yu:bond', active, (b) => {
+      if (ctx.gd.bond(b)?.noStack) return;
       ctx.addLayers(b, n, { requireActive: true, reason: 'band' });
-    }
+    });
   },
 });
 
@@ -506,13 +508,17 @@ const duckGlobal = {
 
 /** Merge hook objects (same hook → called in order). */
 function merge(parts) {
-  const out = {};
+  const hooks = new Map();
   for (const h of parts) {
     for (const [name, fn] of Object.entries(h)) {
       if (typeof fn !== 'function') continue;
-      const prev = out[name];
-      out[name] = prev ? function merged(ctx, ev) { prev(ctx, ev); fn(ctx, ev); } : fn;
+      if (!hooks.has(name)) hooks.set(name, []);
+      hooks.get(name).push(fn);
     }
+  }
+  const out = {};
+  for (const [name, handlers] of hooks) {
+    out[name] = (ctx, ev) => forEachMeta(ctx, `band:${name}`, handlers, (fn) => fn(ctx, ev));
   }
   return out;
 }

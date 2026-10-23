@@ -197,10 +197,29 @@
 .east-ranked__body { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); grid-auto-rows:max-content; gap:.6rem; padding:.4rem max(.6rem,6vw); flex:1; min-height:0; overflow-y:auto; align-items:start; align-content:start; overscroll-behavior-y:contain; }
 /* Keep the original open rank presentation; only the right column is an account log. */
 .east-ranked__identity { min-width:0; align-self:start; }
+.east-ranked__identity .rank-badge__toggle { display:inline-flex; align-items:center; justify-content:center; padding:0; min-width:44px; min-height:44px; border:0; background:none; color:inherit; cursor:pointer; border-radius:4px; touch-action:manipulation; }
+.east-ranked__identity .rank-badge__toggle:hover { background:rgba(78,216,175,.06); }
+.east-ranked__identity .rank-badge__toggle:focus-visible { outline:2px solid var(--mint-500); outline-offset:4px; }
+.east-ranked__details { min-width:0; }
 .east-ranked__tools, .east-ranked__start { display:flex; flex-wrap:wrap; gap:8px; }
 .east-ranked__tools .btn, .east-ranked__start .btn { min-height:36px; padding:7px 12px; font-size:13px; }
 .east-ranked__start { margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
 .east-ranked__start .btn { flex:1; min-width:130px; }
+.rank-pyramid-panel { display:flex; flex-direction:column; align-items:center; gap:16.5px; margin:-4px 0 4px; padding:10px 0; background:none; border:0; }
+.rank-pyramid-panel__head { display:flex; align-items:center; width:100%; }
+.rank-pyramid-panel__head .micro { font-size:calc(.1815 * var(--t)); }
+.rank-pyramid-panel__head h3 { margin:4px 0 0; color:var(--text-hi); font-size:26.4px; }
+/* Reclaim transparent frame padding so the larger graphic and its unchanged text sit higher. */
+.rank-pyramid-panel > .rank-pyramid-graphic { display:block; width:min(100%,556.875px); height:auto; margin-block:max(-80px,-14.4%) max(-40px,-7.2%); overflow:visible; pointer-events:none; }
+.rank-pyramid-panel__caption { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:center; gap:0 11.55px; max-width:100%; margin-top:-9.9px; line-height:1.2; text-align:center; }
+/* Match visible glyph bounds, not the fonts' different em boxes and baselines. */
+.rank-pyramid-panel__name { font-family:inherit; font-size:46.2px; font-weight:700; }
+.rank-pyramid-panel__placement { font-family:'ValorantRankDigits'; font-size:62.7px; font-weight:700; font-synthesis:none; transform:translateY(4.95px); }
+.rank-pyramid-panel__progress { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:center; gap:6.6px 23.1px; width:100%; color:var(--text-lo); font-size:19.8px; line-height:1.5; text-align:center; }
+.rank-pyramid-panel__progress strong { color:var(--text-hi); font-size:inherit; font-variant-numeric:tabular-nums; }
+.rank-pyramid-panel__footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; width:100%; }
+.rank-pyramid-panel__note { color:var(--text-lo); font-size:16.5px; line-height:1.5; }
+.rank-pyramid-panel__count { margin-left:auto; color:var(--text-lo); font-variant-numeric:tabular-nums; font-size:18.15px; white-space:nowrap; }
 .rank-history { display:flex; flex-direction:column; min-height:0; min-width:0; }
 .rank-history__head { display:flex; gap:10px; align-items:center; justify-content:space-between; padding-bottom:15px; border-bottom:1px solid var(--mint-a35,rgba(78,216,175,.35)); }
 .rank-history__head h3 { font-size:clamp(19px,2vw,27px); letter-spacing:.12em; margin:7px 0 0; }
@@ -238,25 +257,50 @@
 @keyframes rank-row-in { from { opacity:0; transform:translateY(8px); } }
 
 /* Full-screen global ranking, matching the ranked history panel. */
-.east-rank-leaderboard { animation:stats-open 220ms var(--ease-out) both; }
-.rank-leaderboard-screen { display:flex; flex-direction:column; gap:18px; min-width:0; min-height:0; flex:1; padding:22px clamp(16px,4vw,64px) 34px; overflow-x:hidden; overflow-y:auto; touch-action:pan-y; }
-.rank-leaderboard-screen__head { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; padding-bottom:14px; border-bottom:1px solid var(--mint-a35,rgba(78,216,175,.35)); }
+.east-rank-leaderboard { overflow:hidden; animation:stats-open 220ms var(--ease-out) both; }
+.rank-leaderboard-screen { display:flex; flex-direction:column; gap:18px; min-width:0; min-height:0; flex:1; padding:22px clamp(16px,4vw,64px) 34px; overflow:hidden; isolation:isolate; }
+.rank-leaderboard-screen__head { display:flex; flex:none; align-items:flex-end; justify-content:space-between; gap:18px; padding-bottom:14px; border-bottom:1px solid var(--mint-a35,rgba(78,216,175,.35)); }
+.rank-leaderboard-screen__head > div { min-width:0; }
 .rank-leaderboard-screen__head p { margin:9px 0 0; color:var(--text-lo); font-size:12px; line-height:1.6; }
-.rank-leaderboard-screen__table-wrap { display:flex; flex-direction:column; width:100%; min-width:0; max-width:100%; max-height:min(62vh,680px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; border:1px solid rgba(150,183,170,.16); background:rgba(10,18,15,.72); scrollbar-color:var(--mint-500) rgba(10,18,15,.8); scrollbar-width:thin; }
+.rank-leaderboard-screen__threshold { display:block; margin-top:6px; color:var(--mint-400); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.rank-leaderboard-screen__table-wrap { display:flex; flex-direction:column; flex:1; width:100%; min-width:0; min-height:0; max-width:100%; overflow:hidden; isolation:isolate; border:1px solid rgba(150,183,170,.16); background:rgba(10,18,15,.72); }
+.rank-leaderboard-screen__rows { flex:1; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; scrollbar-gutter:stable; scrollbar-color:var(--mint-500) rgba(10,18,15,.8); scrollbar-width:thin; }
 .rank-leaderboard-screen__row { display:grid; grid-template-columns:56px 52px minmax(0,1.4fr) minmax(0,1.2fr) 72px 56px; align-items:center; min-width:0; min-height:66px; padding:0 18px; gap:12px; color:var(--text-hi); border-top:1px solid rgba(150,183,170,.12); }
 .rank-leaderboard-screen__row > * { min-width:0; }
-.rank-leaderboard-screen__row--head { position:sticky; top:0; z-index:2; min-height:42px; border-top:0; color:var(--text-lo); font-size:11px; letter-spacing:.12em; background:rgba(20,40,34,.96); box-shadow:0 1px 0 rgba(78,216,175,.22); }
+.rank-leaderboard-screen__row--head { flex:none; min-height:42px; overflow:hidden; scrollbar-gutter:stable; scrollbar-width:thin; border-top:0; color:var(--text-lo); font-size:11px; letter-spacing:.12em; background:rgb(20,40,34); box-shadow:0 1px 0 rgba(78,216,175,.22); }
 .rank-leaderboard-screen__row:not(.rank-leaderboard-screen__row--head) { animation:rank-row-in 260ms var(--ease-out) both; }
 .rank-leaderboard-screen__row--r1 { background:linear-gradient(90deg,rgba(116,88,26,.25),rgba(10,18,15,.72)); }
 .rank-leaderboard-screen__row--r2 { background:linear-gradient(90deg,rgba(96,104,105,.18),rgba(10,18,15,.72)); }
 .rank-leaderboard-screen__row--r3 { background:linear-gradient(90deg,rgba(104,58,32,.18),rgba(10,18,15,.72)); }
+.rank-leaderboard-screen__row.is-self { background:linear-gradient(90deg,rgba(35,125,88,.65),rgba(22,71,51,.8)); box-shadow:inset 3px 0 0 var(--mint-400); }
 .rank-leaderboard-screen__rank { font-size:24px; font-weight:700; color:var(--mint-400); }
 .rank-leaderboard-screen__row--r1 .rank-leaderboard-screen__rank { color:#ffd34f; }.rank-leaderboard-screen__row--r2 .rank-leaderboard-screen__rank { color:#d4e0e0; }.rank-leaderboard-screen__row--r3 .rank-leaderboard-screen__rank { color:#e7a77c; }
 .rank-leaderboard-screen__avatar { display:flex; align-items:center; }.rank-leaderboard-screen__avatar .avatar { width:42px; height:42px; }
 .rank-leaderboard-screen__name { min-width:0; overflow:hidden; text-overflow:ellipsis; overflow-wrap:anywhere; white-space:normal; font-size:15px; font-weight:650; }
 .rank-leaderboard-screen__tier { display:flex; align-items:center; gap:9px; min-width:0; }.rank-leaderboard-screen__tier img { width:34px; height:34px; object-fit:contain; }.rank-leaderboard-screen__tier b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
-.rank-leaderboard-screen__points { font-size:21px; font-weight:700; color:var(--mint-400); }.rank-leaderboard-screen__wins { font-size:18px; color:var(--text-md); }.rank-leaderboard-screen__state { display:flex; align-items:center; justify-content:center; min-height:260px; color:var(--text-lo); }
-@media (max-width:720px) { .rank-leaderboard-screen { padding:16px 12px 28px; }.rank-leaderboard-screen__head { align-items:flex-start; flex-direction:column; }.rank-leaderboard-screen__table-wrap { max-height:min(68vh,680px); }.rank-leaderboard-screen__row { grid-template-columns:30px 34px minmax(0,1fr) minmax(0,.9fr) 38px 32px; padding:0 6px; gap:4px; }.rank-leaderboard-screen__row--head { font-size:10px; letter-spacing:0; line-height:1.15; }.rank-leaderboard-screen__row--head > * { overflow-wrap:anywhere; }.rank-leaderboard-screen__rank { font-size:16px; }.rank-leaderboard-screen__avatar .avatar { width:32px; height:32px; }.rank-leaderboard-screen__name { font-size:12px; }.rank-leaderboard-screen__tier { gap:3px; }.rank-leaderboard-screen__tier img { width:20px; height:20px; }.rank-leaderboard-screen__tier b { font-size:10px; }.rank-leaderboard-screen__points { font-size:14px; }.rank-leaderboard-screen__wins { font-size:13px; } }
+.rank-leaderboard-screen__points { font-size:21px; font-weight:700; color:var(--mint-400); }.rank-leaderboard-screen__wins { font-size:18px; color:var(--text-md); }.rank-leaderboard-screen__state { display:flex; flex:1; align-items:center; justify-content:center; min-height:0; margin:0; color:var(--text-lo); }
+@media (max-width:720px), (max-width:1100px) and (any-pointer:coarse) {
+  .east-rank-leaderboard .proto-top { padding:6px 12px 0; }
+  .east-rank-leaderboard .proto-title { padding-top:0; }
+  .east-rank-leaderboard .proto-title h2 { font-size:18px; }
+  .east-rank-leaderboard .proto-title__mode { font-size:10px; }
+  .rank-leaderboard-screen { gap:8px; padding:8px 12px 12px; }
+  .rank-leaderboard-screen__head { align-items:center; gap:12px; padding-bottom:6px; }
+  .rank-leaderboard-screen__head .micro { font-size:9px; letter-spacing:.08em; }
+  .rank-leaderboard-screen__head p { margin:3px 0 0; font-size:11px; line-height:1.35; }
+  .rank-leaderboard-screen__head > .btn { flex:none; min-height:40px; padding-inline:12px; font-size:12px; }
+  .rank-leaderboard-screen__row { grid-template-columns:30px 32px minmax(0,1fr) minmax(0,.9fr) 44px 32px; min-height:46px; padding:0 6px; gap:4px; }
+  .rank-leaderboard-screen__row--head { min-height:28px; font-size:10px; letter-spacing:0; line-height:1.15; }
+  .rank-leaderboard-screen__row--head > * { overflow-wrap:anywhere; }
+  .rank-leaderboard-screen__rank { font-size:17px; }
+  .rank-leaderboard-screen__avatar .avatar { --av:30px; width:30px; height:30px; }
+  .rank-leaderboard-screen__name { font-size:12px; line-height:1.3; }
+  .rank-leaderboard-screen__tier { gap:3px; }
+  .rank-leaderboard-screen__tier img { width:24px; height:24px; flex:none; }
+  .rank-leaderboard-screen__tier b { font-size:11px; }
+  .rank-leaderboard-screen__points { font-size:15px; }
+  .rank-leaderboard-screen__wins { font-size:13px; }
+}
 
 /* PR 643 achievements retain their hexagon, record brackets and orange alliance header. */
 .sp-overlay-layer--stats { z-index:150; }
@@ -315,6 +359,9 @@
 @media (max-width:900px) {
   .east-ranked__body { grid-template-columns:minmax(210px,.9fr) minmax(0,1.2fr); gap:18px; padding:20px; align-items:start; }
   .east-ranked__identity { align-self:start; }
+  .rank-pyramid-panel { margin:-6px 0 2px; padding:8px 0; gap:13.2px; }
+  .rank-pyramid-panel__head h3 { font-size:23.1px; }
+  .rank-pyramid-panel > .rank-pyramid-graphic { width:min(100%,445.5px); }
   .east-ranked__tools .btn, .east-ranked__start .btn, .rank-history__head .btn { min-height:44px; }
   .rank-record { gap:10px; padding:13px 10px; grid-template-columns:44px minmax(0,1fr) 65px 12px; }
   .rank-record__result { font-size:13px; }.rank-record__info > b { font-size:13px; flex-wrap:wrap; gap:4px 7px; }.rank-record__points b { font-size:23px; }
@@ -344,6 +391,19 @@
   .east-achievements .ach-tops--band { justify-content:flex-start; padding-left:6px; gap:18px; }.east-achievements .ach-top--band .ach-top__frame { width:84px; height:84px; }.east-achievements .ach-top--band .bandicon { width:62px; height:62px; }
   .east-achievements .ach-sub { margin-left:6px; font-size:13px; }.east-achievements .ach-ops { padding:6px; gap:13px; }.east-achievements .ach-op { width:60px; height:60px; }.east-achievements .ach-op .uthumb { --ut:54px; }
   .east-achievements .ach-marks { padding-left:6px; gap:18px; }
+}
+/* Move the expanded desktop column as a unit, preserving clearances within it. */
+@media (min-width:651px) and (hover:hover) and (pointer:fine) {
+  .east-ranked__identity:has(.rank-pyramid-panel) { transform:translateY(-16px); }
+}
+/* Shrink phone text visually without reflowing its existing layout or moving the pyramid. */
+@media (max-width:650px), (max-width:1100px) and (pointer:coarse) {
+  .rank-pyramid-panel__caption, .rank-pyramid-panel__progress { transform:scale(.8); transform-origin:top center; }
+  .rank-pyramid-panel__note { transform:scale(.8); transform-origin:top left; }
+  .rank-pyramid-panel__count { transform:scale(.8); transform-origin:top right; }
+}
+@media (max-height:500px) and (min-width:651px) and (hover:hover) and (pointer:fine) {
+  .east-ranked__identity:has(.rank-pyramid-panel) { transform:translateY(-8px); }
 }
 @media (max-height:500px) and (min-width:651px) {
   .east-ranked__body { padding:14px 20px; }.east-ranked__identity > .rank-badge { margin-top:7px; }

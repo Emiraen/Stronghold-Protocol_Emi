@@ -230,6 +230,32 @@
   background: linear-gradient(90deg, var(--mint-500), transparent 60%);
 }
 .title-login .btn--xl { letter-spacing: .6em; padding-left: calc(.48rem + .3em); }
+.title-login__submit { display: flex; align-items: stretch; gap: .12rem; }
+.title-login__submit > .btn--primary { flex: 1; min-width: 0; }
+.title-login__submit > .btn--secondary { flex: none; padding-inline: .2rem; }
+.title-remember {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--text-md);
+  font-size: max(12px, calc(.15 * var(--utility-text, var(--t))));
+  cursor: pointer;
+}
+.title-remember input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--mint-500);
+  cursor: pointer;
+}
+.title-remember input:focus-visible { outline: 2px solid var(--mint-400); outline-offset: 3px; }
+.title-auth-form { display: grid; gap: .18rem; }
+.title-auth-note { margin: 0; color: var(--text-lo); font-size: calc(.16 * var(--utility-text, var(--t))); line-height: 1.6; }
+.title-auth-error { margin: 0; color: var(--amber); font-size: calc(.15 * var(--utility-text, var(--t))); line-height: 1.6; overflow-wrap: anywhere; }
+.title-auth-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .12rem; margin-top: .08rem; }
 .title-name-feedback { margin: -.04rem 0 0; font-size: calc(.13 * var(--utility-text, var(--t))); line-height: 1.6; color: var(--text-dim); }
 .title-name-feedback a { color: var(--mint-500); text-decoration: underline; text-underline-offset: .02rem; }
 .title-invite {
@@ -334,7 +360,7 @@ html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .3em; }
 .title-meta .title-conn { justify-content: center; }
 .title-foot-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .12rem; }
 .title-notice { position: relative; }
-.title-actions .title-notice.is-unread::after { content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; background: #ef4444; border-radius: 50%; }
+.title-actions .title-notice.is-unread::after { content: ''; position: absolute; inset: 3px 3px auto auto; width: 7px; height: 7px; background: #ef4444; border-radius: 50%; opacity: 1; transform: none; transition: none; }
 .title-actions { margin-top: .12rem; }
 @media (max-width: 600px) {
   .title-corner--tl { display: none; }
@@ -388,4 +414,141 @@ html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .3em; }
   .title-corner--tr > div > .micro, .title-corner--tr br { display: none; }
   .title-main > .title-login { grid-row: 1 / 5; }
   .title-foot { bottom: 6px; font-size: 9px; }
+}
+
+/* Keep the mobile title inside one screen. The form shares its remember/submit
+   row; short landscape screens put the brand and secondary actions beside it. */
+@media (max-width: 1000px), (max-height: 720px), (pointer: coarse) {
+  .screen.title-screen { overflow: hidden; }
+  .screen.title-screen > .title-corner--tl { display: none; }
+  .screen.title-screen > .title-corner--tr {
+    position: absolute;
+    top: calc(8px + var(--sa-t, 0px));
+    right: calc(16px + var(--sa-r, 0px));
+    left: auto;
+  }
+  .screen.title-screen .title-corner__tools { margin: 0; }
+  .screen.title-screen .title-corner--tr > div > .micro,
+  .screen.title-screen .title-corner--tr br { display: none; }
+  .screen.title-screen > .title-main {
+    position: absolute;
+    inset: calc(44px + var(--sa-t, 0px)) calc(16px + var(--sa-r, 0px))
+      calc(56px + var(--sa-b, 0px)) calc(16px + var(--sa-l, 0px));
+    flex: none;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    justify-content: center;
+  }
+  .screen.title-screen .emblem { flex: none; margin-bottom: 0; }
+  .screen.title-screen .emblem__svg { width: 28px; height: 30px; }
+  .screen.title-screen .emblem__bracket { height: 34px; }
+  .screen.title-screen .title-en__a { font-size: 11px; }
+  .screen.title-screen .title-en__b { font-size: 13px; }
+  .screen.title-screen .title-cn { margin-top: 6px; font-size: 28px; }
+  .screen.title-screen .title-cn--latin { font-size: 18px; }
+  .screen.title-screen .title-tag { max-width: 340px; margin-top: 4px; font-size: 11px; line-height: 1.4; }
+  .screen.title-screen .title-login {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    flex: none;
+    width: min(360px, 100%);
+    margin-top: 8px;
+    padding: 8px;
+    gap: 4px 8px;
+  }
+  .screen.title-screen .title-login > :is(.field, .title-invite, .title-server, .title-meta, .title-auth-error) { grid-column: 1 / -1; }
+  .screen.title-screen .title-login .field { gap: 2px; }
+  .screen.title-screen .title-login .field__label { font-size: 11px; }
+  .screen.title-screen .title-login .field__hint { font-size: 10px; }
+  .screen.title-screen .title-login .field__box { height: 36px; min-height: 36px; }
+  .screen.title-screen .title-remember { grid-column: 1; white-space: nowrap; }
+  .screen.title-screen .title-login__submit { grid-column: 2; gap: 6px; align-self: center; }
+  .screen.title-screen .title-login__submit > .btn { min-height: 40px; height: 40px; padding: 4px 10px; font-size: 14px; letter-spacing: .08em; }
+  .screen.title-screen .title-auth-error { order: 1; }
+  .screen.title-screen .title-server select { min-height: 32px; padding: 4px 8px; font-size: 12px; }
+  .screen.title-screen .title-meta { gap: 4px 8px; }
+  .screen.title-screen .title-tools > :is(.btn, .fsbtn) { min-height: 32px; height: 32px; }
+  .screen.title-screen .title-tools > .fsbtn { width: 32px; }
+  .screen.title-screen .title-actions { flex: none; max-width: 100%; margin-top: 4px; }
+  .screen.title-screen .title-actions > .btn { min-height: 44px; font-size: 12px; }
+  .screen.title-screen > .title-foot {
+    position: absolute;
+    inset: auto calc(292px + var(--sa-r, 0px)) calc(8px + var(--sa-b, 0px)) calc(16px + var(--sa-l, 0px));
+    width: auto;
+    margin: 0;
+    padding: 0;
+    gap: 2px 8px;
+    font-size: 9px;
+  }
+}
+@media (max-height: 460px) and (min-width: 560px) {
+  .screen.title-screen > .title-main {
+    top: calc(12px + var(--sa-t, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, .85fr) minmax(300px, 1.15fr);
+    grid-template-rows: repeat(5, max-content);
+    align-content: center;
+    column-gap: 16px;
+  }
+  .screen.title-screen > .title-corner--tr { left: calc(16px + var(--sa-l, 0px)); right: auto; width: calc(42% - 16px); justify-content: center; }
+  .screen.title-screen .title-main > .emblem { margin-top: 36px; }
+  .screen.title-screen .title-main > .title-login { grid-column: 2; grid-row: 1 / 6; margin: 0; width: 100%; align-self: center; }
+  .screen.title-screen .title-main > .title-actions { grid-column: 1; grid-row: 5; }
+  .screen.title-screen .title-tag { max-width: 100%; }
+}
+@media (max-width: 559px) {
+  .screen.title-screen > .title-foot { right: calc(16px + var(--sa-r, 0px)); bottom: calc(52px + var(--sa-b, 0px)); }
+  .screen.title-screen > .title-main {
+    bottom: calc(102px + var(--sa-b, 0px));
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-rows: repeat(5, max-content);
+    align-content: center;
+    justify-items: center;
+    gap: 4px 10px;
+  }
+  .screen.title-screen .title-main > .emblem { grid-column: 1; grid-row: 1 / 3; }
+  .screen.title-screen .title-main > .title-en { grid-column: 2; grid-row: 1; }
+  .screen.title-screen .title-main > .title-cn { grid-column: 2; grid-row: 2; margin: 0; }
+  .screen.title-screen .title-main > .title-tag { grid-column: 1 / -1; grid-row: 3; }
+  .screen.title-screen .title-main > .title-login { grid-column: 1 / -1; grid-row: 4; }
+  .screen.title-screen .title-main > .title-actions { grid-column: 1 / -1; grid-row: 5; }
+}
+
+/* Desktop rem scaling makes the complete password console taller than the old
+   single-column title. Give the brand/actions and login their own columns. */
+@media (min-width: 1001px) and (min-height: 721px) {
+  .screen.title-screen > .title-main {
+    position: absolute;
+    inset: calc(max(.9rem, 54px) + var(--sa-t, 0px)) calc(48px + var(--sa-r, 0px))
+      calc(max(1.05rem, 72px) + var(--sa-b, 0px)) calc(48px + var(--sa-l, 0px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 5.25rem);
+    grid-template-rows: repeat(5, max-content);
+    column-gap: .6rem;
+    align-content: center;
+    justify-items: center;
+    width: auto;
+    max-width: 1460px;
+    margin: 0 auto;
+  }
+  .screen.title-screen .title-main > .title-login {
+    grid-column: 2;
+    grid-row: 1 / 6;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    width: 100%;
+    margin: 0;
+    align-self: center;
+  }
+  .screen.title-screen .title-login > :is(.field, .title-invite, .title-server, .title-meta, .title-auth-error) { grid-column: 1 / -1; }
+  .screen.title-screen .title-remember { grid-column: 1; white-space: nowrap; }
+  .screen.title-screen .title-login__submit { grid-column: 2; align-self: center; }
+  .screen.title-screen .title-login__submit > .btn--xl { padding-inline: .18rem; letter-spacing: .12em; }
+  .screen.title-screen .title-auth-error { order: 1; }
+  .screen.title-screen .title-main > .title-actions { grid-column: 1; grid-row: 5; }
+  .screen.title-screen .title-tag { max-width: 100%; }
 }

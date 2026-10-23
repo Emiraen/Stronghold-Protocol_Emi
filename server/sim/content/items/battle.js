@@ -44,7 +44,7 @@
 
 import {
   num, itemRecord, itemKeyOf, buffsOf, isOp, onField, unitBonds, isMember, bondActive, isGroundOp, frontTile,
-  alliesAround, passiveBuff, fxOn, battleStore, contentInfo, itemsOf, directMods,
+  alliesAround, passiveBuff, fxOn, battleStore, contentInfo, itemsOf, directMods, isolateContentCallback,
 } from '../support/index.js';
 import { mitigate, hasHp, periodicDamage, isHpLoss } from '../../damage.js';
 import { hypot } from '../../detmath.js';
@@ -204,10 +204,10 @@ class Scope {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const h of this.hooks) this.b.off(h);
-    for (const s of this.scheds) s.cancel();
-    for (const [t, k] of this.buffs) this.b.removeBuff(t, k);
-    for (const f of this.fns) { try { f(); } catch { /* keep disposing */ } }
+    for (const h of this.hooks) isolateContentCallback(this.b, () => this.b.off(h), `${this.tag}:dispose:hook`, this.u);
+    for (const s of this.scheds) isolateContentCallback(this.b, () => s.cancel(), `${this.tag}:dispose:timer`, this.u);
+    for (const [t, k] of this.buffs) isolateContentCallback(this.b, () => this.b.removeBuff(t, k), `${this.tag}:dispose:buff`, t);
+    for (const f of this.fns) isolateContentCallback(this.b, f, `${this.tag}:dispose:callback`, this.u);
     this.hooks = []; this.scheds = []; this.buffs = []; this.fns = [];
   }
 }
@@ -927,15 +927,17 @@ export function installItem(battle, u, itemId, { lent = false } = {}) {
     if (gm.get(gid) === grant) gm.delete(gid);
   };
   gm.set(gid, grant);
-  try {
-    for (const b of buffsOf(rec)) {
+  for (const b of buffsOf(rec)) {
+    isolateContentCallback(battle, () => {
       if (STAT_BUFFS.has(b.bbKey)) {
         const scale = hex.some(e => e.data.quality === 'gold') ? 1.2 : 1;
         const params = Object.fromEntries(Object.entries(b.p).map(([k, v]) => [k, typeof v === 'number' ? v * scale : v]));
         const mods = statMods(params);
         if (mods) S.stat(`stat:${b.bbKey}`, mods);
       } else if (BY_BUFF[b.bbKey]) BY_BUFF[b.bbKey](battle, u, b.p, S);
-    }
+    }, `item:${itemId}:buff:${b.bbKey ?? b.key}`, u);
+  }
+  isolateContentCallback(battle, () => {
     const h = hammerInfo(key);
     if (h) {
       const hs = hammerAcquire(battle, rt, u);
@@ -944,10 +946,8 @@ export function installItem(battle, u, itemId, { lent = false } = {}) {
       hammerRefresh(battle, rt, u, hs);
       S.onDispose(() => { hs.own[h.type] = Math.max(0, hs.own[h.type] - 1); hammerRelease(battle, rt, u, hs); });
     }
-    if (BY_ITEM[key]) BY_ITEM[key](battle, u, rec, S, grant);
-  } catch (e) {
-    battle._handlerError?.(`item:${itemId}`, u, e);
-  }
+  }, `item:${itemId}:hammer`, u);
+  if (BY_ITEM[key]) isolateContentCallback(battle, () => BY_ITEM[key](battle, u, rec, S, grant), `item:${itemId}:install`, u);
   return grant;
 }
 
@@ -958,7 +958,7 @@ export function install(battle) {
   if (!any) return;
   for (const u of battle.allyUnits) {
     if (u.kind !== 'op') continue;
-    for (const id of itemsOf(u)) installItem(battle, u, id);
+    for (const id of itemsOf(u)) isolateContentCallback(battle, () => installItem(battle, u, id), `item:${id}:install`, u);
   }
 }
 
@@ -976,15 +976,17 @@ export function lendItemEffects(battle, fromUnit, toUnit, { maxTier = 5, duratio
   const gm = grantsOf(rt, toUnit);
   let n = 0;
   for (const id of itemsOf(fromUnit)) {
+    isolateContentCallback(battle, () => {
     const rec = itemRecord(id);
-    if (!rec || num(rec.tier, 99) > maxTier || !hasBattleEffect(rec)) continue;
+    if (!rec || num(rec.tier, 99) > maxTier || !hasBattleEffect(rec)) return;
     let g = gm.get(`lend:${id}`);
     if (!g) g = installItem(battle, toUnit, id, { lent: true });
-    if (!g) continue;
+    if (!g) return;
     if (g.timer) g.timer.cancel();
     g.until = battle.time + dur;
     g.timer = battle.after(dur, () => g.dispose());
     n++;
+    }, `item:${id}:lend`, toUnit);
   }
   if (n) fxOn(battle, 'buff', toUnit, 'item:lend', 'lend', { from: fromUnit.id, n, duration: dur });
   return n;

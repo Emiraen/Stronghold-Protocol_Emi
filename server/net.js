@@ -308,6 +308,15 @@ export function encode(msg) {
 // 差量只在实际发送层计算；基准保存JSON副本，不引用会被业务修改的对象。
 const STATE_TYPES = new Set(['m.public', 'm.private', 'b.snap', 'b.pool']);
 const stateKey = (msg) => msg.t === 'b.snap' ? `b.snap:${msg.fieldId}` : msg.t;
+// Broadcast recipients share immutable wire JSON, while sequence/epoch stay per connection.
+// Retain at most one small frame; unrelated rooms cannot grow a process-wide cache.
+let lastStateFrame = null;
+function parseStateFrame(data) {
+  if (lastStateFrame?.data === data) return lastStateFrame;
+  const frame = { data, msg: JSON.parse(data), patches: new WeakMap() };
+  if (STATE_TYPES.has(frame.msg?.t) && data.length <= 1024 * 1024) lastStateFrame = frame;
+  return frame;
+}
 function statePatch(before, after, path = []) {
   if (before === after) return [];
   const a = before && typeof before === 'object', b = after && typeof after === 'object';
@@ -320,13 +329,20 @@ function statePatch(before, after, path = []) {
     if (!Object.hasOwn(before, key)) patch.push([[...path, key], after[key]]);
     else patch.push(...statePatch(before[key], after[key], [...path, key]));
   }
+  // 无变化的子树无需反复序列化整棵替换候选；输出仍是同一个空差量。
+  if (!patch.length) return patch;
   const replace = [[path, after]];
   return JSON.stringify(patch).length < JSON.stringify(replace).length ? patch : replace;
 }
 function prepareState(conn, data, options) {
   if (!conn?.deltaEnabled) return { data };
-  let msg;
-  try { msg = JSON.parse(data); } catch { return { data }; }
+  // 正常发送已有服务端分类；非状态帧无需为每位收件人再次 JSON.parse。
+  // 未分类的 sendRaw 及所有基准失效边界仍走原来的解析/清理流程。
+  if (typeof options.type === 'string' && options.type !== 'welcome' && !STATE_TYPES.has(options.type)
+      && !options.clearDeferred && !options.clearBattle && options.clearField == null) return { data };
+  let frame;
+  try { frame = parseStateFrame(data); } catch { return { data }; }
+  const msg = frame.msg;
   if (options.clearDeferred || options.clearBattle || options.clearField != null || msg?.t === 'welcome') {
     conn.stateBases.clear();
     conn.stateEpoch++;
@@ -334,14 +350,19 @@ function prepareState(conn, data, options) {
   if (!STATE_TYPES.has(msg?.t)) return { data };
   const key = stateKey(msg), previous = conn.stateBases.get(key);
   const next = (previous?.n || 0) + 1;
-  const full = JSON.stringify({ t: 'net.state', e: conn.stateEpoch, k: key, n: next, v: msg });
+  // data 已是完整 JSON；直接嵌入封装，避免每位收件人再序列化同一状态正文。
+  const full = `{"t":"net.state","e":${conn.stateEpoch},"k":${JSON.stringify(key)},"n":${next},"v":${data}}`;
   let encoded = full;
   if (previous) {
-    const patch = statePatch(previous.v, msg);
+    let patch = frame.patches.get(previous.v);
+    if (!patch) {
+      const operations = statePatch(previous.v, msg);
+      patch = { empty: !operations.length, json: JSON.stringify(operations) };
+      frame.patches.set(previous.v, patch);
+    }
     // 相同状态不占链路，也不推进差量序号；恢复/结束等带完成回调的帧仍实际发送。
-    if (!patch.length && !options.onComplete) return { skip: true };
-    const delta = JSON.stringify({ t: 'net.delta', e: conn.stateEpoch, k: key, b: previous.n, n: next,
-      p: patch });
+    if (patch.empty && !options.onComplete) return { skip: true };
+    const delta = `{"t":"net.delta","e":${conn.stateEpoch},"k":${JSON.stringify(key)},"b":${previous.n},"n":${next},"p":${patch.json}}`;
     // 不划算的差量走全量；压缩仍作用于两种帧。
     if (Buffer.byteLength(delta) < Buffer.byteLength(full) * 0.85) encoded = delta;
   }
@@ -1078,9 +1099,27 @@ export class Network {
     const name = sanitizeName(msg.name);
     if (!name) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'bad field name')); return; }
 
+    // Authenticate before touching sockets, devices, tokens or existing room seats.
+    // A reconnect uses the account ticket; old session tokens alone are not passwords.
+    let account;
+    try {
+      account = this.handler.profiles?.authenticate
+        ? await this.handler.profiles.authenticate(name, msg.auth)
+        : { error: ERR.AUTH_REQUIRED };
+    } catch (error) {
+      this.log.error('[net] 账户验证不可用', error);
+      if (!conn.closing) this.reply(conn, errorMsg(ERR.INTERNAL, rid, '登录服务暂不可用，请稍后重试'));
+      return;
+    }
+    if (conn.closing || this.closed || this.draining || this.conns.get(conn.ws) !== conn) return;
+    if (account.error) { this.reply(conn, errorMsg(account.error, rid, account.detail)); return; }
+    if (account.name !== name || typeof account.aid !== 'string' || !/^[0-9a-f]{8,64}$/.test(account.aid)) {
+      this.reply(conn, errorMsg(ERR.AUTH_INVALID, rid)); return;
+    }
+
     const deviceId = typeof msg.deviceId === 'string' && /^[0-9a-f]{32}$/.test(msg.deviceId) ? msg.deviceId : null;
     // 切账号先解绑旧会话，其房间和恢复凭证仍按原设备/账号保留。
-    if (conn.session && deviceId && conn.session.name !== name) {
+    if (conn.session && (conn.session.name !== name || (conn.session.profileBound && conn.session.aid !== account.aid))) {
       const previous = conn.session;
       previous.ws = null;
       previous.connected = false;
@@ -1094,9 +1133,11 @@ export class Network {
     let wasOnline = !!session?.connected;
     if (!session) {
       session = msg.token ? this.registry.byToken(msg.token) : null;
+      if (session?.profileBound && session.aid !== account.aid) session = null;
       if (deviceId) {
         if (session && (session.name !== name || (session.deviceId && session.deviceId !== deviceId))) session = null;
         session ||= [...this.registry.all()].find((s) => s.deviceId === deviceId && s.name === name
+          && (!s.profileBound || s.aid === account.aid)
           && !s.loginReleased && !s.debugAuthorized && !this.registry.isExpired(s, now)) || null;
       } else if (session && session.name !== name) {
         session = null;
@@ -1138,7 +1179,7 @@ export class Network {
       if (!repeat) session.loginRevoked = false;
       try {
         const result = await this.handler.profiles.login(session, identityLocked ? session.name : name,
-          session.profileBound ? session.aid : msg.aid || session.aid, conn.ws, identityLocked);
+          account.aid, conn.ws, identityLocked, account.aid);
         if (conn.closing || session.ws !== conn.ws) return;
         if (result.error) {
           if (repeat) {
@@ -1173,13 +1214,16 @@ export class Network {
 
     let extra = null;
     try { extra = this.handler.welcomeInfo?.() ?? null; } catch (e) { this.log.error('[net] welcomeInfo crashed', e); }
-    const welcome = { ...(extra && typeof extra === 'object' ? extra : null), t: 'welcome', playerId: session.playerId, token: session.token, name: session.name, serverNow: now, version: PROTOCOL_VERSION, resumed };
+    const welcome = { ...(extra && typeof extra === 'object' ? extra : null), t: 'welcome', playerId: session.playerId, token: session.token, authTicket: account.ticket, name: session.name, serverNow: now, version: PROTOCOL_VERSION, resumed };
     // 仅接受明确版本标记；额外hello字段不改变既有协议版本。
     conn.deltaEnabled = msg.stateDelta === 1;
     conn.resumeProbeEnabled = msg.resumeProbe === 1;
     welcome.stateDelta = conn.deltaEnabled ? 1 : 0;
     welcome.bandwidthMbps = this.opts.bandwidthMbps;
     welcome.progressMs = this.bandwidth.baseMs;
+    // Authoritative membership at welcome; absence of later snapshots is never an exit signal.
+    welcome.roomCode = session.roomCode ?? null;
+    welcome.spectatorCode = session.spectatorCode ?? null;
     if (validRid(rid)) welcome.rid = rid;
     if (!this.reply(conn, welcome)) return;
     try {

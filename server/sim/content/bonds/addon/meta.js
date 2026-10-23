@@ -23,6 +23,7 @@
 // Latched state lives in player counters (prefix `bondaddon:`); onPrice only reads them (pure).
 
 import { msg, dn } from '../../../../../shared/i18n.js';
+import { forEachMeta } from '../../support/meta.js';
 
 const C_VISI_PAID = 'bondaddon:visi:paid';
 const C_VISI_DISC = 'bondaddon:visi:disc';
@@ -104,7 +105,9 @@ export function registerMeta(registry) {
       const add = me.tier >= 2 ? n(p.more_layer, n(p.layer)) : n(p.layer);
       if (!(add > 0)) return;
       const active = Object.entries(ctx.bonds()).filter(([, b]) => b && b.active).map(([id]) => id);
-      for (const id of active) ctx.addLayers(id, add, { requireActive: true, reason: 'bond:deputShip' });
+      forEachMeta(ctx, 'deputShip:bond', active, (id) => {
+        ctx.addLayers(id, add, { requireActive: true, reason: 'bond:deputShip' });
+      });
     },
   });
 

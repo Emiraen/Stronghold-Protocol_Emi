@@ -86,6 +86,7 @@ function batch(items) {
 }
 
 export function replicationPlan(op, args) {
+  if (op === 'rank.nameCards') return [{ aid: args[0], fields: ['rank'] }];
   if (['record', 'loadout', 'presentation'].includes(op)) return [{ aid: args[0], fields: [op === 'record' ? 'identity' : op] }];
   const job = args[0];
   return [...new Set((job.seats || []).filter((seat) => !seat.isBot && aidOK(seat.aid)).map((seat) => seat.aid))]
@@ -98,7 +99,8 @@ export class ProfileReplication {
   constructor({ role, stores, file = null, execute, bootstrapFromCopiedStores = false, pageBytes = PAGE_BYTES }) {
     this.role = role; this.stores = stores; this.file = file; this.execute = execute;
     this.bootstrapFromCopiedStores = bootstrapFromCopiedStores; this.pageBytes = pageBytes;
-    this.serial = Promise.resolve(); this.bootData = null;
+    this.serial = Promise.resolve(); this.bootData = null; this.dirty = false;
+    this.firstEconomicAttempts = new WeakSet();
     this.state = { schema: 1, role, id: randomUUID(), initialized: role === 'main', revision: 0,
       cursor: 0, sequence: 0, received: 0, peer: null, versions: {}, owners: {}, grants: {},
       log: [], pending: [], releases: [] };
@@ -109,13 +111,92 @@ export class ProfileReplication {
           || !Array.isArray(this.state.log)) throw new Error('复制日志格式无效');
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
     }
+    if (this.state.economicQuarantine !== undefined && (!object(this.state.economicQuarantine)
+      || Object.values(this.state.economicQuarantine).some((intent) => intent?.op !== 'complete'
+        || !Array.isArray(intent.args) || !Array.isArray(intent.plan)))) throw new Error('经济隔离记录无效');
     this.recovered = !this.state.commit && !this.state.intent;
     if (role === 'secondary' && !this.state.initialized && !this.state.stage && !this.state.commit
       && !bootstrapFromCopiedStores && this.nonempty()) throw new Error('附服存在未初始化的非空档案；必须先备份并明确复制，拒绝自动覆盖');
   }
   get initialized() { return this.state.initialized && this.recovered; }
+  quarantinedIntents() { return Object.values(this.state.economicQuarantine || {}); }
+  quarantinedAids(includePeer = true) {
+    return new Set(this.quarantinedIntents().flatMap((intent) => [
+      ...intent.plan.map((entry) => entry.aid),
+      ...(intent.args[0]?.seats || []).filter((seat) => !seat.isBot).map((seat) => seat.aid),
+    ]).concat(includePeer ? this.state.peerEconomicQuarantine?.aids || [] : []).filter(aidOK));
+  }
+  hasRankUncertainty() {
+    const intents = [...this.quarantinedIntents(), ...(this.state.intent?.op === 'complete' && this.state.intent.blocked ? [this.state.intent] : [])];
+    return this.state.peerEconomicQuarantine?.rankingPending === true
+      || intents.some((intent) => intent.args[0]?.ranked || intent.plan.some((entry) => Object.hasOwn(entry.before || {}, 'rank')));
+  }
+  assertIndependent(op, args = []) {
+    const quarantined = this.quarantinedIntents();
+    if (!quarantined.length && !this.quarantinedAids().size && !this.hasRankUncertainty()) return;
+    if (['bootstrap', 'snapshot'].includes(op)) throw this.economicReceiptError();
+    if (op === 'rank.nameCards' || this.hasRankUncertainty() && (op === 'leaderboard'
+      || op === 'complete' && args[0]?.ranked)) throw this.economicReceiptError();
+    const matchId = op === 'complete' ? args[0]?.match?.matchId : op === 'historyRecord' ? args[0]?.matchId : null;
+    if (matchId && quarantined.some((intent) => intent.args[0]?.match?.matchId === matchId)) throw this.economicReceiptError();
+    const aids = ['login', 'read', 'record', 'loadout', 'presentation', 'historyList', 'historyDetail', 'rank.nameCards', 'grant'].includes(op)
+      ? [args[0]] : ['complete', 'historyRecord'].includes(op) ? replicationPlan(op, args).map((entry) => entry.aid) : [];
+    const affected = this.quarantinedAids();
+    if (aids.some((aid) => affected.has(aid))) throw this.economicReceiptError();
+  }
+  freezeNameCardGrantSnapshot(migration, aids) {
+    return this.run(async () => {
+      if (this.role !== 'main') throw new Error('纪念名片名单仅允许主服冻结');
+      if (this.state.nameCardGrantSnapshots !== undefined && !object(this.state.nameCardGrantSnapshots)) {
+        throw new Error('纪念名片冻结名单无效');
+      }
+      this.state.nameCardGrantSnapshots ||= {};
+      const saved = this.state.nameCardGrantSnapshots[migration];
+      if (Object.hasOwn(this.state.nameCardGrantSnapshots, migration)
+        && (!object(saved) || !Array.isArray(saved.aids) || saved.aids.some((aid) => !aidOK(aid)))) {
+        throw new Error('纪念名片冻结名单无效');
+      }
+      // Repair either durable copy from the other; never rescan current players when one already exists.
+      const frozen = await this.stores.ranked.freezeNameCardGrantSnapshot(migration, saved ? saved.aids : aids);
+      if (saved && !isDeepStrictEqual([...new Set(saved.aids)].sort(), [...frozen].sort())) {
+        throw new Error('纪念名片冻结名单副本不一致');
+      }
+      if (!saved) {
+        this.state.nameCardGrantSnapshots[migration] = { createdAt: Date.now(), aids: frozen };
+      }
+      // The cohort is durable before the first rank transaction can start.
+      this.save();
+      return clone(this.state.nameCardGrantSnapshots[migration].aids);
+    });
+  }
+  deferNameCardUnlock(aid, migration) {
+    return this.run(() => {
+      const previous = this.state.pendingNameCardUnlocks?.[aid] || { earned: false, migrations: [] };
+      const next = { earned: previous.earned || migration === null,
+        migrations: [...new Set([...previous.migrations, ...(migration === null ? [] : [migration])])] };
+      if (isDeepStrictEqual(previous, next)) return;
+      this.state.pendingNameCardUnlocks ||= {};
+      this.state.pendingNameCardUnlocks[aid] = next;
+      this.save();
+    });
+  }
+  completeDeferredNameCardUnlock(aid, migration) {
+    return this.run(() => {
+      const previous = this.state.pendingNameCardUnlocks?.[aid];
+      if (!previous) return;
+      const migrations = previous.migrations.filter((value) => value !== migration);
+      if (migrations.length) this.state.pendingNameCardUnlocks[aid] = { earned: false, migrations };
+      else delete this.state.pendingNameCardUnlocks[aid];
+      this.save();
+    });
+  }
   nonempty() { return Object.values(this.stores).some((store) => store.profiles.size > 0); }
-  save() { durableWrite(this.file, JSON.stringify(this.state)); }
+  save() {
+    // A failed durable write must still be retried by the next otherwise-idle exchange.
+    this.dirty = true;
+    if (this.file) durableWrite(this.file, JSON.stringify(this.state));
+    this.dirty = false;
+  }
   run(work) {
     const next = this.serial.then(async () => { await this.recover(); return work(); });
     this.serial = next.catch(() => {});
@@ -146,19 +227,25 @@ export class ProfileReplication {
       if (value === null) delete player[field]; else player[field] = clone(value);
     }
   }
-  async flush(names) {
-    const stores = [...new Set(names)].map((name) => this.stores[name]);
-    for (const store of stores) store.writer.save();
+  async flush(names, alreadyPersisted = new Set()) {
+    const uniqueNames = [...new Set(names)];
+    const stores = uniqueNames.map((name) => this.stores[name]);
+    for (const name of uniqueNames) if (!alreadyPersisted.has(name)) this.stores[name].writer.save();
     await Promise.all(stores.map((store) => store.flush()));
     for (const store of stores) if (store.file) {
       const fd = openSync(store.file, 'r+');
       try { fsyncSync(fd); } finally { closeSync(fd); }
     }
   }
-  async recover() {
-    if (this.state.intent) await this.finishIntent();
+  async recover(alreadyPersisted = new Set()) {
+    // Durable commits are established facts. Materialize them before isolating any unknown intent.
     const commit = this.state.commit;
-    if (!commit) { this.recovered = true; return; }
+    if (!commit) {
+      if (this.state.intent?.op === 'complete') this.blockEconomicIntent(this.state.intent);
+      else if (this.state.intent) { await this.finishIntent(); return this.recover(alreadyPersisted); }
+      this.recovered = true; return;
+    }
+    this.recovered = false;
     if (commit.snapshot) {
       for (const name of ['players', 'ranked', 'history']) this.stores[name].profiles = new Map(clone(commit.snapshot[name]));
     } else {
@@ -166,14 +253,40 @@ export class ProfileReplication {
     }
     const names = commit.snapshot ? ['players', 'ranked', 'history'] : commit.patches.flatMap((patch) =>
       Object.keys(patch.fields).map((field) => field === 'rank' ? 'ranked' : field === 'history' ? 'history' : 'players'));
-    await this.flush(names);
+    // Only the executing process can prove that its first store write completed. A restarted
+    // process supplies no proof and must replay every store from the durable commit.
+    await this.flush(names, commit.snapshot ? new Set() : alreadyPersisted);
     if (commit.snapshot) { this.state.initialized = true; delete this.state.stage; }
     delete this.state.commit;
-    this.save(); this.recovered = true;
+    try { this.save(); } catch (error) { this.state.commit = commit; throw error; }
+    if (this.state.intent?.op === 'complete') this.blockEconomicIntent(this.state.intent);
+    else if (this.state.intent) { await this.finishIntent(); return this.recover(); }
+    this.recovered = true;
+  }
+  economicReceiptError() {
+    return Object.assign(new Error('经济结算 intent 回执不明，已停止自动重放'), { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' });
+  }
+  blockEconomicIntent(intent) {
+    this.firstEconomicAttempts.delete(intent);
+    this.recovered = false;
+    const previous = this.state.economicQuarantine;
+    const key = `complete:${intent.args[0]?.match?.matchId || hash(intent.args)}`;
+    const retained = previous?.[key];
+    if (retained && !isDeepStrictEqual(retained.args, intent.args)) throw new Error('经济隔离编号冲突');
+    this.state.economicQuarantine = { ...previous, [key]: retained || { ...clone(intent),
+      blocked: { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' } } };
+    delete this.state.intent;
+    try { this.save(); } catch (error) {
+      this.state.intent = intent;
+      if (previous === undefined) delete this.state.economicQuarantine; else this.state.economicQuarantine = previous;
+      throw error;
+    }
+    this.recovered = !this.state.commit;
   }
   async transact(op, args, { coordinator = false } = {}) {
     return this.run(async () => {
       if (!this.state.initialized) throw new Error('档案复制尚未初始化');
+      this.assertIndependent(op, args);
       const plan = replicationPlan(op, args);
       for (const { aid } of plan) {
         if (this.role === 'secondary' && (!this.state.grants[aid]
@@ -183,17 +296,57 @@ export class ProfileReplication {
       this.state.intent = { op, args: clone(args), plan: plan.map(({ aid, fields }) => ({ aid,
         before: Object.fromEntries(fields.map((field) => [field, this.value(aid, field)])) })) };
       this.save();
-      const value = await this.finishIntent();
-      await this.recover();
-      return value;
+      if (op === 'complete') this.firstEconomicAttempts.add(this.state.intent);
+      const proofs = new Map();
+      try {
+        for (const [name, store] of Object.entries(this.stores)) {
+          const targets = plan.flatMap(({ aid, fields }) => fields
+            .filter((field) => (field === 'rank' ? 'ranked' : field === 'history' ? 'history' : 'players') === name)
+            .map((field) => ({ aid, field })));
+          if (targets.length && store.writer?.observePersisted) proofs.set(name, {
+            beforeRevision: store.writer.revision,
+            observer: store.writer.observePersisted(() => Object.fromEntries(targets
+              .map(({ aid, field }) => [`${aid}:${field}`, this.value(aid, field)]))),
+          });
+        }
+        const value = await this.finishIntent();
+        const alreadyPersisted = new Set();
+        for (const [name, { beforeRevision, observer }] of proofs) {
+          const writer = this.stores[name].writer;
+          if (Number.isInteger(beforeRevision) && writer.persistedSince(beforeRevision)
+            && observer.revision === writer.revision) alreadyPersisted.add(name);
+        }
+        // A saved intermediate value is insufficient: the actual persisted fields and
+        // current memory must both match the durable commit before its write is reused.
+        for (const patch of this.state.commit?.patches || []) for (const [field, expected] of Object.entries(patch.fields)) {
+          const name = field === 'rank' ? 'ranked' : field === 'history' ? 'history' : 'players';
+          if (!isDeepStrictEqual(proofs.get(name)?.observer.value?.[`${patch.aid}:${field}`], expected)
+            || !isDeepStrictEqual(this.value(patch.aid, field), expected)) alreadyPersisted.delete(name);
+        }
+        await this.recover(alreadyPersisted);
+        return value;
+      } finally {
+        for (const { observer } of proofs.values()) observer.stop();
+      }
     });
   }
   async finishIntent() {
     const intent = this.state.intent;
+    if (!intent) { if (this.quarantinedIntents().length) throw this.economicReceiptError(); return; }
+    if (intent.op === 'complete') {
+      // Only the newly created transaction owns one execution attempt.
+      // Restored/re-entered intents cannot prove that no reward was applied.
+      if (!this.firstEconomicAttempts.has(intent)) {
+        this.blockEconomicIntent(intent);
+        throw this.economicReceiptError();
+      }
+      this.firstEconomicAttempts.delete(intent);
+    }
     let value;
     try { value = await this.execute(intent.op, clone(intent.args)); }
     catch (error) {
-      if (intent.plan.every(({ aid, before }) => Object.entries(before).every(([field, previous]) => isDeepStrictEqual(previous, this.value(aid, field))))) {
+      if (intent.op === 'complete') this.blockEconomicIntent(intent);
+      else if (intent.plan.every(({ aid, before }) => Object.entries(before).every(([field, previous]) => isDeepStrictEqual(previous, this.value(aid, field))))) {
         delete this.state.intent; this.save();
       }
       throw error;
@@ -224,18 +377,21 @@ export class ProfileReplication {
   }
   async grant(aid, lease, regions) {
     return this.run(() => {
+      this.assertIndependent('grant', [aid]);
       const owner = this.state.owners[aid];
       if (owner?.lease && owner.lease.owner !== lease.owner && regions?.current(owner.lease)) return null;
       if (owner?.serverId === 'secondary' && (lease.serverId !== 'secondary'
         || owner.lease.owner !== lease.owner || owner.lease.generation > lease.generation)) return null;
       const token = owner?.serverId === 'secondary' ? owner.token : randomUUID();
-      this.state.owners[aid] = { serverId: lease.serverId, token, lease: clone(lease) };
-      this.save();
+      const next = { serverId: lease.serverId, token, lease: clone(lease) };
+      if (!isDeepStrictEqual(owner, next)) { this.state.owners[aid] = next; this.dirty = true; }
+      if (this.dirty) this.save();
       return { aid, token, versions: clone(this.state.versions[aid] || {}) };
     });
   }
   async acceptGrant(grant) {
     return this.run(() => {
+      this.assertIndependent('grant', [grant?.aid]);
       if (!aidOK(grant?.aid) || !grant.token) throw new Error('账号写入租约无效');
       if (this.state.releases.some((item) => item.aid === grant.aid)) throw new Error('账号写入租约已开始交接');
       const current = this.state.grants[grant.aid];
@@ -246,30 +402,37 @@ export class ProfileReplication {
         if (version !== offered && !(current?.token === grant.token && version > offered
           && version === (current.versions[field] || 0))) throw new Error('账号交接前档案尚未同步');
       }
-      this.state.grants[grant.aid] = { ...clone(grant), versions: clone(this.state.versions[grant.aid] || {}) }; this.save();
+      const next = { ...clone(grant), versions: clone(this.state.versions[grant.aid] || {}) };
+      if (!isDeepStrictEqual(current, next)) { this.state.grants[grant.aid] = next; this.dirty = true; }
+      if (this.dirty) this.save();
     });
   }
   releaseIdle(active) { return this.run(() => this.updateReleases(active)); }
   updateReleases(active) {
-    const activeAids = typeof active === 'function' ? active() : active;
-    this.state.releases = this.state.releases.filter((item) => !activeAids.has(item.aid)
-      && !this.state.pending.some((patch) => patch.aid === item.aid));
+    const activeAids = new Set([...(typeof active === 'function' ? active() : active), ...this.quarantinedAids()]);
+    const pendingAids = new Set(this.state.pending.map((patch) => patch.aid));
+    const releases = this.state.releases.filter((item) => !activeAids.has(item.aid) && !pendingAids.has(item.aid));
     for (const [aid, grant] of Object.entries(this.state.grants)) {
-      if (activeAids.has(aid) || this.state.pending.some((patch) => patch.aid === aid)) continue;
-      if (!this.state.releases.some((item) => item.aid === aid && item.token === grant.token)) this.state.releases.push({ aid, token: grant.token });
+      if (activeAids.has(aid) || pendingAids.has(aid)) continue;
+      if (!releases.some((item) => item.aid === aid && item.token === grant.token)) releases.push({ aid, token: grant.token });
     }
-    this.save();
+    if (releases.length !== this.state.releases.length || releases.some((item, i) => item !== this.state.releases[i])) {
+      this.state.releases = releases; this.dirty = true;
+    }
+    if (this.dirty) this.save();
   }
   exportSnapshot() {
+    this.assertIndependent('snapshot');
     return { revision: this.state.revision, versions: clone(this.state.versions),
       ...Object.fromEntries(['players', 'ranked', 'history'].map((name) => [name, clone([...this.stores[name].profiles])])) };
   }
   bindPeer(id) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/.test(id) || (this.state.peer && this.state.peer !== id)) throw new Error('复制节点标识不匹配');
-    this.state.peer = id;
+    if (this.state.peer !== id) { this.state.peer = id; this.dirty = true; }
   }
   async bootstrap(request) {
     return this.run(async () => {
+      this.assertIndependent('bootstrap');
       this.bindPeer(request?.id);
       if (!request.token && !this.state.bootstrap) {
         await Promise.all(Object.values(this.stores).map((store) => store.flush()));
@@ -343,6 +506,7 @@ export class ProfileReplication {
         }
         if (patch.sequence !== this.state.received + 1) throw new Error('复制增量乱序');
         const owner = this.state.owners[patch.aid];
+        this.assertIndependent('record', [patch.aid]);
         if (owner?.serverId !== 'secondary' || owner.token !== patch.token) throw new Error('复制写入租约已被交接');
         for (const field of Object.keys(patch.fields)) if (patch.base[field] !== this.version(patch.aid, field)) throw new Error('复制字段版本冲突');
         const fields = Object.fromEntries(Object.keys(patch.fields).map((field) =>
@@ -356,29 +520,34 @@ export class ProfileReplication {
       // 新版附服只提交权威操作。先收完旧版落盘增量，再解除旧单写者归属。
       if (request.sharedWrites === true && request.pending.length === 0) {
         for (const [aid, owner] of Object.entries(this.state.owners)) {
-          if (owner.serverId === 'secondary') this.state.owners[aid] = { serverId: 'main' };
+          if (this.quarantinedAids().has(aid)) continue;
+          if (owner.serverId === 'secondary') { this.state.owners[aid] = { serverId: 'main' }; this.dirty = true; }
         }
       }
       const released = [];
       for (const item of request.releases) {
         if (!aidOK(item?.aid) || typeof item.token !== 'string') throw new Error('复制交接参数无效');
         const owner = this.state.owners[item.aid];
+        if (this.quarantinedAids().has(item.aid)) continue;
         if (owner?.serverId === 'secondary' && owner.token === item.token) {
           if (regions.current(owner.lease)) continue;
-          this.state.owners[item.aid] = { serverId: 'main' };
+          this.state.owners[item.aid] = { serverId: 'main' }; this.dirty = true;
         }
         released.push(item);
       }
       // cursor 是附服已落盘的确认，不是响应已发送的确认。
-      this.state.log = this.state.log.filter((event) => event.revision > request.cursor);
-      if (this.state.bootstrap && request.cursor >= this.state.bootstrap.revision) {
-        delete this.state.bootstrap; this.bootData = null;
+      if (this.state.log.length && this.state.log[0].revision <= request.cursor) {
+        this.state.log = this.state.log.filter((event) => event.revision > request.cursor); this.dirty = true;
       }
-      this.save();
+      if (this.state.bootstrap && request.cursor >= this.state.bootstrap.revision) {
+        delete this.state.bootstrap; this.bootData = null; this.dirty = true;
+      }
+      if (this.dirty) this.save();
       const events = batch(this.state.log);
       if (request.cursor < this.state.revision && events[0]?.revision !== request.cursor + 1) throw new Error('复制确认游标已退回，拒绝丢失增量');
       return { ack: this.state.received, events, cursor: events.at(-1)?.revision ?? request.cursor,
         head: this.state.revision, released,
+        economicQuarantine: { schema: 1, rankingPending: this.hasRankUncertainty(), aids: [...this.quarantinedAids()] },
         grants: Object.entries(this.state.owners).filter(([, owner]) => owner.serverId === 'secondary')
           .map(([aid, owner]) => ({ aid, token: owner.token, versions: clone(this.state.versions[aid] || {}) })) };
     });
@@ -395,11 +564,22 @@ export class ProfileReplication {
         const value = response.replication;
         if (!value || !integer(value.ack) || value.ack > this.state.sequence || !Array.isArray(value.events)
           || !integer(value.cursor) || !integer(value.head) || value.cursor > value.head) throw new Error('复制响应无效');
+        if (value.economicQuarantine !== undefined) {
+          const incoming = value.economicQuarantine;
+          if (!object(incoming) || incoming.schema !== 1 || typeof incoming.rankingPending !== 'boolean'
+            || !Array.isArray(incoming.aids) || incoming.aids.some((aid) => !aidOK(aid))) throw new Error('经济隔离状态无效');
+          const previous = this.state.peerEconomicQuarantine;
+          // No automatic reconciliation exists: absent/empty/older replies must never clear a known quarantine.
+          const next = { schema: 1, rankingPending: previous?.rankingPending === true || incoming.rankingPending,
+            aids: [...new Set([...(previous?.aids || []), ...incoming.aids])].sort() };
+          if (!isDeepStrictEqual(previous, next)) { this.state.peerEconomicQuarantine = next; this.save(); }
+        }
         const patches = [], staged = new Map(), nextVersions = new Map();
         let cursor = this.state.cursor;
         for (const event of value.events) {
           if (event.revision !== ++cursor) throw new Error('主服复制游标不连续');
           const patch = event.patch; this.validatePatch(patch);
+          if (this.quarantinedAids(false).has(patch.aid)) throw this.economicReceiptError();
           const fields = {}, versions = nextVersions.get(patch.aid) || { ...this.state.versions[patch.aid] };
           for (const field of Object.keys(patch.fields)) {
             const version = versions[field] || 0;
@@ -413,22 +593,25 @@ export class ProfileReplication {
           if (Object.keys(fields).length) patches.push({ aid: patch.aid, fields });
         }
         if (cursor !== value.cursor) throw new Error('主服复制响应游标不匹配');
-        for (const [aid, versions] of nextVersions) this.state.versions[aid] = versions;
-        this.state.pending = this.state.pending.filter((patch) => patch.sequence > value.ack);
-        this.state.cursor = cursor;
+        for (const [aid, versions] of nextVersions) { this.state.versions[aid] = versions; this.dirty = true; }
+        if (this.state.pending.length && this.state.pending[0].sequence <= value.ack) {
+          this.state.pending = this.state.pending.filter((patch) => patch.sequence > value.ack); this.dirty = true;
+        }
+        if (this.state.cursor !== cursor) { this.state.cursor = cursor; this.dirty = true; }
         for (const released of value.released || []) {
-          this.state.releases = this.state.releases.filter((item) => item.aid !== released.aid || item.token !== released.token);
-          if (this.state.grants[released.aid]?.token === released.token) delete this.state.grants[released.aid];
+          const retained = this.state.releases.filter((item) => item.aid !== released.aid || item.token !== released.token);
+          if (retained.length !== this.state.releases.length) { this.state.releases = retained; this.dirty = true; }
+          if (this.state.grants[released.aid]?.token === released.token) { delete this.state.grants[released.aid]; this.dirty = true; }
         }
         for (const grant of value.grants || []) {
           if (this.state.releases.some((item) => item.aid === grant.aid)) continue;
           const current = this.state.grants[grant.aid];
           if ((!current || current.token === grant.token)
             && FIELDS.every((field) => this.version(grant.aid, field) === (grant.versions[field] || 0))) {
-            this.state.grants[grant.aid] = clone(grant);
+            if (!isDeepStrictEqual(current, grant)) { this.state.grants[grant.aid] = clone(grant); this.dirty = true; }
           }
         }
-        this.state.commit = { patches }; this.save(); await this.recover();
+        if (this.dirty) { this.state.commit = { patches }; this.save(); await this.recover(); }
         if (active) this.updateReleases(active);
         releaseAdded = active && this.state.releases.some((item) => !releases.some((sent) => sent.aid === item.aid && sent.token === item.token));
       } while (drain && (this.state.pending.length || this.state.cursor < response.replication.head || releaseAdded));

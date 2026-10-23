@@ -58,10 +58,11 @@
 //   Operator attribute bonuses are 直接乘算 (support directMods: additive with every other percentage, PRTS 盟约记录 /
 //   游戏数据基础); flat values stay flat; the enemies' enemy_attribute_mul stays a multiplier.
 
-import { gameData, num, buffsOf, passiveBuff, effectRecord, directMods } from './support/index.js';
+import { gameData, num, buffsOf, passiveBuff, effectRecord, directMods, isolateContentCallback } from './support/index.js';
 import { isShopItem } from '../simdata.js';
 import { isHpLoss } from '../damage.js';
 import { PLUGIN_GAIN_COUNT_MAX } from '../../../shared/plugins/limits.js';
+import { forEachMeta } from './support/meta.js';
 
 // =====================================================================================================================
 // data helpers
@@ -226,7 +227,7 @@ function applyTactic(ctx, ev) {
   const iconKind = team ? 'team' : 'choice';
   const iconId = eff.decoIconId || id;
   const data = { effectId: id, tacticKind: card ? card.kind ?? null : ev.card.tacticKind ?? null, team, round: ctx.round };
-  for (const b of buffsOf(eff)) {
+  forEachMeta(ctx, 'choice:effect', buffsOf(eff), (b) => {
     const p = b.p;
     const count = Math.max(0, int(p.count, 1));
     switch (b.key) {
@@ -241,7 +242,9 @@ function applyTactic(ctx, ev) {
       }
       case KEY.addLayer: {
         const bonds = String(p.bond_list ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-        for (const bondId of bonds) ctx.addLayers(bondId, count, { requireActive: false, reason: 'choice' });
+        forEachMeta(ctx, 'choice:bond', bonds, (bondId) => {
+          ctx.addLayers(bondId, count, { requireActive: false, reason: 'choice' });
+        });
         break;
       }
       case KEY.gainCoin:
@@ -269,7 +272,7 @@ function applyTactic(ctx, ev) {
       default:
         break;
     }
-  }
+  });
   const aliases = mapAliases(eff);
   const aliasList = Object.entries(aliases);
   for (const [alias, on] of aliasList) ctx.setDeviceActive(alias, on !== 0);
@@ -417,12 +420,14 @@ function maxRowOps(battle, pid) {
 export function install(battle) {
   const cards = [];
   for (const ps of battle.players || []) {
-    for (const ref of ps.playerEffects || []) {
-      if (!ref || typeof ref.key !== 'string' || !ref.key.startsWith('choice:')) continue;
-      const plan = battlePlanOf(ref);
-      if (!plan || !prepGateOn(battle, ps, ref, plan.gate)) continue;
-      cards.push({ pid: ps.playerId, ref, plan });
-    }
+    isolateContentCallback(battle, () => {
+      for (const ref of ps.playerEffects || []) isolateContentCallback(battle, () => {
+        if (!ref || typeof ref.key !== 'string' || !ref.key.startsWith('choice:')) return;
+        const plan = battlePlanOf(ref);
+        if (!plan || !prepGateOn(battle, ps, ref, plan.gate)) return;
+        cards.push({ pid: ps.playerId, ref, plan });
+      }, 'choice:plan');
+    }, 'choice:player');
   }
   if (!cards.length) return;
   const heal = new Map();      // pid → HP per damage instance (自愈)
@@ -444,17 +449,19 @@ export function install(battle) {
   };
   // 征召's row check needs the deployed board (battle start); every other card is on from the first tick
   const late = cards.filter((c) => c.plan.gate.kind === 'sameRow');
-  for (const c of cards) if (c.plan.gate.kind !== 'sameRow') enable(c);
+  for (const c of cards) if (c.plan.gate.kind !== 'sameRow') isolateContentCallback(battle, () => enable(c), 'choice:enable');
   const wantsHeal = cards.some((c) => c.plan.heal > 0);
   const wantsFlawless = cards.some((c) => c.plan.flawless);
 
   battle.on('battleStart', () => {
-    for (const c of late) {
+    for (const c of late) isolateContentCallback(battle, () => {
       c.rowOk = maxRowOps(battle, c.pid) >= c.plan.gate.count;
       if (c.rowOk) enable(c);
-    }
-    for (const c of opCards) for (const u of battle.allyUnits) if (isOwnOp(u, c.pid)) passiveBuff(battle, u, c.plan.key, { ...c.plan.opMods });
-    if (flawless.size) for (const u of battle.allyUnits) syncFlawless(u);
+    }, 'choice:late');
+    for (const c of opCards) for (const u of battle.allyUnits) isolateContentCallback(battle, () => {
+      if (isOwnOp(u, c.pid)) passiveBuff(battle, u, c.plan.key, { ...c.plan.opMods });
+    }, 'choice:passive', u);
+    if (flawless.size) for (const u of battle.allyUnits) isolateContentCallback(battle, () => syncFlawless(u), 'choice:flawless', u);
   }, { priority: -10 });
 
   // 无瑕: operators at full HP (checked on damage, and every tick for heals / redeploys / max-HP changes)
@@ -463,11 +470,11 @@ export function install(battle) {
     const list = flawless.get(u.ownerId);
     if (!list) return;
     const full = u.alive && u.deployed && u.hp >= u.s.maxHp - 1e-6;
-    for (const f of list) {
+    for (const f of list) isolateContentCallback(battle, () => {
       const has = !!u.findBuff(f.key);
       if (full && !has) battle.addBuff(u, { key: f.key, mods: { ...f.mods } });
       else if (!full && has) battle.removeBuff(u, f.key);
-    }
+    }, 'choice:flawless:buff', u);
   }
 
   if (wantsHeal || wantsFlawless) {
@@ -478,7 +485,7 @@ export function install(battle) {
       const amt = heal.get(t.ownerId);
       if (amt > 0 && ctx.amount > 0 && ctx.type !== 'element' && !isHpLoss(ctx.dmg)
         && t.alive && t.deployed && t.hp > 0 && !t.s.flags.noHeal) {
-        battle.heal(null, t, amt, { self: true });
+        isolateContentCallback(battle, () => battle.heal(null, t, amt, { self: true }), 'choice:heal', t);
       }
       if (flawless.size && t.kind === 'op') syncFlawless(t);
     });
@@ -486,7 +493,9 @@ export function install(battle) {
   if (wantsFlawless) {
     battle.on('tick', () => {
       if (!flawless.size) return;
-      for (const u of battle.allyUnits) if (u.kind === 'op' && flawless.has(u.ownerId)) syncFlawless(u);
+      for (const u of battle.allyUnits) isolateContentCallback(battle, () => {
+        if (u.kind === 'op' && flawless.has(u.ownerId)) syncFlawless(u);
+      }, 'choice:flawless:tick', u);
     });
   }
 
@@ -499,7 +508,9 @@ export function install(battle) {
       const list = pid != null ? enemy.get(pid) : null;
       if (!list) return;
       const rank = rankOf(e);
-      for (const d of list) if (!d.rank || d.rank === rank) battle.addBuff(e, { key: d.key, mods: { ...d.mods }, persist: true });
+      for (const d of list) isolateContentCallback(battle, () => {
+        if (!d.rank || d.rank === rank) battle.addBuff(e, { key: d.key, mods: { ...d.mods }, persist: true });
+      }, 'choice:enemy:buff', e);
     });
   }
 }

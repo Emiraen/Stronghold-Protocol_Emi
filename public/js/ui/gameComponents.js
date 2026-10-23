@@ -253,11 +253,13 @@ export function RichTip({ text, children, placement = 'top' }) {
 }
 
 /**
- * Seat-coloured player avatar: band icon when a band is picked, else glyph/robot.
- * @param {{ player: any, size?: 'sm'|'md', self?: boolean, class?: string }} props
+ * Seat-coloured player avatar. Callers that supply avatarSrc (including null) request a
+ * profile image / glyph fallback; older callers retain the strategy-icon fallback.
+ * @param {{ player: any, size?: 'sm'|'md', self?: boolean, class?: string, avatarSrc?: string|null }} props
  */
-export function PlayerAvatar({ player, size = 'md', self = false, class: cls }) {
-  const src = player?.bandId ? bandIconUrl(data.get('assets'), player.bandId) : null;
+export function PlayerAvatar({ player, size = 'md', self = false, class: cls, avatarSrc }) {
+  const src = avatarSrc === undefined && player?.bandId
+    ? bandIconUrl(data.get('assets'), player.bandId) : avatarSrc;
   const glyph = [...(player?.name || '').trim()][0] || '?';
   const dead = player?.alive === false || player?.status === 'dead';
   const left = player?.status === 'left';

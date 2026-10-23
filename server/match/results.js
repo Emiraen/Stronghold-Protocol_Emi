@@ -24,21 +24,28 @@ const STAT_OF = {
   fundsSpent: (ps) => ps.stats.gold,
 };
 
-export function assignTitles(gd, players, victory) {
+export function assignTitles(gd, players, victory, onError = () => {}) {
   const titles = Array.isArray(gd.titles) ? gd.titles : Array.isArray(gd.config.titles) ? gd.config.titles : [];
   const cands = [];
+  const titleValues = (t, candidates) => candidates.flatMap((ps) => {
+    try {
+      const v = Number(STAT_OF[t.stat](ps)) || 0;
+      if (!Number.isFinite(v)) throw new TypeError(`invalid title stat ${t.stat}`);
+      return [{ ps, v }];
+    } catch (error) { onError(ps, t.stat, error); return []; }
+  });
   titles.forEach((t, ti) => {
     if (!t || typeof t.stat !== 'string' || !Object.hasOwn(STAT_OF, t.stat)) return;
     if (t.onlyOnWin && !victory) return;
     if (t.rule === 'min') {
-      const vals = players.filter((ps) => ps.alive).map((ps) => ({ ps, v: Math.max(0, Number(STAT_OF[t.stat](ps)) || 0) }));
+      const vals = titleValues(t, players.filter((ps) => ps.alive)).map(({ ps, v }) => ({ ps, v: Math.max(0, v) }));
       if (!vals.length) return;
       const best = Math.min(...vals.map((x) => x.v));
       const sorted = vals.slice().sort((a, b) => a.v - b.v);
       for (const { ps, v } of vals) cands.push({ ps, t, ti, rank: sorted.findIndex((x) => x.v === v), rel: (best + 1) / (v + 1) });
       return;
     }
-    const vals = players.map((ps) => ({ ps, v: Number(STAT_OF[t.stat](ps)) || 0 }));
+    const vals = titleValues(t, players);
     const best = Math.max(0, ...vals.map((x) => x.v));
     if (best <= 0) return;
     const sorted = vals.slice().sort((a, b) => b.v - a.v);
@@ -90,40 +97,62 @@ export function buildResult(m, outcome) {
   const gd = m.gd;
   const { victory, hiddenReached, hiddenCleared } = outcome;
   const players = [...m.players.values()].sort((a, b) => a.seat - b.seat);
-  const titles = assignTitles(gd, players, victory);
+  const displayErrors = [], settlementErrors = [];
+  const report = (ps, stage, error, list, code) => {
+    const diagnostic = { playerId: ps.playerId, stage, code };
+    list.push(diagnostic);
+    m.reportError?.(`result ${stage} player ${ps.playerId}`, error);
+    return diagnostic;
+  };
+  const titles = assignTitles(gd, players, victory, (ps, stat, error) =>
+    report(ps, `title:${stat}`, error, displayErrors, 'RESULT_DISPLAY_UNAVAILABLE'));
   const teamRounds = victory ? gd.bossRound + (hiddenCleared ? 1 : 0) : Math.max(0, Math.min(m.round, gd.bossRound) - 1);
   const rows = players.map((ps) => {
-    const roundsPassed = !ps.alive && ps.eliminatedRound != null ? Math.max(0, ps.eliminatedRound - 1) : teamRounds;
-    const display = !ps.alive && ps._resultSnapshot ? ps._resultSnapshot : resultSnapshot(ps);
-    const lineup = display.lineup;
-    // the team's clear counts for the players still in; an eliminated / departed teammate did not pass the boss round
-    const cleared = victory && ps.alive;
-    return {
-      playerId: ps.playerId,
-      seat: ps.seat,
-      name: ps.name,
-      isBot: ps.isBot,
-      left: ps.left,
-      alive: ps.alive,
-      victory: cleared,
-      roundsPassed,
-      eliminatedRound: ps.eliminatedRound,
-      lp: Math.max(0, ps.lp),
-      bandId: ps.bandId,
-      lineup,
-      bonds: display.bonds,
-      stats: {
+    let display = { lineup: [], bonds: [] };
+    try {
+      display = !ps.alive && ps._resultSnapshot ? ps._resultSnapshot : resultSnapshot(ps);
+      if (!Array.isArray(display.lineup) || !Array.isArray(display.bonds)) throw new TypeError('invalid result display');
+    } catch (error) {
+      display = { lineup: [], bonds: [] };
+      report(ps, 'display', error, displayErrors, 'RESULT_DISPLAY_UNAVAILABLE');
+    }
+    const identity = { playerId: ps.playerId, seat: ps.seat, name: ps.name, isBot: ps.isBot, left: ps.left, alive: ps.alive, bandId: ps.bandId };
+    try {
+      const roundsPassed = !ps.alive && ps.eliminatedRound != null ? Math.max(0, ps.eliminatedRound - 1) : teamRounds;
+      const stats = {
         dmgDealt: Math.round(ps.stats.dmgDealt), kills: ps.stats.kills, leaks: ps.stats.leaks, gold: ps.stats.gold,
         refreshes: ps.stats.refreshes, merges: ps.stats.merges, itemsEquipped: ps.stats.itemsEquipped,
         bossDamage: ps.stats.bossDamage, activatedLayers: ps.activatedLayers(), lpLost: ps.stats.lpLost,
         perfectRounds: ps.stats.perfectRounds, assists: ps.stats.assists || 0,
         survivalRounds: ps.stats.survivalRounds, rankedDamage: ps.stats.rankedDamage,
         rankedPerfectRounds: ps.stats.rankedPerfectRounds, rankedStatsVersion: 1,
-      },
-      title: titles.get(ps.playerId) ?? null,
-      trophies: trophiesFor(gd, roundsPassed, cleared && hiddenCleared),
-      reward: rewardFor(gd, roundsPassed),
-    };
+      };
+      if (!Number.isFinite(roundsPassed) || !Number.isFinite(ps.lp)
+        || (ps.eliminatedRound != null && !Number.isFinite(ps.eliminatedRound))
+        || (ps.stats.assists != null && !Number.isFinite(ps.stats.assists))
+        || Object.values(stats).some((v) => !Number.isFinite(v))) throw new TypeError('invalid result settlement stats');
+      // the team's clear counts for the players still in; an eliminated / departed teammate did not pass the boss round
+      const cleared = victory && ps.alive;
+      const trophies = trophiesFor(gd, roundsPassed, cleared && hiddenCleared);
+      const reward = rewardFor(gd, roundsPassed);
+      if (!Number.isFinite(trophies) || !Number.isFinite(reward)) throw new TypeError('invalid result reward');
+      return {
+        ...identity,
+        victory: cleared,
+        roundsPassed,
+        eliminatedRound: ps.eliminatedRound,
+        lp: Math.max(0, ps.lp),
+        lineup: display.lineup,
+        bonds: display.bonds,
+        stats,
+        title: titles.get(ps.playerId) ?? null,
+        trophies,
+        reward,
+      };
+    } catch (error) {
+      const settlementError = report(ps, 'stats', error, settlementErrors, 'RESULT_STATS_UNAVAILABLE');
+      return { ...identity, lineup: display.lineup, bonds: display.bonds, title: titles.get(ps.playerId) ?? null, stats: null, settlementError };
+    }
   });
   return {
     t: 'm.result',
@@ -147,5 +176,7 @@ export function buildResult(m, outcome) {
     seed: m.seed,
     durationMs: Math.max(0, m.sched.now() - m.startedAt),
     players: rows,
+    ...(displayErrors.length ? { displayErrors } : {}),
+    ...(settlementErrors.length ? { incomplete: true, settlementErrors } : {}),
   };
 }

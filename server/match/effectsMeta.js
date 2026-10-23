@@ -44,6 +44,7 @@ import { registerExtensionMeta, extensionMetaOwner } from '../sim/content/extens
 import { registerAllMeta } from '../sim/content/index.js';
 import { registerBuiltins } from './builtinMeta.js';
 import { onGiftTicker } from './botEmotes.js';
+import { grantLayersVerified } from './rewardRecovery.js';
 
 export const HOOKS = Object.freeze([
   'onRoundStart', 'onIncome', 'onPrepStart', 'onPrepEnd', 'onGain', 'onSold', 'onRefresh', 'onPrice', 'onBuy',
@@ -165,7 +166,13 @@ export class EffectDispatcher {
     if (this._errKeys.has(msg)) return;
     this._errKeys.add(msg);
     if (this._errKeys.size > 500) this._errKeys.clear();
-    this.m.log.error?.(`[match ${this.m.roomCode}] meta handler error ${msg}`, e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : '');
+    try {
+      this.m.log.error?.(`[match ${this.m.roomCode}] meta handler error ${msg}`, e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : '');
+    } catch { /* The error is already counted above; a broken logger must not abort unrelated content. */ }
+  }
+
+  _guard(key, hook, fn) {
+    try { return fn(); } catch (error) { this._report(key, hook, error); return undefined; }
   }
 
   _allowScript(handler, hook) {
@@ -178,12 +185,18 @@ export class EffectDispatcher {
   }
 
   _call(ps, key, handler, hook, source, ev, repeat = 1) {
-    const fn = typeof handler[hook] === 'function' ? handler[hook] : source.kind === 'garrison' && typeof handler.run === 'function' ? handler.run : null;
-    if (!fn) return;
-    const ctx = makeCtx(this.m, ps, source, hook, ev);
+    let fn, ctx;
+    try {
+      fn = typeof handler[hook] === 'function' ? handler[hook] : source.kind === 'garrison' && typeof handler.run === 'function' ? handler.run : null;
+      if (!fn) return;
+      ctx = makeCtx(this.m, ps, source, hook, ev);
+    }
+    catch (e) { this._report(key, hook, e); return; }
     for (let i = 0; i < repeat; i++) {
-      if (!this._allowScript(handler, hook)) break;
-      try { fn.call(handler, ctx, ev); } catch (e) { this._report(key, hook, e); }
+      try {
+        if (!this._allowScript(handler, hook)) break;
+        fn.call(handler, ctx, ev);
+      } catch (e) { this._report(key, hook, e); }
     }
   }
 
@@ -218,41 +231,53 @@ export class EffectDispatcher {
     try {
       const reg = this.registry;
       // 0. onPrice: the priced chess's own 特质 first — 购买价格为N defines the price every other modifier acts on
-      if (hook === 'onPrice') this._garrisons(ps, hook, ev);
+      if (hook === 'onPrice') this._guard('garrison:dispatch', hook, () => this._garrisons(ps, hook, ev));
       // 1. globals
-      for (const [key, h] of reg.globals()) this._call(ps, key, h, hook, { kind: 'global', key }, ev);
+      this._guard('global:dispatch', hook, () => {
+        for (const [key, h] of reg.globals()) this._call(ps, key, h, hook, { kind: 'global', key }, ev);
+      });
       // 2. band
       if (ps.bandId) {
         const key = `band:${ps.bandId}`;
-        const h = reg.get(key);
-        if (h) this._call(ps, key, h, hook, { kind: 'band', key, bandId: ps.bandId, band: this.m.gd.band(ps.bandId) }, ev);
+        this._guard(key, hook, () => {
+          const h = reg.get(key);
+          if (h) this._call(ps, key, h, hook, { kind: 'band', key, bandId: ps.bandId, band: this.m.gd.band(ps.bandId) }, ev);
+        });
       }
       // 3. bonds
       for (const bondId of this.m.gd.bondIds) {
         const key = `bond:${bondId}`;
-        const h = reg.get(key);
-        if (h) this._call(ps, key, h, hook, { kind: 'bond', key, bondId, bond: ps.bonds[bondId] ?? null }, ev);
+        this._guard(key, hook, () => {
+          const h = reg.get(key);
+          if (h) this._call(ps, key, h, hook, { kind: 'bond', key, bondId, bond: ps.bonds[bondId] ?? null }, ev);
+        });
       }
       // 4. garrisons (onPrice: already run as step 0)
-      if (hook !== 'onPrice') this._garrisons(ps, hook, ev);
+      if (hook !== 'onPrice') this._guard('garrison:dispatch', hook, () => this._garrisons(ps, hook, ev));
       // 5. equipped items (not for the item-specific hooks): every [holder, item] pair of the owned chess, taken before
       // the first item runs; each runs only while still equipped on its still-owned holder — handlers move / destroy
       // pieces (header). Taking the pairs per holder as the walk reached it ran an item equipped meanwhile onto a later
       // holder, and twice an item moved from a holder already walked to a later one.
       if (hook !== 'onEquip' && hook !== 'onArt' && hook !== 'onDestroy') {
         const pairs = [];
-        for (const holder of ownedChess(ps)) for (const it of holder.items || []) pairs.push([holder, it]);
+        for (const holder of ownedChess(ps)) this._guard('item:snapshot', hook, () => {
+          for (const it of holder.items || []) pairs.push([holder, it]);
+        });
         for (const [holder, it] of pairs) {
-          const key = `item:${itemKey(it.id)}`;
-          const h = reg.get(key);
-          if (h && stillEquipped(ps, holder, it)) this._call(ps, key, h, hook, { kind: 'item', key, piece: it, holder, item: this.m.gd.item(it.id) }, ev);
+          this._guard('item:dispatch', hook, () => {
+            const key = `item:${itemKey(it.id)}`;
+            const h = reg.get(key);
+            if (h && stillEquipped(ps, holder, it)) this._call(ps, key, h, hook, { kind: 'item', key, piece: it, holder, item: this.m.gd.item(it.id) }, ev);
+          });
         }
       }
       // 6. persistent effects
       for (const ref of ps.effects.slice()) {
         if (!ref || typeof ref.key !== 'string' || ref.key === skipKey) continue;
-        const h = reg.get(ref.key);
-        if (h) this._call(ps, ref.key, h, hook, { kind: 'effect', key: ref.key, ref }, ev);
+        this._guard(ref.key, hook, () => {
+          const h = reg.get(ref.key);
+          if (h) this._call(ps, ref.key, h, hook, { kind: 'effect', key: ref.key, ref }, ev);
+        });
       }
     } finally {
       if (deferItems) ps._deferItemMerge--;
@@ -272,8 +297,10 @@ export class EffectDispatcher {
     try {
       for (const ref of ps.effects.slice()) {
         if (!ref || typeof ref.key !== 'string') continue;
-        const h = this.registry.get(ref.key);
-        if (h && h.afterElimination === true) this._call(ps, ref.key, h, hook, { kind: 'effect', key: ref.key, ref }, ev);
+        this._guard(ref.key, hook, () => {
+          const h = this.registry.get(ref.key);
+          if (h && h.afterElimination === true) this._call(ps, ref.key, h, hook, { kind: 'effect', key: ref.key, ref }, ev);
+        });
       }
     } finally {
       this.depth--;
@@ -294,20 +321,22 @@ export class EffectDispatcher {
 
   _garrisons(ps, hook, ev) {
     const gd = ps.gd || this.m.gd;
-    const run = (piece, where) => {
+    const run = (piece, where) => this._guard('garrison:piece', hook, () => {
       const rec = gd.chess(piece.id);
       if (!rec || !Array.isArray(rec.garrisonIds)) return;
       for (const gid of rec.garrisonIds) {
-        const g = gd.garrison(gid);
-        if (!g) continue;
-        const key = `garrison:${g.effectKey}`;
-        const h = this.registry.get(key);
-        if (!h || !this._garrisonHooks(h, g).includes(hook)) continue;
-        if (where === 'hand' && g.bbStr && g.bbStr.conditionkey === 'character_target_inboard') continue;
-        const repeat = hook === 'onGain' ? this.investRepeat(ps) : 1;
-        this._call(ps, key, h, hook, { kind: 'garrison', key, piece, garrisonId: gid, garrison: g, bb: g.bb || {}, bbStr: g.bbStr || {}, where }, ev, repeat);
+        this._guard(`garrison:${gid}`, hook, () => {
+          const g = gd.garrison(gid);
+          if (!g) return;
+          const key = `garrison:${g.effectKey}`;
+          const h = this.registry.get(key);
+          if (!h || !this._garrisonHooks(h, g).includes(hook)) return;
+          if (where === 'hand' && g.bbStr && g.bbStr.conditionkey === 'character_target_inboard') return;
+          const repeat = hook === 'onGain' ? this.investRepeat(ps) : 1;
+          this._call(ps, key, h, hook, { kind: 'garrison', key, piece, garrisonId: gid, garrison: g, bb: g.bb || {}, bbStr: g.bbStr || {}, where }, ev, repeat);
+        });
       }
-    };
+    });
     if (hook === 'onGain' || hook === 'onSold') {
       if (ev && ev.piece && ev.piece.kind === 'chess') run(ev.piece, hook === 'onGain' ? 'gained' : 'sold');
       return;
@@ -336,11 +365,12 @@ export class EffectDispatcher {
     this.depth++;
     try {
       for (const gid of rec.garrisonIds) {
+        this._guard(`garrison:${gid}`, hook, () => {
         const g = gd.garrison(gid);
-        if (!g || g.eventType !== eventType) continue;
+        if (!g || g.eventType !== eventType) return;
         const key = `garrison:${g.effectKey}`;
         const h = this.registry.get(key);
-        if (!h) continue;
+        if (!h) return;
         const ev = hook === 'onGain' ? { piece: self, kind: 'chess', source: 'trigger' }
           : hook === 'onSold' ? { piece: self, gain: 0 }
           : hook === 'onRefresh' ? { slots: ps.shop.slots, free: true, price: 0, trigger: true }
@@ -350,6 +380,7 @@ export class EffectDispatcher {
         const where = loc ? (loc.area === 'board' ? 'board' : loc.area) : 'trigger';
         this._call(ps, key, h, hook, { kind: 'garrison', key, piece: self, garrisonId: gid, garrison: g, bb: g.bb || {}, bbStr: g.bbStr || {}, where, trigger: true, triggeredBy, copiedFrom: asPiece ? piece : null }, ev, repeat);
         n++;
+        });
       }
     } finally {
       this.depth--;
@@ -381,8 +412,10 @@ export class EffectDispatcher {
     if (this.depth >= MAX_DEPTH) return true;
     this.depth++;
     try {
-      const ctx = makeCtx(this.m, ps, { ...source, key }, hook, ev);
-      try { fn.call(h, ctx, ev); } catch (e) { this._report(key, hook, e); }
+      try {
+        const ctx = makeCtx(this.m, ps, { ...source, key }, hook, ev);
+        fn.call(h, ctx, ev);
+      } catch (e) { this._report(key, hook, e); }
     } finally {
       this.depth--;
     }
@@ -457,6 +490,7 @@ export function makeCtx(m, ps, source, hook, ev = null) {
     gd,
     rng: m.rngMeta,
     log: (msg) => m.log.info?.(`[meta ${m.roomCode}] ${ps.playerId}: ${msg}`),
+    reportError: (label, error) => m.dispatcher._report(source.key, `${hook}[${label}]`, error),
 
     // ---- reads
     funds: () => ps.funds,
@@ -520,7 +554,8 @@ export function makeCtx(m, ps, source, hook, ev = null) {
     setPrice: (v) => { if (hook === 'onPrice' && ev && Number.isFinite(v)) ev.price = Math.max(0, v); return ev ? ev.price : null; },
 
     // ---- layers
-    addLayers: (bondId, n, opts = {}) => ps.addLayers(bondId, n, { requireActive: !!opts.requireActive, reason: opts.reason || source.key || '' }),
+    addLayers: (bondId, n, opts = {}) => grantLayersVerified(m, ps, bondId, n,
+      { requireActive: !!opts.requireActive, reason: opts.reason || source.key || '' }, { source: source.key, hook }),
 
     // ---- pieces
     grantChess: (chessId, opts = {}) => {

@@ -65,9 +65,9 @@ describe('rankOf mapping', () => {
     assert.equal(rankOf(2299).label, '神话二 199分');
     assert.equal(rankOf(2300).label, '神话三 200分');
     assert.equal(rankOf(2549).label, '神话三 449分');
-    assert.equal(rankOf(2550).label, '赋能战魂 450分');
-    assert.equal(rankOf(2700).label, '赋能战魂 600分');
-    assert.equal(rankOf(99999).label, '赋能战魂 97899分');
+    assert.equal(rankOf(2550, 50).label, '源能战魂 450分');
+    assert.equal(rankOf(2700, 1).label, '源能战魂 600分');
+    assert.equal(rankOf(99999, 1).label, '源能战魂 97899分');
     assert.equal(rankOf(2100).globalRanked, true);
     assert.equal(rankOf(2050).globalRanked, false);
   });
@@ -85,7 +85,7 @@ describe('rankOf mapping', () => {
     assert.equal(rankOf(0).icon, 'iron_1');
     assert.equal(rankOf(905).icon, 'gold_1');
     assert.equal(rankOf(2250).icon, 'immortal_2');
-    assert.equal(rankOf(2600).icon, 'radiant');
+    assert.equal(rankOf(2600, 1).icon, 'radiant');
     assert.equal(UNRANKED.icon, 'unranked');
   });
 });

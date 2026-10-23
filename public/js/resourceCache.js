@@ -3,8 +3,8 @@ import { mediaUrl } from './media.js';
 const GROUPS = ['required', 'optional', 'voice'];
 const STORE = 'resources';
 const listeners = new Set();
-const entries = new Map();
-const aliases = new Map();
+let entries = new Map();
+let aliases = new Map();
 const complete = new Set();
 const savedBytes = new Map();
 const objectUrls = new Map();
@@ -56,7 +56,8 @@ function isHdPortrait(item) { return !!item && /\/assets\/char\/portrait-hd\//.t
 function optionalOnlyAsset(url) {
   try {
     const path = new URL(url, globalThis.location?.href || 'http://localhost/').pathname;
-    return /^\/assets\/char\/portrait\/(?:skin\/|[^/]+_2\.png$)/.test(path) || path.startsWith('/assets/local/scene/') || path.startsWith('/assets/local/mesh/trap_110/');
+    return /^\/assets\/local\/playercards\/(?:good-boy|trickster-outbreak|duck-burnard|duck-flower|duck-brioche|hatchbudz-quacked|evori-(?:solari|lunari|amari|terrari|evori))\/card\.gif$/.test(path) ||
+      /^\/assets\/char\/portrait\/(?:skin\/|[^/]+_2\.png$)/.test(path) || path.startsWith('/assets/local/scene/') || path.startsWith('/assets/local/mesh/trap_110/');
   } catch { return false; }
 }
 const downloadSources = new Map();
@@ -187,8 +188,15 @@ function loadManifest() {
     const mapped = new Map();
     const groups = Object.fromEntries(GROUPS.map(group => [group, []]));
     const seenGroups = Object.fromEntries(GROUPS.map(group => [group, new Set()]));
+    const now = () => globalThis.performance?.now?.() ?? Date.now();
+    let sliceStarted = now(), processed = 0;
     for (const group of GROUPS) {
       for (const sourceRaw of data.groups[group] || []) {
+        // Keep input/painting responsive while indexing large manifests, including on Win7.
+        if (++processed % 64 === 0 && now() - sliceStarted >= 8) {
+          await new Promise(resolveYield => setTimeout(resolveYield, 0));
+          sliceStarted = now();
+        }
         if (isHdPortrait(sourceRaw)) continue;
         const targetGroup = group === 'required' && optionalOnlyAsset(sourceRaw.url) ? 'optional' : group;
         const raw = targetGroup !== group && sourceRaw.pack
@@ -210,19 +218,21 @@ function loadManifest() {
             (raw.pack.group !== undefined && !GROUPS.includes(raw.pack.group)))) {
           throw new Error('资源清单的按需范围索引不正确。');
         }
-        const canonical = key(mediaUrl(raw.url));
+        const sourceKey = key(raw.url);
+        const resourceUrl = mediaUrl(raw.url);
+        const canonical = resourceUrl === raw.url ? sourceKey : key(resourceUrl);
         if (!canonical || !/^https?:/.test(canonical)) throw new Error('资源清单包含无效地址。');
         const previous = indexed.get(canonical);
         if (previous && (previous.version !== raw.version || previous.bytes !== raw.bytes || previous.type !== raw.type ||
             ((previous.transport !== undefined || raw.transport !== undefined) && !sameTransport(previous.transport, raw.transport)))) {
           throw new Error('资源清单包含冲突的音频别名或版本。');
         }
-        const item = previous || { ...raw, url: mediaUrl(raw.url), key: canonical, groups: [] };
+        const item = previous || { ...raw, url: resourceUrl, key: canonical, groups: [] };
         if (!previous) indexed.set(canonical, item);
-        mapped.set(key(raw.url), canonical);
+        mapped.set(sourceKey, canonical);
         mapped.set(canonical, canonical);
         const remote = win7ResourceUrl(raw.url);
-        if (remote) mapped.set(key(remote), canonical);
+        if (remote) mapped.set(remote, canonical);
         if (!seen.has(canonical)) {
           item.groups.push(targetGroup);
           seen.add(canonical);
@@ -230,8 +240,9 @@ function loadManifest() {
         }
       }
     }
-    for (const [url, item] of indexed) entries.set(url, item);
-    for (const [url, canonical] of mapped) aliases.set(url, canonical);
+    // Publish only the fully validated index; readers must never see a partially built manifest.
+    entries = indexed;
+    aliases = mapped;
     manifest = { groups };
     progress();
     notify();
@@ -771,10 +782,10 @@ async function saveItem(item, source, priority = 2, canStart, signal) {
     if (queued) { queued.priority = Math.min(queued.priority, priority); drainSlots(); }
     const pending = jobs.get(item.key);
     if (priority >= 2) return pending;
-    try { await pending; } catch (error) { if (!error.preloadCancelled) throw error; }
+    let saved;
+    try { saved = await pending; } catch (error) { if (!error.preloadCancelled) throw error; }
     // A paused preload may have skipped this job; foreground loading still needs the resource.
-    if (!complete.has(item.key)) return saveItem(item, null, priority);
-    return;
+    return saved || saveItem(item, null, priority);
   }
   const job = withSlot(async () => {
     if (canStart && !canStart()) return;
@@ -790,10 +801,10 @@ async function saveItem(item, source, priority = 2, canStart, signal) {
     };
     armTimeout();
     try {
-    if (!valid(await readRecord(item), item) && (!source || !source.records.has(item.key))) source = await requiredSource(item);
     const store = async () => {
     const record = await readRecord(item);
     if (!valid(record, item)) {
+      if (!source || !source.records.has(item.key)) source = await requiredSource(item);
       const start = partial(record, item) ? record.blob.size : 0;
       invalidate(item, start);
       const response = await resourceResponse(item, start, source, controller?.signal);
@@ -873,30 +884,34 @@ async function saveItem(item, source, priority = 2, canStart, signal) {
         if (!valid(saved, item)) invalidate(item);
         throw new Error(`资源内容校验失败：${item.url}，请重试。`);
       }
-      try { await writeRecord(item, blob, true, false, transport); } catch (error) {
+      try { return await writeRecord(item, blob, true, false, transport); } catch (error) {
         // 内容已校验通过。按需读取可直接使用，不因持久存储额度不足再下载一次。
         error.validatedResource = { item, blob };
         throw error;
       }
     }
+    return record;
     };
-    try { await store(); } catch (error) {
+    let saved;
+    try { saved = await store(); } catch (error) {
       if (!error.packFallback) throw error;
       state.source = 'Win7 压缩条目校验失败，将尝试同一 Win7 服务器的原始资源。';
       notify();
-      await store();
+      saved = await store();
     }
     updateItemProgress(item, item.bytes, true);
     state.cacheRevision++;
     if (state.missing === item.key) state.missing = null;
     notifyProgress();
+    // writeRecord may retain another page's complete record; return what actually committed.
+    return saved;
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }, item.key, priority).catch(error => {
     if (signal?.aborted && !error.validatedResource) error.preloadCancelled = true;
     throw error;
   });
   jobs.set(item.key, job);
-  try { await job; } finally { jobs.delete(item.key); }
+  try { return await job; } finally { jobs.delete(item.key); }
 }
 
 const downloads = new Map();
@@ -1157,15 +1172,11 @@ function importPack(file) {
         const transport = packed.encoding === 'webp-lossless' ? item.transport : undefined;
         if (await resourceHash(blob) !== (transport?.version || item.version)) throw new Error(`资源包内容校验失败：${raw.url}。此前成功导入的资源已保留。`);
         await writeRecord(item, blob, true, false, transport);
-        scanChanges?.add(item.key);
-        complete.add(item.key);
-        savedBytes.set(item.key, item.bytes);
-        revision++;
-        progress();
+        updateItemProgress(item, item.bytes, true);
         imported++;
       }
       state.pack.done++;
-      notify();
+      notifyProgress();
     }
     await check();
     if (state.error) throw new Error(state.error);
@@ -1213,10 +1224,9 @@ async function availableBlob(url) {
   if (!onDemand) throw missingResource(url);
   void protectResources();
   try {
-    await saveItem(item, null, 0);
-    const loaded = await cachedBlobItem(item);
-    if (!loaded) throw new Error(`资源下载后未能写入缓存：${url}`);
-    return loaded;
+    const saved = await saveItem(item, null, 0);
+    if (!valid(saved, item)) throw new Error(`资源下载后未能写入缓存：${url}`);
+    return { item, blob: saved.blob };
   } catch (error) {
     state.error = message(error);
     notify();

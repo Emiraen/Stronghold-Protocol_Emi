@@ -63,6 +63,12 @@
 
 import { weightedPick } from './waves.js';
 import { coopDraftCardCount } from '../../shared/playerCapacity.js';
+import { grantLayersVerified } from './rewardRecovery.js';
+
+function reportChoiceError(m, card, label, error) {
+  try { m.dispatcher._report(`choice:${card.id}`, label, error); }
+  catch { /* A diagnostic failure must not suppress the next independent reward or teammate. */ }
+}
 
 export const FAMILY_NAMES = { bounty: '悬赏决策', supply: '道具补给', shop: '机密商店', tactic: '战术决策' };
 
@@ -425,12 +431,14 @@ export function cardView(c) {
 export function applyCard(m, ps, card) {
   const targets = card.kind === 'tactic' && card.team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
   for (const p of targets) {
-    const ev = { card: { ...card }, family: card.family, picker: ps.playerId, forTeammate: p !== ps };
-    const handled = m.dispatcher.runKey(p, `choice:${card.id}`, 'onChoicePick', { kind: 'choice', card }, ev);
-    if (!handled) applyDefault(m, p, card);
-    // every other source observes the pick (the card's own key already ran above)
-    m.dispatch(p, 'onChoicePick', ev, { skipKey: `choice:${card.id}` });
-    p.recompute();
+    try {
+      const ev = { card: { ...card }, family: card.family, picker: ps.playerId, forTeammate: p !== ps };
+      const handled = m.dispatcher.runKey(p, `choice:${card.id}`, 'onChoicePick', { kind: 'choice', card }, ev);
+      if (!handled) applyDefault(m, p, card);
+      // every other source observes the pick (the card's own key already ran above)
+      m.dispatch(p, 'onChoicePick', ev, { skipKey: `choice:${card.id}` });
+      p.recompute();
+    } catch (error) { reportChoiceError(m, card, `onChoicePick[player:${p.playerId}]`, error); }
   }
 }
 
@@ -451,65 +459,72 @@ function applyDefault(m, ps, card) {
   let handled = false;
   let battle = false;
   for (const b of buffs) {
-    const bb = b.bb || {};
-    const bs = b.bbStr || {};
-    const count = Number.isInteger(bb.count) ? bb.count : 1;
-    switch (b.key) {
-      case 'global_special_choice_gain_equip': {
-        for (let i = 0; i < count; i++) {
-          const id = m.rollItemId({ pool: bs.pool });
-          if (id) ps.acquireItem(id, { source: 'choice' });
+    try {
+      const bb = b.bb || {};
+      const bs = b.bbStr || {};
+      const count = Number.isInteger(bb.count) ? bb.count : 1;
+      switch (b.key) {
+        case 'global_special_choice_gain_equip': {
+          handled = true;
+          for (let i = 0; i < count; i++) {
+            const id = m.rollItemId({ pool: bs.pool });
+            if (id) ps.acquireItem(id, { source: 'choice' });
+          }
+          break;
         }
-        handled = true;
-        break;
-      }
-      case 'global_special_choice_bond_addlayer': {
-        const bonds = String(bs.bond_list || '').split(',').map((s) => s.trim()).filter(Boolean);
-        for (const bid of bonds) ps.addLayers(bid, count, { requireActive: false, reason: 'choice' });
-        handled = true;
-        break;
-      }
-      case 'global_special_choice_gain_coin':
-        ps.addFunds(count, { reason: 'choice' });
-        handled = true;
-        break;
-      case 'global_special_choice_refresh_free':
-        ps.shop.freeRefreshes += count;
-        ps.dirty();
-        handled = true;
-        break;
-      case 'single_special_choice_gloden_equip_chess':
-        addRef(ps, card, eff, 'effect:builtin_next_buy_golden_item', { counter: count, battle: false });
-        handled = true;
-        break;
-      case 'single_special_choice_gloden_char_chess':
-        addRef(ps, card, eff, 'effect:builtin_next_buy_elite', { counter: count, battle: false });
-        handled = true;
-        break;
-      case 'single_special_choice_gain_bond_chess': {
-        // the player's 自选 stock joins the draw, its bonds read through the player's view (player/diy.js diyStockEntries)
-        const pgd = ps.gd || gd;
-        const hasBond = (cid) => { const c = pgd.chess(cid); return !!(c && Array.isArray(c.bonds) && c.bonds.includes(bs.bond)); };
-        for (let i = 0; i < count; i++) {
-          const extra = typeof ps.diyStockEntries === 'function' ? ps.diyStockEntries() : null;
-          const id = ps.pool.roll(m.rngMeta, { maxTier: Math.max(1, ps.shop.level), filter: hasBond, extra })
-            || ps.pool.roll(m.rngMeta, { maxTier: 6, filter: hasBond, extra });
-          if (id) ps.acquireChess(id, { source: 'choice' });
+        case 'global_special_choice_bond_addlayer': {
+          handled = true;
+          const bonds = String(bs.bond_list || '').split(',').map((s) => s.trim()).filter(Boolean);
+          for (const bid of bonds) {
+            try {
+              grantLayersVerified(m, ps, bid, count, { requireActive: false, reason: 'choice' },
+                { source: `choice:${card.id}`, hook: 'onChoicePick' });
+            } catch (error) { reportChoiceError(m, card, `onChoicePick[bond:${bid}]`, error); }
+          }
+          break;
         }
-        handled = true;
-        break;
+        case 'global_special_choice_gain_coin':
+          handled = true;
+          ps.addFunds(count, { reason: 'choice' });
+          break;
+        case 'global_special_choice_refresh_free':
+          handled = true;
+          ps.shop.freeRefreshes += count;
+          ps.dirty();
+          break;
+        case 'single_special_choice_gloden_equip_chess':
+          handled = true;
+          addRef(ps, card, eff, 'effect:builtin_next_buy_golden_item', { counter: count, battle: false });
+          break;
+        case 'single_special_choice_gloden_char_chess':
+          handled = true;
+          addRef(ps, card, eff, 'effect:builtin_next_buy_elite', { counter: count, battle: false });
+          break;
+        case 'single_special_choice_gain_bond_chess': {
+          handled = true;
+          // the player's 自选 stock joins the draw, its bonds read through the player's view (player/diy.js diyStockEntries)
+          const pgd = ps.gd || gd;
+          const hasBond = (cid) => { const c = pgd.chess(cid); return !!(c && Array.isArray(c.bonds) && c.bonds.includes(bs.bond)); };
+          for (let i = 0; i < count; i++) {
+            const extra = typeof ps.diyStockEntries === 'function' ? ps.diyStockEntries() : null;
+            const id = ps.pool.roll(m.rngMeta, { maxTier: Math.max(1, ps.shop.level), filter: hasBond, extra })
+              || ps.pool.roll(m.rngMeta, { maxTier: 6, filter: hasBond, extra });
+            if (id) ps.acquireChess(id, { source: 'choice' });
+          }
+          break;
+        }
+        case 'auto_chess_change_map': {
+          battle = true;
+          for (const [alias, v] of Object.entries(bb)) if (alias.includes('#')) ps.deviceOverrides[alias] = Number(v) !== 0;
+          ps.invalidateDeployMap();
+          break;
+        }
+        case 'global_special_choice_all_activated':
+          break;
+        default:
+          battle = true;
       }
-      case 'auto_chess_change_map': {
-        for (const [alias, v] of Object.entries(bb)) if (alias.includes('#')) ps.deviceOverrides[alias] = Number(v) !== 0;
-        ps.invalidateDeployMap();
-        battle = true;
-        break;
-      }
-      case 'global_special_choice_all_activated':
-        break;
-      default:
-        battle = true;
-    }
+    } catch (error) { reportChoiceError(m, card, `onChoicePick[buff:${b?.key ?? 'invalid'}]`, error); }
   }
   if (battle || !handled) addRef(ps, card, eff, `choice:${card.id}`, { battle: true });
 }

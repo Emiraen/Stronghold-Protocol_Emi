@@ -49,6 +49,10 @@ import { textFinite } from '../../../../shared/plugins/textNumber.js';
 
 const num = S.num;
 
+function passiveBuff(battle, unit, key, ...rest) {
+  return S.isolateContentCallback(battle, () => S.passiveBuff(battle, unit, key, ...rest), key, unit);
+}
+
 /** Injection point for tests (lendItemEffects stub); null ⇒ items.js export. */
 export const deps = { lendItemEffects: null };
 
@@ -147,7 +151,10 @@ function onLayers(battle, pid, bondId, fn) {
     if (!list || st.pending.has(key)) return;
     st.pending.add(key);
     // the gain is recorded after the hook: re-read the live layers next tick
-    battle.after(0, () => { st.pending.delete(key); for (const f of list) f(); });
+    battle.after(0, () => {
+      st.pending.delete(key);
+      for (const f of list) S.isolateContentCallback(battle, f, `bond:refresh:${key}`);
+    });
   }, { priority: -100 });
 }
 
@@ -159,7 +166,7 @@ function onUnitHit(battle, unit, fn) {
   st.hooked.add('hit');
   battle.on('hit', (c) => {
     const list = c.source ? st.hitFns.get(c.source) : undefined;
-    if (list) for (let i = 0; i < list.length; i++) list[i](c);
+    if (list) for (let i = 0; i < list.length; i++) S.isolateContentCallback(battle, () => list[i](c), 'bond:hit', c.source);
   });
 }
 
@@ -171,7 +178,7 @@ function onUnitDamaged(battle, unit, fn) {
   st.hooked.add('damaged');
   battle.on('damaged', (c) => {
     const list = c.source ? st.dmgFns.get(c.source) : undefined;
-    if (list) for (let i = 0; i < list.length; i++) list[i](c);
+    if (list) for (let i = 0; i < list.length; i++) S.isolateContentCallback(battle, () => list[i](c), 'bond:damaged', c.source);
   });
 }
 
@@ -185,7 +192,7 @@ function installYan(battle, pid, bb, members) {
   const L = () => S.bondLayers(battle, pid, 'yanShip');
   const apply = () => {
     const mods = S.directMods({ atk: num(bb.base_atk) + num(bb.atk_per_stack) * L() });
-    for (const u of members) S.passiveBuff(battle, u, 'bond:yan', mods);
+    for (const u of members) passiveBuff(battle, u, 'bond:yan', mods);
   };
   apply();
   onLayers(battle, pid, 'yanShip', apply);
@@ -238,12 +245,14 @@ function installSargon(battle, pid, bb, members) {
     if (dur > 0) {
       for (const m of members) {
         if (!S.onField(m)) continue;
-        battle.addBuff(m, {
-          key: 'bond:sargon', duration: dur, refresh: 'independent', maxStacks,
-          mods: { aspd: num(main.base_attack_speed, 0) },
-          onExpire: ({ unit: u }) => syncAtk(u), onRemove: ({ unit: u }) => syncAtk(u),
-        });
-        syncAtk(m);
+        S.isolateContentCallback(battle, () => {
+          battle.addBuff(m, {
+            key: 'bond:sargon', duration: dur, refresh: 'independent', maxStacks,
+            mods: { aspd: num(main.base_attack_speed, 0) },
+            onExpire: ({ unit: u }) => syncAtk(u), onRemove: ({ unit: u }) => syncAtk(u),
+          });
+          syncAtk(m);
+        }, 'bond:sargon:apply', m);
       }
     }
     if (narant && six) lendAround(battle, unit, share, S.bondLayers(battle, pid, 'sargonShip'));
@@ -261,8 +270,7 @@ function lendAround(battle, from, share, L) {
   let n = 0;
   for (const a of S.alliesAround(battle, from, S.N8)) {
     if (!S.isOp(a)) continue;
-    lend(battle, from, a, { maxTier, duration });
-    n++;
+    S.isolateContentCallback(battle, () => { lend(battle, from, a, { maxTier, duration }); n++; }, 'bond:sargon:lend', a);
   }
   if (n) S.fxOn(battle, 'bondShare', from, 'bond:sargonShip', 'narant', { n, duration });
 }
@@ -274,7 +282,7 @@ function installVictoria(battle, pid, bb, members) {
   const apply = () => {
     const mul = num(bb.base_damage_scale, 1) + num(bb.damage_scale_per_stack, 0) * S.bondLayers(battle, pid, 'victoriaShip');
     for (const u of members) {
-      if (S.itemsOf(u).length >= 1) S.passiveBuff(battle, u, 'bond:victoria', { dmgDealtMul: mul });
+      if (S.itemsOf(u).length >= 1) passiveBuff(battle, u, 'bond:victoria', { dmgDealtMul: mul });
     }
   };
   apply();
@@ -286,7 +294,7 @@ function installVictoria(battle, pid, bb, members) {
     if (!ids.length) continue;
     let add = 0;
     for (const id of ids) add += S.isGoldenId(id) ? golden : normal;
-    if (add > 0) S.passiveBuff(battle, u, 'bond:victoria:atk', S.directMods({ atk: add }));
+    if (add > 0) passiveBuff(battle, u, 'bond:victoria:atk', S.directMods({ atk: add }));
   }
 }
 
@@ -295,7 +303,7 @@ function installVictoria(battle, pid, bb, members) {
 
 function installKjerag(battle, pid, bb, members) {
   const base = num(bb.base_damage_scale, 1);
-  for (const u of members) S.passiveBuff(battle, u, 'bond:kjerag', { dmgDealtMul: base });
+  for (const u of members) passiveBuff(battle, u, 'bond:kjerag', { dmgDealtMul: base });
   const ex = num(bb.base_ex_damage_scale, base), per = num(bb.ex_damage_scale_per_stack, 0);
   const onHit = (c) => {
     const t = c.target;
@@ -328,7 +336,7 @@ function installLaterano(battle, pid, bb, members) {
     if (!memberSet.has(unit) || st.bonus >= cap) return;
     st.used++;
     st.bonus = Math.min(cap, st.used * per);
-    for (const m of members) S.passiveBuff(battle, m, 'bond:laterano:ammo', S.directMods({ atk: st.bonus }));
+    for (const m of members) passiveBuff(battle, m, 'bond:laterano:ammo', S.directMods({ atk: st.bonus }));
   });
 }
 
@@ -432,7 +440,7 @@ function devour(battle, pid, bb, members) {
     const mods = {};
     if (atk > 0) mods.atkFinal = atk; // 最终加算 (units.js _recalc)
     if (block > 0) mods.blockCnt = block;
-    if (Object.keys(mods).length) S.passiveBuff(battle, m, 'bond:egir:devour', mods);
+    if (Object.keys(mods).length) passiveBuff(battle, m, 'bond:egir:devour', mods);
   }
   const amount = num(bb.damage_value, 0);
   const layered = new Set();
@@ -469,7 +477,7 @@ function installEgir(battle, pid, bb, members) {
   // ratio is kept).
   const apply = () => {
     const mods = S.directMods({ hp: num(bb.base_max_hp, 0) + num(bb.max_hp_per_stack, 0) * S.bondLayers(battle, pid, 'egirShip') });
-    for (const u of members) S.passiveBuff(battle, u, 'bond:egir', mods);
+    for (const u of members) passiveBuff(battle, u, 'bond:egir', mods);
   };
   apply();
   onLayers(battle, pid, 'egirShip', apply);
@@ -508,7 +516,7 @@ function installEgir(battle, pid, bb, members) {
       devour(battle, pid, bb, members);
     } finally {
       start.depth--;
-      if (--start.passes <= 0) for (const flush of start.flush.splice(0)) flush();
+      if (--start.passes <= 0) for (const flush of start.flush.splice(0)) S.isolateContentCallback(battle, flush, 'bond:egir:flush');
     }
   }, { once: true });
   if (!(max > 0)) return;
@@ -525,8 +533,7 @@ function installEgir(battle, pid, bb, members) {
     for (const u of batch.splice(0)) {
       if (u.alive || u.removed) continue;
       if (revives >= max) break;
-      knockedOut.add(u);
-      revive(u);
+      S.isolateContentCallback(battle, () => { knockedOut.add(u); revive(u); }, 'bond:egir:revive', u);
     }
   });
   battle.on('death', (c) => {
@@ -612,7 +619,7 @@ function installKazimierz(battle, pid, bb, members) {
     const cap = num(bb.base_max_atk_when_born, 0) + num(bb.max_atk_when_born_per_stack, 0) * S.bondLayers(battle, pid, 'kazimierzShip');
     const bonus = Math.max(0, Math.min(cap, st.deploys * num(bb.atk_when_born, 0)));
     if (!(bonus > 0)) return;
-    for (const u of members) S.passiveBuff(battle, u, 'bond:kazimierz', S.directMods({ atk: bonus }));
+    for (const u of members) passiveBuff(battle, u, 'bond:kazimierz', S.directMods({ atk: bonus }));
   };
   battle.on('deploy', ({ unit }) => {
     if (!S.isOp(unit) || unit.ownerId !== pid) return;
@@ -626,15 +633,19 @@ function installKazimierz(battle, pid, bb, members) {
     battle.every(iv, () => {
       for (const m of members) {
         if (!S.onField(m) || !m.blocking || !m.blocking.length) continue;
+        S.isolateContentCallback(battle, () => {
         const hits = battle.foesInRadius(m.x, m.y, radius);
-        if (!hits.length) continue;
+        if (!hits.length) return;
         const amount = scale * m.s.atk;
         for (const e of hits) {
           if (!e.alive) continue;
+          S.isolateContentCallback(battle, () => {
           battle.dealDamage(m, e, { amount, type: 'true', canDodge: false, isSplash: true, tags: ['bond:kazimierz'] });
           if (e.alive && stun > 0) battle.applyStatus(e, 'stun', { duration: stun, source: m });
+          }, 'bond:kazimierz:target', e);
         }
         S.fxOn(battle, 'aoe', m, 'bond:kazimierzShip', 'pulse', { radius, dmgType: 'true', n: hits.length });
+        }, 'bond:kazimierz:pulse', m);
       }
     });
   }
@@ -669,12 +680,14 @@ export function install(battle) {
     const pid = p.playerId;
     if (!p.bonds || typeof p.bonds !== 'object') continue;
     for (const [bondId, fn] of Object.entries(INSTALLERS)) {
-      if (!S.bondActive(battle, pid, bondId)) continue;
-      const bb = bondBb(bondId);
-      if (!bb) continue;
-      const members = S.bondMembers(battle, pid, bondId);
-      if (!members.length) continue;
-      fn(battle, pid, bb, members);
+      S.isolateContentCallback(battle, () => {
+        if (!S.bondActive(battle, pid, bondId)) return;
+        const bb = bondBb(bondId);
+        if (!bb) return;
+        const members = S.bondMembers(battle, pid, bondId);
+        if (!members.length) return;
+        fn(battle, pid, bb, members);
+      }, `bond:install:${pid}:${bondId}`);
     }
   }
 }

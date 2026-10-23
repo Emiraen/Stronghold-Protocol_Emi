@@ -2,18 +2,15 @@
 import http from 'node:http';
 import https from 'node:https';
 import { readFileSync } from 'node:fs';
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { scryptSync, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { rankOf } from '../shared/ranks.js';
 import { LEASE_MS, SERVER_NAMES, validateKick } from './regions.js';
 import { validateAnnouncement } from './announcement.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FRONT = path.join(ROOT, 'admin');
-const SESSION_MS = 12 * 60 * 60_000;
-const MAX_SESSIONS = 50;
 const SNAPSHOT_CACHE_MS = 5000;
 const snapshotCaches = new WeakMap();
 const failed = (res, code, message) => reply(res, code, { error: message });
@@ -21,10 +18,9 @@ const reply = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
 };
-const sha = (s) => createHash('sha256').update(s).digest('hex');
 const nameOf = (value) => String(value || '').slice(0, 64);
 
-/** Environment format: scrypt$<32-byte-hex-salt>$<64-byte-hex-derived-key>. */
+/** Legacy encoding helper retained for compatibility; the console no longer requires a password. */
 export function checkAdminPassword(password, encoded) {
   if (typeof password !== 'string' || password.length > 1024 || typeof encoded !== 'string') return false;
   const parts = encoded.split('$');
@@ -92,7 +88,7 @@ export function adminSnapshot({ lobby, registry, players, runtimes }) {
   }
   registered.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
   const ranking = rankedProfiles.map((p, i) => ({ position: i + 1, name: nameOf(p.name), points: p.points,
-      label: rankOf(p.points).label, wins: p.wins, losses: p.losses }));
+      label: lobby.ranked.summary(p.aid, p.name, false, ranks).rank.label.replace(/ #\d+$/, ''), wins: p.wins, losses: p.losses }));
   const subtotal = { online: runtimes ? onlineIds.size + sessions.filter((s) => !s.aid).length : online.length,
     matches: matches.length, ranked: matches.filter((match) => match.ranked).length };
   const servers = runtimes ? sources.map(({ id, ageMs, runtime }) => ({
@@ -131,10 +127,7 @@ export function createAdminStateSource({ snapshot, now = () => performance.now()
 
 /** Create a listener; HTTP is allowed only for unit tests on loopback. */
 export async function startAdmin({ lobby, registry, players, stateSource, controls, port = 56129, host = '0.0.0.0',
-  passwordHash, tls, allowInsecureLocal = false, log = console }) {
-  if (typeof passwordHash !== 'string' || !/^scrypt\$[0-9a-f]{64}\$[0-9a-f]{128}$/.test(passwordHash)) {
-    throw new Error('invalid ADMIN_PASSWORD_HASH');
-  }
+  tls, allowInsecureLocal = false, log = console }) {
   if (!tls && !(allowInsecureLocal && (host === '127.0.0.1' || host === '::1'))) {
     throw new Error('admin listener requires TLS');
   }
@@ -144,8 +137,6 @@ export async function startAdmin({ lobby, registry, players, stateSource, contro
   if (!playerCaches) registryCaches.set(registry, playerCaches = new Map());
   let stateCache = playerCaches.get(players);
   if (!stateCache) playerCaches.set(players, stateCache = { json: null, expiresAt: 0 });
-  const sessions = new Map();
-  const attempts = new Map();
   const files = {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/index.html': ['index.html', 'text/html; charset=utf-8'],
@@ -159,12 +150,6 @@ export async function startAdmin({ lobby, registry, players, stateSource, contro
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     const pathname = req.url?.split('?')[0];
-    const peer = req.socket.remoteAddress || '';
-    const now = Date.now();
-    for (const [id, exp] of sessions) if (exp <= now) sessions.delete(id);
-    for (const [ip, row] of attempts) if (now - row.start > 15 * 60_000) attempts.delete(ip);
-    const raw = /(?:^|;\s*)sp_admin=([0-9a-f]{64})(?:;|$)/.exec(req.headers.cookie || '')?.[1];
-    const authorized = raw && sessions.get(sha(raw)) > now;
     const sameOrigin = () => {
       const expected = `${tls ? 'https' : 'http'}://${req.headers.host}`;
       return req.headers.origin === expected;
@@ -179,32 +164,7 @@ export async function startAdmin({ lobby, registry, players, stateSource, contro
       return JSON.parse(Buffer.concat(chunks).toString('utf8'));
     };
     const action = async () => {
-      if (req.method === 'POST' && (pathname === '/api/login' || pathname === '/api/logout')) {
-        if (!sameOrigin()) return failed(res, 403, '请求来源无效');
-        if (pathname === '/api/logout') {
-          if (raw) sessions.delete(sha(raw));
-          res.setHeader('Set-Cookie', `sp_admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${tls ? '; Secure' : ''}`);
-          res.writeHead(204); res.end(); return;
-        }
-        const row = attempts.get(peer) || { start: now, count: 0 };
-        if (now - row.start > 15 * 60_000) { row.start = now; row.count = 0; }
-        if (row.count >= 8) return failed(res, 429, '尝试过多，请稍后再试');
-        const body = await readBody();
-        if (!checkAdminPassword(body?.password, passwordHash)) {
-          row.count++;
-          if (attempts.size >= 10_000 && !attempts.has(peer)) attempts.delete(attempts.keys().next().value);
-          attempts.set(peer, row);
-          return failed(res, 401, '密码错误');
-        }
-        attempts.delete(peer);
-        if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value);
-        const secret = randomBytes(32).toString('hex');
-        sessions.set(sha(secret), now + SESSION_MS);
-        res.setHeader('Set-Cookie', `sp_admin=${secret}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${tls ? '; Secure' : ''}`);
-        return reply(res, 200, { ok: true });
-      }
       if (pathname === '/api/state') {
-        if (!authorized) return failed(res, 401, '请先登录');
         if (req.method !== 'GET') return failed(res, 405, '方法不支持');
         let json;
         if (stateSource) {
@@ -222,7 +182,6 @@ export async function startAdmin({ lobby, registry, players, stateSource, contro
         return;
       }
       if (pathname === '/api/announcement' || pathname === '/api/kick' || pathname === '/api/kick/status') {
-        if (!authorized) return failed(res, 401, '请先登录');
         const announcement = pathname === '/api/announcement';
         if (req.method !== 'POST' && !(announcement && req.method === 'GET')) return failed(res, 405, '方法不支持');
         if (req.method === 'POST' && !sameOrigin()) return failed(res, 403, '请求来源无效');

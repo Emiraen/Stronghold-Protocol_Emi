@@ -28,7 +28,7 @@ function fakeNet() {
   return n;
 }
 
-function rig({ hidden = false } = {}) {
+function rig({ hidden = false, spec = specMod } = {}) {
   let t = 1000;
   const frames = [];
   const intervals = [];
@@ -42,7 +42,7 @@ function rig({ hidden = false } = {}) {
     caf: () => {},
     setInterval: (fn) => { intervals.push(fn); return intervals.length; },
     clearInterval: () => {},
-    loadSim: async () => ({ spec: specMod, ds: DS }),
+    loadSim: async () => ({ spec, ds: DS }),
     logger: { error() {}, warn() {}, info() {}, debug() {} },
   });
   const feed = { snaps: [], evs: [], fields: [] };
@@ -216,10 +216,64 @@ test('boss field: the local pool follows b.pool (server hp − unacknowledged lo
   assert.equal(last.bossDmg, cumAtSend[cumAtSend.length - 1]);
   assert.ok(last.bossDmg <= pool.cum);
   assert.ok(last.by && typeof last.by === 'object');
-  assert.equal(typeof last.leaks, 'number');
+  assert.ok(last.leaks == null || typeof last.leaks === 'number', 'zero leaks may be omitted');
   r.net.emit('b.pool', { hp: pool.maxHp * 0.5, max: pool.maxHp, teamLp: 20, acked: { [start.fieldId]: pool.cum } });
   assert.ok(Math.abs(pool.hp - pool.maxHp * 0.5) < 1e-6, 'server hp when everything is acknowledged');
   r.runner.dispose();
+});
+
+test('progress omits only false done / zero leaks, preserving ordinary, unite, boss and forced-end reports', async () => {
+  for (const kind of ['normal', 'unite', 'boss']) {
+    const expectedLeft = { p_1: 3, p_2: 1 };
+    let leaks = 0;
+    const sim = { ...specMod, battleProgress(battle) {
+      return { ...specMod.battleProgress(battle), leaks,
+        ...(kind === 'unite' ? { left: expectedLeft } : {}) };
+    } };
+    const r = rig({ spec: sim });
+    const battleId = `optional_${kind}`, fieldId = `n:${kind}`;
+    const spec = specMod.buildBattleSpec({
+      battleId, fieldId, kind, seed: 73, modeId: 'mode_multi_normal', round: 2,
+      stageId: 'act1autochess_m01', timeLimit: 120,
+      players: [{ playerId: 'p_0', seat: 0, side: 'L', colOffset: 0, units: [], bonds: {} }],
+      spawns: [{ time: 100, enemyKey: 'enemy_1001_bigbo', routeIndex: 0, count: 1 }],
+      routes: [{ motion: 'WALK', start: [9, 10], end: [9, 2], checkpoints: [] }],
+      ...(kind === 'boss' ? { boss: { poolHp: 10000, poolMax: 10000 } } : {}),
+    });
+    try {
+      r.net.emit('b.start', { battleId, fieldId, kind, spec, authoritative: true, speed: 2 });
+      await r.settle();
+      const entry = r.runner._entries.get(battleId);
+      assert.ok(entry, `${kind}: loaded`);
+      r.advance(100);
+      const zero = r.net.sent.filter(msg => msg.t === 'b.progress').at(-1);
+      assert.ok(zero, `${kind}: regular progress remains`);
+      assert.equal(Object.hasOwn(zero, 'done'), false);
+      assert.equal(Object.hasOwn(zero, 'leaks'), false);
+      assert.equal(typeof zero.gt, 'number');
+      assert.equal(typeof zero.killed, 'number');
+      assert.equal(typeof zero.total, 'number');
+      const old = { ...zero, done: false, leaks: 0 };
+      assert.equal(Buffer.byteLength(JSON.stringify(old)) - Buffer.byteLength(JSON.stringify(zero)), 23);
+      if (kind === 'unite') assert.deepEqual(zero.left, expectedLeft);
+      leaks = 2;
+      if (kind === 'boss') { entry.meter.lp = 7; entry.battle.sharedBoss.damage('p_0', 11); }
+      r.advance(1200);
+      const nonzero = r.net.sent.filter(msg => msg.t === 'b.progress').at(-1);
+      assert.equal(nonzero.leaks, kind === 'boss' ? 7 : 2);
+      assert.ok(nonzero.gt > zero.gt);
+      if (kind === 'unite') assert.deepEqual(nonzero.left, expectedLeft);
+      if (kind === 'boss') { assert.equal(nonzero.bossDmg, 11); assert.deepEqual(nonzero.by, { p_0: 11 }); }
+      const beforeEnd = r.net.sent.filter(msg => msg.t === 'b.progress').length;
+      r.net.emit('b.end', { battleId, fieldId, reason: 'forced' });
+      await r.settle();
+      const finished = r.net.sent.filter(msg => msg.t === 'b.progress');
+      assert.equal(finished.length, beforeEnd + 1, 'forced report bypasses interval');
+      assert.equal(finished.at(-1).done, true);
+      assert.equal(finished.at(-1).leaks, kind === 'boss' ? 7 : 2);
+      assert.ok(r.net.sent.some(msg => msg.t === 'b.result'), 'result delivery remains');
+    } finally { r.runner.dispose(); }
+  }
 });
 
 /** A fake net whose b.result requests follow a script: 'ok' | 'lost' (DISCONNECTED) | 'offline' | 'timeout' | 'refused'. */

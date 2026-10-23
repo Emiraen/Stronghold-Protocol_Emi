@@ -79,22 +79,26 @@ export function install(battle) {
   };
   for (const u of battle.allyUnits) {
     if (!S.isOp(u)) continue;
-    for (const gid of garrisonIdsOf(u)) {
-      const g = S.garrisonRecord(gid);
-      if (g && g.eventType === 'IN_BATTLE') add(u, g);
-    }
+    S.isolateContentCallback(battle, () => {
+      for (const gid of garrisonIdsOf(u)) S.isolateContentCallback(battle, () => {
+        const g = S.garrisonRecord(gid);
+        if (g && g.eventType === 'IN_BATTLE') add(u, g);
+      }, `garrison:collect:${gid}`, u);
+    }, 'garrison:collect', u);
   }
   if (!all.length) return;
 
   const grants = [];
   for (const it of all.slice()) {
     if (it.key !== 'ADD_BOND') continue;
-    const g2 = S.garrisonRecord(it.bbStr.give_garrison_id);
-    if (!g2 || g2.eventType !== 'IN_BATTLE') continue;
-    for (const t of grantTargets(battle, it)) {
-      const got = add(t, g2, it);
-      if (got) grants.push(got);
-    }
+    S.isolateContentCallback(battle, () => {
+      const g2 = S.garrisonRecord(it.bbStr.give_garrison_id);
+      if (!g2 || g2.eventType !== 'IN_BATTLE') return;
+      for (const t of grantTargets(battle, it)) S.isolateContentCallback(battle, () => {
+        const got = add(t, g2, it);
+        if (got) grants.push(got);
+      }, `garrison:grant:${it.gid}`, t);
+    }, `garrison:grant:${it.gid}`, it.unit);
   }
 
   const by = new Map();
@@ -105,14 +109,14 @@ export function install(battle) {
   }
   for (const [key, list] of by) {
     const inst = INSTALLERS[key];
-    if (inst) inst(battle, list);
+    if (inst) S.isolateContentCallback(battle, () => inst(battle, list), `garrison:install:${key}`);
   }
-  installHitMods(battle, by);
-  installReaders(battle, by);
+  S.isolateContentCallback(battle, () => installHitMods(battle, by), 'garrison:install:hitMods');
+  S.isolateContentCallback(battle, () => installReaders(battle, by), 'garrison:install:readers');
 
   if (grants.length) {
     battle.on('battleStart', () => {
-      for (const it of grants) S.fxOn(battle, 'garrisonGrant', it.unit, `gar:${it.grantedBy.gid}`, it.gid, { from: it.grantedBy.unit.id });
+      for (const it of grants) S.isolateContentCallback(battle, () => S.fxOn(battle, 'garrisonGrant', it.unit, `gar:${it.grantedBy.gid}`, it.gid, { from: it.grantedBy.unit.id }), `garrison:grantFx:${it.gid}`, it.unit);
     });
   }
 }
@@ -189,6 +193,11 @@ function conditionMet(battle, it) {
 
 /** Fire a layer-gain garrison instance. Returns the layers added. */
 export function fireGain(battle, it) {
+  // A trait is an independent grant. Record a failure without skipping later traits; never retry a partial grant.
+  return S.isolateContentCallback(battle, () => fireGainUnchecked(battle, it), `garrison:gain:${it.gid}`, it.unit) ?? 0;
+}
+
+function fireGainUnchecked(battle, it) {
   if (!conditionMet(battle, it)) return 0;
   const bonds = targetBonds(battle, it);
   if (!bonds.length) return 0;
@@ -259,9 +268,11 @@ const INSTALLERS = {
       const arr = killer ? m.get(killer) : null;
       if (!arr || !victim) return;
       for (const it of arr) {
-        if (!(victim.side === 'enemy' || (it.allies && victim.side === 'ally' && victim.kind === 'op'))) continue;
-        it.cnt++;
-        if (it.cnt % Math.max(1, S.num(it.bb.check_cnt, 1)) === 0) fireGain(battle, it);
+        try {
+          if (!(victim.side === 'enemy' || (it.allies && victim.side === 'ally' && victim.kind === 'op'))) continue;
+          it.cnt++;
+          if (it.cnt % Math.max(1, S.num(it.bb.check_cnt, 1)) === 0) fireGain(battle, it);
+        } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
       }
     });
   },
@@ -279,11 +290,13 @@ const INSTALLERS = {
     battle.on('tick', () => {
       for (let i = 0; i < swaps.length; i++) {
         const it = swaps[i];
-        const u = it.unit;
-        const doll = !!(u.trait && u.trait.doll);
-        if (doll === it.doll) continue;
-        it.doll = doll;
-        if (u.alive && u.deployed) fireGain(battle, it);
+        try {
+          const u = it.unit;
+          const doll = !!(u.trait && u.trait.doll);
+          if (doll === it.doll) continue;
+          it.doll = doll;
+          if (u.alive && u.deployed) fireGain(battle, it);
+        } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
       }
     });
   },
@@ -293,9 +306,11 @@ const INSTALLERS = {
       if (!unit) return;
       for (let i = 0; i < list.length; i++) {
         const it = list[i];
-        if (!ammoScope(it, unit)) continue;
-        it.cnt++;
-        if (it.cnt % Math.max(1, S.num(it.bb.consume_count, 1)) === 0) fireGain(battle, it);
+        try {
+          if (!ammoScope(it, unit)) continue;
+          it.cnt++;
+          if (it.cnt % Math.max(1, S.num(it.bb.consume_count, 1)) === 0) fireGain(battle, it);
+        } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
       }
     });
   },
@@ -306,9 +321,11 @@ const INSTALLERS = {
     battle.on('statusApplied', ({ target, status, entered }) => {
       if (!target || !watched.has(status) || !entered || target.side !== 'enemy') return;
       for (const it of list) {
-        if (status !== (AB_FLAG_STATUS[S.num(it.bb.check_ab_flag, 16)] ?? 'freeze')) continue;
-        if (!S.onField(it.unit) || !S.inRange(it.unit, target)) continue;
-        if (battle.rng() < S.num(it.bb.prob, 1)) fireGain(battle, it);
+        try {
+          if (status !== (AB_FLAG_STATUS[S.num(it.bb.check_ab_flag, 16)] ?? 'freeze')) continue;
+          if (!S.onField(it.unit) || !S.inRange(it.unit, target)) continue;
+          if (battle.rng() < S.num(it.bb.prob, 1)) fireGain(battle, it);
+        } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
       }
     });
   },
@@ -340,31 +357,37 @@ const INSTALLERS = {
     battle.on('layerGain', (ctx) => {
       if (ctx.reason !== 'garrison' || !ctx.source) return;
       for (const it of list) {
-        const h = it.unit;
-        if (h.ownerId !== ctx.playerId || !S.onField(h)) continue;
-        if (it.bbStr.range_id && it.bbStr.range_id !== '1-1') continue;
-        if (sourceInFront(h, ctx.source, ctx.tile)) ctx.n += S.num(it.bb.extra_cnt, 0);
+        try {
+          const h = it.unit;
+          if (h.ownerId !== ctx.playerId || !S.onField(h)) continue;
+          if (it.bbStr.range_id && it.bbStr.range_id !== '1-1') continue;
+          if (sourceInFront(h, ctx.source, ctx.tile)) ctx.n += S.num(it.bb.extra_cnt, 0);
+        } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
       }
     });
   },
 
   GAIN_BUFF(battle, list) {
     for (const it of list) {
-      const mods = {};
-      if (S.num(it.bb.atk, 0) > 0) mods.atkMul = S.num(it.bb.atk);
-      if (S.num(it.bb.max_hp, 0) > 0) mods.hpMul = S.num(it.bb.max_hp);
-      if (S.num(it.bb.def, 0) > 0) mods.defMul = S.num(it.bb.def);
-      S.passiveBuff(battle, it.unit, `gar:${it.gid}`, mods);
+      try {
+        const mods = {};
+        if (S.num(it.bb.atk, 0) > 0) mods.atkMul = S.num(it.bb.atk);
+        if (S.num(it.bb.max_hp, 0) > 0) mods.hpMul = S.num(it.bb.max_hp);
+        if (S.num(it.bb.def, 0) > 0) mods.defMul = S.num(it.bb.def);
+        S.passiveBuff(battle, it.unit, `gar:${it.gid}`, mods);
+      } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
     }
   },
 
   attr_common_global_buff(battle, list) {
     for (const it of list) {
-      const mods = {};
-      if (S.num(it.bb.sp_recovery_per_sec, 0)) mods.spRecoveryFlat = S.num(it.bb.sp_recovery_per_sec);
-      Object.assign(mods, S.directMods({ atk: S.num(it.bb.atk, 0), hp: S.num(it.bb.max_hp, 0) }));
-      if (S.num(it.bb.attack_speed, 0)) mods.aspd = S.num(it.bb.attack_speed);
-      S.passiveBuff(battle, it.unit, `gar:${it.gid}`, mods);
+      try {
+        const mods = {};
+        if (S.num(it.bb.sp_recovery_per_sec, 0)) mods.spRecoveryFlat = S.num(it.bb.sp_recovery_per_sec);
+        Object.assign(mods, S.directMods({ atk: S.num(it.bb.atk, 0), hp: S.num(it.bb.max_hp, 0) }));
+        if (S.num(it.bb.attack_speed, 0)) mods.aspd = S.num(it.bb.attack_speed);
+        S.passiveBuff(battle, it.unit, `gar:${it.gid}`, mods);
+      } catch (e) { battle._handlerError(`garrison:item:${it.gid}`, it.unit, e); }
     }
   },
 
@@ -401,7 +424,6 @@ function attrMods(bb, k) {
 function applyReader(battle, it) {
   const k = stepsOf(battle, it);
   if (k === it.k) return;
-  it.k = k;
   const u = it.unit;
   const key = `gar:${it.gid}`;
   switch (it.key) {
@@ -418,15 +440,16 @@ function applyReader(battle, it) {
       break;
     case 'act2autochess_gar_eff_attrByBond_add_onstart': {
       const b = u.findBuff(key);
-      if (b && b.timeLeft > 0) onstartBuff(battle, it, b.timeLeft);
+      if (b && b.timeLeft > 0) onstartBuff(battle, it, b.timeLeft, k);
       break;
     }
     default: break; // damageScale reads it.k in the hit hook
   }
+  it.k = k; // Only mark a reader current after its idempotent update succeeded.
 }
 
-function onstartBuff(battle, it, duration) {
-  const k = Math.max(0, it.k);
+function onstartBuff(battle, it, duration, steps = it.k) {
+  const k = Math.max(0, steps);
   const key = `gar:${it.gid}`;
   if (!(k > 0) || !(duration > 0)) { battle.removeBuff(it.unit, key); return; }
   battle.addBuff(it.unit, { key, duration, refresh: 'replace', mods: { atkFlat: S.num(it.bb.atk, 0) * k, hpFlat: S.num(it.bb.max_hp, 0) * k } });
@@ -436,7 +459,7 @@ function installReaders(battle, by) {
   const list = [];
   for (const key of READERS) for (const it of by.get(key) ?? EMPTY) list.push(it);
   if (!list.length) return;
-  const recompute = () => { for (const it of list) applyReader(battle, it); };
+  const recompute = () => { for (const it of list) S.isolateContentCallback(battle, () => applyReader(battle, it), `garrison:reader:${it.gid}`, it.unit); };
   recompute();
   let pending = false;
   battle.on('layerGain', () => {
@@ -450,7 +473,7 @@ function installReaders(battle, by) {
     battle.on('deploy', ({ unit }) => {
       const arr = m.get(unit);
       if (!arr) return;
-      for (const it of arr) { it.k = stepsOf(battle, it); onstartBuff(battle, it, S.num(it.bb.duration, 0)); }
+      for (const it of arr) S.isolateContentCallback(battle, () => { it.k = stepsOf(battle, it); onstartBuff(battle, it, S.num(it.bb.duration, 0)); }, `garrison:onstart:${it.gid}`, it.unit);
     });
   }
 }
@@ -497,6 +520,7 @@ function installHitMods(battle, by) {
       if (!arr || !target || target.side !== 'enemy' || !dmg || dmg.type === 'element') return;
       for (let i = 0; i < arr.length; i++) {
         const { it, kind } = arr[i];
+        try {
         if (kind === 'tag') {
           // an ATK multiplier: fixed-value DoT ticks are not ATK-based
           if (Array.isArray(dmg.tags) && dmg.tags.includes('dot')) continue;
@@ -506,6 +530,7 @@ function installHitMods(battle, by) {
           const hit = (S.num(it.bb.check_ab_flag, 0) && bound(target)) || (S.num(it.bb.check_sluggish, 0) && !!target.findBuff('sluggish'));
           if (hit) dmg.mul = S.num(dmg.mul, 1) * (1 + S.num(it.bb.damage_scale_per_stack, 0) * it.k);
         }
+        } catch (e) { battle._handlerError(`garrison:hit:${it.gid}`, it.unit, e); }
       }
     });
   }

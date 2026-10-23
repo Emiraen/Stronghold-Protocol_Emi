@@ -21,7 +21,15 @@ export class PlayerBasics {
 
   get deployCount() { let n = 0; for (const p of this.board.values()) if (p.kind === 'chess') n++; return n; }
 
-  get tempEmpty() { return this.temp.every((x) => x == null || x.kind === 'item'); }
+  // Items may bypass the temporary-zone ready gate only in the entertainment
+  // variants.  In simulation/ranked rooms an item in temp occupies one of the
+  // finite slots until it is equipped, moved to hand, or expires at prep end.
+  get tempEmpty() {
+    const unlimitedItems = !this.m.ranked && (this.m.variant === 'entertainment_multi' ||
+      this.m.variant === 'entertainment_cyclops' ||
+      this.m.variant === 'entertainment_endless');
+    return this.temp.every((x) => x == null || (unlimitedItems && x.kind === 'item'));
+  }
 
   tempDue(piece) {
     const due = piece ? this._tempDue.get(piece.uid) : undefined;

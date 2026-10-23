@@ -20,6 +20,18 @@ import {
   CYCLOPS_BONUS_ENEMY, CYCLOPS_BONUS_COUNT, CYCLOPS_BONUS_ITEM_TIERS, CYCLOPS_HEX_ROUNDS, CYCLOPS_HEX_QUALITIES,
   CYCLOPS_INTEREST_PER, CYCLOPS_INTEREST_RATE, CYCLOPS_INTEREST_CAP, CYCLOPS_BONUS_ROUNDS,
 } from '../../shared/constants.js';
+import { grantLayersVerified } from './rewardRecovery.js';
+
+/** Independent gift actions yield after failure; never replay economic operations. */
+function isolateCyclops(ps, label, apply, m = ps.m) {
+  try { return apply(); } catch (error) {
+    try {
+      if (typeof m?.dispatcher?._report === 'function') m.dispatcher._report('cyclops', label, error);
+      else m?.reportError?.(`cyclops:${label}`, error);
+    } catch { /* Diagnostics must not block the next independent gift. */ }
+    return undefined;
+  }
+}
 
 const PHASE = { HEX: 'CYCLOPS_HEX', DRAFT: 'CYCLOPS_DRAFT' };
 
@@ -430,7 +442,9 @@ function _addCyclopsHook(m, ps, card, params) {
 }
 
 export function cyclopsHooks(ps, id = null) {
-  return normalizeCyclopsGiftHooks(ps).filter(e => !id || e.data.effectId === id);
+  const out = [];
+  for (const e of normalizeCyclopsGiftHooks(ps)) isolateCyclops(ps, 'hooks:filter', () => { if (!id || e.data.effectId === id) out.push(e); });
+  return out;
 }
 
 const GIFT_RULES = 3;
@@ -440,12 +454,17 @@ const count = (n, cap = Number.MAX_SAFE_INTEGER) => Number.isFinite(n) ? Math.mi
 /** Update old saved parameters before display, income or simulation; already paid rewards are never reclaimed. */
 export function normalizeCyclopsGiftHooks(ps) {
   if (!ps.m?.isCyclops) return [];
-  const refs = ps.effects.filter(e => e.data?.tacticKind === 'cyclops' || e.data?.effectId?.startsWith('cyc_'));
+  const refs = [];
   let changed = false, bondsChanged = false;
-  for (const e of refs) {
+  for (const e of ps.effects) isolateCyclops(ps, 'normalize:effect', () => {
+    if (!(e.data?.tacticKind === 'cyclops' || e.data?.effectId?.startsWith('cyc_'))) return;
     const old = e.params || {}, q = e.data?.quality || old.quality, id = e.data.effectId;
-    if (!CYCLOPS_HEX_QUALITIES.includes(q) || old.giftRules === GIFT_RULES) continue;
-    let p = {};
+    if (!CYCLOPS_HEX_QUALITIES.includes(q)) return;
+    if (old.giftRules === GIFT_RULES) { refs.push(e); return; }
+    // Finish fallible presentation construction before publishing normalized parameters.
+    const card = cyclopsHexCard(cyclopsHexes(ps.gd?.raw).find(h => h.id === id), q);
+    let p;
+    let bonusUpdate = null;
     switch (id) {
       case 'cyc_economy': p = { roundIncome: q === 'silver' ? 1 : q === 'gold' ? 3 : 6, winBonus: q === 'silver' ? 1 : 0, ...(q === 'prismatic' ? { interestCap: 8 } : {}) }; break;
       case 'cyc_interest': p = { silver: { capBonus: 1 }, gold: { interestCap: 8, percent: 0.025, percentCap: 3 }, prismatic: { interestCap: 10, percent: 0.05, percentCap: 8 } }[q]; break;
@@ -457,9 +476,7 @@ export function normalizeCyclopsGiftHooks(ps) {
       case 'cyc_universal': {
         const bonus = q === 'gold' ? 1 : 0;
         if (old.bondId && count(old.countBonus) !== bonus) {
-          ps.bondCountBonus ||= {};
-          ps.bondCountBonus[old.bondId] = Math.max(0, (ps.bondCountBonus[old.bondId] || 0) - count(old.countBonus) + bonus);
-          bondsChanged = true;
+          bonusUpdate = { bondId: old.bondId, value: Math.max(0, (ps.bondCountBonus?.[old.bondId] || 0) - count(old.countBonus) + bonus) };
         }
         p = { bondId: old.bondId, layersAdded: old.layersAdded, countBonus: bonus, requireMember: true, layerMultiplier: q === 'silver' ? 1.2 : q === 'gold' ? 1.3 : 1.5, ...(q === 'prismatic' ? { perRoundLayers: 2 } : {}) };
         if (old.bondId) p[`remainder:${old.bondId}`] = Math.max(0, Math.min(0.999999999, Number(old[`remainder:${old.bondId}`]) || 0));
@@ -468,13 +485,19 @@ export function normalizeCyclopsGiftHooks(ps) {
       case 'cyc_victoria': p = { ...old, rewardStartLayers: Number.isFinite(old.rewardStartLayers) ? old.rewardStartLayers : Math.max(0, ps.layers?.victoriaShip || 0), rewardPaid: count(old.rewardPaid ?? old.paid, q === 'gold' ? 3 : 5), rewardRound: old.rewardRound }; break;
       default: p = { ...old }; break;
     }
-    e.params = { ...p, quality: q, giftRules: GIFT_RULES };
-    const card = cyclopsHexCard(cyclopsHexes(ps.gd?.raw).find(h => h.id === id), q);
+    const params = { ...p, quality: q, giftRules: GIFT_RULES };
     if (card) { e.name = card.levelName || card.name; e.desc = card.desc; }
+    if (bonusUpdate) {
+      ps.bondCountBonus ||= {};
+      ps.bondCountBonus[bonusUpdate.bondId] = bonusUpdate.value;
+      bondsChanged = true;
+    }
+    e.params = params;
     changed = true;
-  }
-  if (bondsChanged) ps.recompute();
-  if (changed) ps.dirty();
+    refs.push(e);
+  });
+  if (bondsChanged) isolateCyclops(ps, 'normalize:recompute', () => ps.recompute());
+  if (changed) isolateCyclops(ps, 'normalize:dirty', () => ps.dirty());
   return refs;
 }
 
@@ -489,13 +512,13 @@ function refreshGiftParams(quality) {
 
 /** Migrate selected gifts when first used, including restored matches with the old silver/gold free-chance params. */
 export function cyclopsRefreshHooks(ps) {
-  return normalizeCyclopsGiftHooks(ps).filter(e => e.data.effectId === 'cyc_refresh');
+  return cyclopsHooks(ps, 'cyc_refresh');
 }
 
 /** Only genuinely paid manual refreshes advance these counters; free rounds and stored free uses do not. */
 export function cyclopsPaidRefreshRewards(m, ps, price, hooks = cyclopsRefreshHooks(ps)) {
   if (!m.isCyclops || !(price > 0)) return;
-  for (const e of hooks) {
+  for (const e of hooks) isolateCyclops(ps, 'paidRefresh:gift', () => {
     const p = e.params || {};
     if (p.rebateEvery > 0) {
       if (p.paidRound !== m.round) {
@@ -512,7 +535,7 @@ export function cyclopsPaidRefreshRewards(m, ps, price, hooks = cyclopsRefreshHo
     if (p.recruitEvery > 0) {
       p.paidRefreshes = Math.min(Number.MAX_SAFE_INTEGER, count(p.paidRefreshes) + 1);
       if (p.recruitRound !== m.round) { p.recruitRound = m.round; p.roundRecruits = 0; }
-      if (p.paidRefreshes < p.recruitEvery || p.roundRecruits >= p.recruitLimit) continue;
+      if (p.paidRefreshes < p.recruitEvery || p.roundRecruits >= p.recruitLimit) return;
       const gd = ps.gd;
       const bond = gd.bondIds.filter(id => ps.bonds[id]?.active)
         .sort((a, b) => (ps.layers[b] || 0) - (ps.layers[a] || 0))[0];
@@ -521,12 +544,14 @@ export function cyclopsPaidRefreshRewards(m, ps, price, hooks = cyclopsRefreshHo
         maxTier: 3, filter: id => eligible(id) && gd.chess(id).bonds?.includes(bond),
       })) || ps.pool.roll(m.rngMeta, { maxTier: 3, filter: eligible });
       // Exhausted pools retain the earned reward until an eligible copy becomes available.
-      if (id && ps.acquireChess(id, { source: 'cyclops' })) {
+      if (id) {
+        // Reserve this entitlement before a call that may commit and then throw. No ambiguous replay.
         p.paidRefreshes -= p.recruitEvery;
         p.roundRecruits++;
+        if (!ps.acquireChess(id, { source: 'cyclops' })) { p.paidRefreshes += p.recruitEvery; p.roundRecruits--; }
       }
     }
-  }
+  }, m);
 }
 
 /** 商店刷新优惠统一抽取一次；单条、保底与叠加后的免费概率均不超过 70%。 */
@@ -548,14 +573,14 @@ export function cyclopsRefreshChance(hooks) {
 
 export function cyclopsLayerGain(ps, bondId, n) {
   let value = n;
-  for (const e of cyclopsHooks(ps, 'cyc_universal')) {
-    if (e.params.bondId !== bondId || !(e.params.layerMultiplier > 1)) continue;
+  for (const e of cyclopsHooks(ps, 'cyc_universal')) isolateCyclops(ps, 'layerGain:modifier', () => {
+    if (e.params.bondId !== bondId || !(e.params.layerMultiplier > 1)) return;
     const key = `remainder:${bondId}`;
     const extra = n * (e.params.layerMultiplier - 1) + (e.params[key] || 0);
     const whole = Math.floor(extra + 1e-9);
     e.params[key] = extra - whole;
     value += whole;
-  }
+  });
   return value;
 }
 
@@ -567,16 +592,20 @@ function cyclopsGrantExclusive(m, ps) {
 
 export function cyclopsVictoriaRewards(m, ps) {
   if (!m.isCyclops) return;
-  for (const e of cyclopsHooks(ps, 'cyc_victoria')) {
+  for (const e of cyclopsHooks(ps, 'cyc_victoria')) isolateCyclops(ps, 'victoria:gift', () => {
     const q = e.data.quality;
     const layers = ps.layers.victoriaShip || 0;
-    if (q === 'silver') continue;
+    if (q === 'silver') return;
     const p = e.params, limit = q === 'gold' ? 3 : 5;
     const due = Math.min(limit, Math.floor(Math.max(0, layers - p.rewardStartLayers) / (q === 'gold' ? 100 : 40)));
-    if (p.rewardPaid >= due || p.rewardRound === m.round) continue;
+    if (p.rewardPaid >= due || p.rewardRound === m.round) return;
+    const oldRound = p.rewardRound;
+    // Ambiguous post-commit errors must not offer the same reward again on the next layer event.
+    p.rewardPaid++; p.rewardRound = m.round;
     const awarded = q === 'gold' ? cyclopsGrantExclusive(m, ps) : _grantRandomItem(m, ps, 1, 2 + Math.floor(m.rngMeta() * 4));
-    if (awarded) { p.rewardPaid++; p.rewardRound = m.round; ps.dirty(); }
-  }
+    if (awarded) isolateCyclops(ps, 'victoria:dirty', () => ps.dirty(), m);
+    else { p.rewardPaid--; p.rewardRound = oldRound; }
+  }, m);
 }
 
 function cyclopsSacrificePiece(ps, loc) {
@@ -617,15 +646,17 @@ export function cyclopsRiskAction(m, ps, uid = null) {
 export function settleCyclopsHexes(m, ps, result, won, previousStreak = 0) {
   if (!m.isCyclops || result.synthetic) return;
   const bank = ps.funds;
-  for (const e of cyclopsHooks(ps, 'cyc_universal')) {
+  const hooks = cyclopsHooks(ps);
+  for (const e of hooks) isolateCyclops(ps, 'settle:remainder', () => {
+    if (e.data.effectId !== 'cyc_universal') return;
     const p = e.params;
     const gained = result.layerGains?.[p.bondId] || 0;
-    if (!(gained > 0) || ps.layers[p.bondId] >= 999) continue;
+    if (!(gained > 0) || ps.layers[p.bondId] >= 999) return;
     const key = `remainder:${p.bondId}`, previous = p[key] || 0;
     const base = Math.ceil((gained - previous) / p.layerMultiplier - 1e-9);
     p[key] = Math.max(0, base * p.layerMultiplier + previous - gained);
-  }
-  for (const e of cyclopsHooks(ps)) {
+  }, m);
+  for (const e of hooks) isolateCyclops(ps, 'settle:gift', () => {
     const p = e.params || {};
     switch (e.data.effectId) {
       case 'cyc_economy': ps.addFunds((p.roundIncome || 0) + (won ? p.winBonus || 0 : 0), { reason: 'cyclops' }); break;
@@ -640,52 +671,68 @@ export function settleCyclopsHexes(m, ps, result, won, previousStreak = 0) {
         if (e.data.quality === 'prismatic') {
           if (ps.cyclopsStreak >= 2) {
             p.winStacks = Math.min(p.stackCap, p.winStacks + 1);
-            ps.addFunds(p.win, { reason: 'cyclops' });
-          } else if (ps.cyclopsStreak <= -2) ps.addFunds(p.lose, { reason: 'cyclops' });
-          if (won && p.equipmentGiven < p.equipmentCap && _grantRandomItem(m, ps, 1, 2 + Math.floor(m.rngMeta() * 3))) p.equipmentGiven++;
+            isolateCyclops(ps, 'settle:streak:funds', () => ps.addFunds(p.win, { reason: 'cyclops' }), m);
+          } else if (ps.cyclopsStreak <= -2) isolateCyclops(ps, 'settle:streak:funds', () => ps.addFunds(p.lose, { reason: 'cyclops' }), m);
+          if (won && p.equipmentGiven < p.equipmentCap) {
+            p.equipmentGiven++;
+            if (!_grantRandomItem(m, ps, 1, 2 + Math.floor(m.rngMeta() * 3))) p.equipmentGiven--;
+          }
         } else if (e.data.quality === 'gold') {
           if (won && previousStreak <= -2) ps.addFunds(p.comeback, { reason: 'cyclops' });
         } else if (ps.cyclopsStreak <= -2) ps.addFunds(p.lose, { reason: 'cyclops' });
         break;
       }
       case 'cyc_risk': if (p.drainRounds > 0) { ps.lp = Math.max(1, ps.lp - p.drainAmount); p.drainRounds--; } break;
-      case 'cyc_universal': if (p.perRoundLayers) ps.addLayers(p.bondId, p.perRoundLayers, { reason: 'cyclops' }); break;
+      case 'cyc_universal': if (p.perRoundLayers) grantLayersVerified(m, ps, p.bondId, p.perRoundLayers, { reason: 'cyclops' }, { source: 'cyclops', hook: 'settle:universal' }); break;
       case 'cyc_morph': {
         if (p.reforge) {
-          const eligible = [...ps.hand, ...ps.temp].filter(it => {
+          const eligible = [];
+          for (const it of [...ps.hand, ...ps.temp]) isolateCyclops(ps, 'settle:reforge:eligible', () => {
             const rec = it?.kind === 'item' ? ps.gd.item(it.id) : null;
-            return rec?.itemType === 'EQUIP' && rec.tier < p.maxTier && !rec.kind?.startsWith('consume_on_equip');
+            if (rec?.itemType === 'EQUIP' && rec.tier < p.maxTier && !rec.kind?.startsWith('consume_on_equip')) eligible.push(it);
           });
           m.rngMeta.shuffle(eligible);
-          for (const item of eligible.slice(0, p.reforgeLimit)) {
+          for (const item of eligible.slice(0, p.reforgeLimit)) isolateCyclops(ps, 'settle:reforge:item', () => {
             const rec = ps.gd.item(item.id);
-            if (!rec || rec.itemType !== 'EQUIP' || rec.kind?.startsWith('consume_on_equip')) continue;
+            if (!rec || rec.itemType !== 'EQUIP' || rec.kind?.startsWith('consume_on_equip')) return;
             const tier = Math.min(p.maxTier, rec.tier + (m.rngMeta() < p.upgradeChance ? 1 : 0));
             const candidates = (ps.gd.shopItemsByTier[tier] || []).map(id => {
               const base = ps.gd.item(id);
               return rec.isGolden ? base?.goldenId || base?.upgradeChessId : id;
             }).filter(id => { const candidate = ps.gd.item(id); return candidate?.itemType === 'EQUIP' && !candidate.kind?.startsWith('consume_on_equip') && !!candidate.isGolden === !!rec.isGolden && m.itemPool.canGain(id); });
             if (candidates.length) item.id = candidates[Math.floor(m.rngMeta() * candidates.length)];
-          }
+          }, m);
         }
         if (p.copyEquipped) {
           p.copyRounds = Math.min(p.copyEvery, p.copyRounds + 1);
           if (p.copyRounds < p.copyEvery || p.copyGiven >= p.copyMax) break;
-          const items = [...ps.board.values()].filter(unit => unit?.kind === 'chess').flatMap(unit => unit.items || []).filter(it => { const rec = ps.gd.item(it.id); return rec?.itemType === 'EQUIP' && !rec.isGolden && rec.tier >= 2 && rec.tier <= p.maxTier && !rec.kind?.startsWith('consume_on_equip'); });
-          if (items.length && ps.acquireItem(items[Math.floor(m.rngMeta() * items.length)].id, { source: 'cyclops', deferMerge: true })) { p.copyGiven++; p.copyRounds = 0; }
+          const items = [];
+          for (const unit of ps.board.values()) isolateCyclops(ps, 'settle:copy:unit', () => {
+            if (unit?.kind !== 'chess') return;
+            for (const it of unit.items || []) isolateCyclops(ps, 'settle:copy:item', () => {
+              const rec = ps.gd.item(it.id);
+              if (rec?.itemType === 'EQUIP' && !rec.isGolden && rec.tier >= 2 && rec.tier <= p.maxTier && !rec.kind?.startsWith('consume_on_equip')) items.push(it);
+            }, m);
+          }, m);
+          if (items.length) {
+            const id = items[Math.floor(m.rngMeta() * items.length)].id, oldRounds = p.copyRounds;
+            p.copyGiven++; p.copyRounds = 0;
+            if (!ps.acquireItem(id, { source: 'cyclops', deferMerge: true })) { p.copyGiven--; p.copyRounds = oldRounds; }
+          }
         }
         break;
       }
     }
-  }
+  }, m);
   // 击杀永久成长来自模拟器逐次击杀事件，跨回合保留，达到上限后不再增长。
-  for (const e of cyclopsHooks(ps)) {
-    if (!['cyc_egir', 'cyc_laterano', 'cyc_siracusa'].includes(e.data.effectId)) continue;
+  for (const e of hooks) isolateCyclops(ps, 'settle:kills', () => {
+    if (!['cyc_egir', 'cyc_laterano', 'cyc_siracusa'].includes(e.data.effectId)) return;
     const delta = result.cyclopsKills?.[e.data.effectId] || 0;
     if (delta) e.params.kills = Math.min(e.data.effectId === 'cyc_egir' ? 15 : 12, (e.params.kills || 0) + delta);
-  }
-  cyclopsVictoriaRewards(m, ps);
-  ps.checkItemMerges(); ps.dirty();
+  }, m);
+  isolateCyclops(ps, 'settle:victoria', () => cyclopsVictoriaRewards(m, ps), m);
+  isolateCyclops(ps, 'settle:merges', () => ps.checkItemMerges(), m);
+  isolateCyclops(ps, 'settle:dirty', () => ps.dirty(), m);
 }
 
 /** 从指定品阶范围赠送随机盟约干员。 */

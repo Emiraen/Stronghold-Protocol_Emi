@@ -95,6 +95,8 @@ export function heightfield(heightAt, rows = 19, cols = 21, bias = 0.02) {
  * global uniforms while our program is still bound (WebGL INVALID_OPERATION).
  */
 export function resetPixi(renderer) {
+  // Pixi's state cache does not track raw GL colour masks, including a failed depth pass.
+  try { renderer.gl.colorMask(true, true, true, true); } catch { /* ignore */ }
   try { renderer.shader.reset(); } catch { /* ignore */ }
   try { renderer.batch.reset(); } catch { /* ignore */ }
   try { renderer.geometry.reset(); } catch { /* ignore */ }
@@ -315,7 +317,9 @@ export class OfficialFx {
     if (sig !== undefined && sig === this.hfSig) return;
     this.hfSig = sig;
     this._hf = heightfield(heightAt);
-    if (this.glr) this.glr.setHeightfield(this._hf);
+    // Upload only inside renderPass, after Pixi has submitted its pending batch.
+    this._hfDirty = true;
+    this.depthDone = -1;
   }
 
   /** Build and upload this frame's geometry, sorted per pass (once per frame, by the first pass drawn). */
@@ -364,15 +368,20 @@ export class OfficialFx {
   renderPass(pass, renderer) {
     if (!this.active || (!this.effects.length && !this.warmQueue.length)) return;
     const gl = renderer.gl;
-    if (!this.glr) {
-      if (!gl || renderer.context?.webGLVersion !== 2) { this.unsupported = true; return; }
-      try {
-        this.glr = new FxGL(gl, this.lib);
-        if (this._hf) this.glr.setHeightfield(this._hf);
-      } catch (err) { console.warn('[fx] renderer unavailable', err); this.unsupported = true; return; }
-    }
+    if (!this.glr && (!gl || renderer.context?.webGLVersion !== 2)) { this.unsupported = true; return; }
+    // Initialization also binds textures, buffers and VAOs. Flush while Pixi's cached bindings are still valid.
     renderer.batch.flush();
     try {
+      if (!this.glr) {
+        try {
+          this.glr = new FxGL(gl, this.lib);
+          this._hfDirty = !!this._hf;
+        } catch (err) { console.warn('[fx] renderer unavailable', err); this.unsupported = true; return; }
+      }
+      if (this._hfDirty) {
+        this.glr.setHeightfield(this._hf);
+        this._hfDirty = false;
+      }
       if (pass === 'ground' || this.prepared !== this.frameNo) this._warmStep();
       if (this.prepared !== this.frameNo) this._prepare(renderer);
       const items = this.items[pass];

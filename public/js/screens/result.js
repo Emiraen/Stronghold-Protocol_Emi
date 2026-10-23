@@ -14,11 +14,11 @@ import { cardStandIn, cardDiy, standInForText, diyRecordFor } from '../ui/gameLo
 //                 stats: { dmgDealt, kills, leaks, gold /* funds SPENT */, refreshes, merges, bossDamage?, itemsEquipped?,
 //                          activatedLayers?, lpLost?, perfectRounds? } }] }
 
-import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
+import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, MicroLabel, DifficultyTag } from '../ui/components.js';
 import { useGameData, Img, UnitThumb, BandIcon, PlayerAvatar, BondGlyph, LpTower, Sprite } from '../ui/gameComponents.js';
 import { normalizeResult, fmtNum } from '../ui/gameLogic.js';
-import { rankIconUrl, rankOf } from '../../../shared/ranks.js';
+import { rankIconUrl, rankOf, normalizeRankLabel } from '../../../shared/ranks.js';
 import { enemyIconUrl, titleIconUrl, uiUrl } from '../ui/assetUrls.js';
 import { store, useStore, emptyMatch } from '../store.js';
 import { audio } from '../audio.js';
@@ -37,9 +37,10 @@ const STAT_ROWS = [
 
 // 服务端段位串保留积分与排名，只转换客户端英文展示。
 export function rankLabel(label) {
+  label = normalizeRankLabel(label);
   if (getLang() !== 'en') return label;
   return String(label || '').replace(/^未定级/, trA('未定级')).replace(
-    /^(黑铁|青铜|白银|黄金|白金|钻石|超凡|神话|赋能战魂)([一二三])?(?: (\d+)分)?/,
+    /^(黑铁|青铜|白银|黄金|白金|钻石|超凡|神话|源能战魂)([一二三])?(?: (\d+)分)?/,
     (_, division, tier, points) => `${trA(division)}${tier ? ` ${['I', 'II', 'III']['一二三'.indexOf(tier)]}` : ''}${points != null ? ` ${points} ${trA('分')}` : ''}`
   );
 }
@@ -62,7 +63,7 @@ export function RankRow({ rank }) {
   const delta = settledRankDelta(rank);
   const tone = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '';
   return html`<div class="rrank${placement ? ' is-placement' : ''}">
-    <img class="rrank__icon" src=${rankIconUrl(rank.iconAfter || 'unranked')} alt=${rank.tierAfter || ''} loading="lazy" />
+    <img class="rrank__icon" src=${rankIconUrl(rank.iconAfter || 'unranked')} alt=${rankLabel(rank.tierAfter) || ''} loading="lazy" />
     <span class="rrank__text">
       <b class="rrank__tier">${rankLabel(rank.tierAfter) || trA("未定级")}</b>
     </span>
@@ -73,10 +74,10 @@ export function RankRow({ rank }) {
   </div>`;
 }
 
-/** 小段进度条区间（rankOf 的镜像几何；赋能战魂无上限 ⇒ null 不画条）。 */
+/** 小段进度条区间（rankOf 的镜像几何；源能战魂无上限 ⇒ null 不画条）。 */
 function tierBar(points) {
   const p = Math.max(0, Math.floor(points));
-  if (p >= 2550) return null; // 赋能战魂：只有全服排名，无进度条
+  if (p >= 2550) return null; // 源能战魂：只有全服排名，无进度条
   if (p >= 2100) { // 神话一/二各 100 分宽，神话三 2300–2549 共 250 分宽
     const from = p < 2200 ? 2100 : p < 2300 ? 2200 : 2300;
     const to = p < 2200 ? 2200 : p < 2300 ? 2300 : 2550;
@@ -121,13 +122,13 @@ export function RankSettlement({ rank, onClose }) {
   useEffect(() => { if (finished) confirmRef.current?.focus(); }, [finished]);
 
   const cur = Math.round(from + (to - from) * t);
-  const view = rankOf(cur);
+  const view = rankOf(cur, rank.globalRank);
   const globalNo = view.globalRanked && Number.isFinite(rank.globalRank) && rank.globalRank > 0 ? rank.globalRank : null;
   const bar = done ? tierBar(cur) : null;
   const delta = settledRankDelta(rank);
   const tone = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '';
   const isPlaceFinal = done && rank.kind === 'placement'; // 这一场完成定级
-  const fill = bar ? `${Math.min(100, (bar.sub / bar.max) * 100)}%` : '0%';
+  const fill = bar ? Math.max(0, Math.min(1, bar.sub / bar.max)) : 0;
   const tierLabel = rankLabel(view.label);
   const longTier = tierLabel.length > 9; // 超凡三 99分 / 神话三 449分 等长名缩小字号防溢出
 
@@ -141,7 +142,7 @@ export function RankSettlement({ rank, onClose }) {
           <b class=${cx('rsettle__tier', longTier && 'is-long')}>${tierLabel}</b>
           ${globalNo != null ? html`<span class="rsettle__global num">#${globalNo} ${trA("全服排名")}</span>` : null}
           ${bar ? html`<div class="rsettle__barwrap">
-            <div class="rsettle__bar"><i class=${cx('rsettle__fill', delta < 0 && 'is-down')} style=${`width:${fill}`}></i><i class="rsettle__cursor" style=${`left:${fill}`}></i></div>
+            <div class="rsettle__bar"><i class=${cx('rsettle__fill', delta < 0 && 'is-down')} style=${`transform:scaleX(${fill})`}></i><span class="rsettle__cursor-track" style=${`transform:translateX(${fill * 100}%)`}><i class="rsettle__cursor"></i></span></div>
             <span class="rsettle__sub num">${bar.sub} / ${bar.max}</span>
           </div>` : html`<span class="rsettle__sub rsettle__sub--plain num">${cur} ${trA("分")}</span>`}
           ${finished && !isPlaceFinal ? html`<div class=${`rsettle__delta num ${tone}`}>${delta > 0 ? `+${delta}` : delta < 0 ? String(delta) : '±0'}</div>` : null}
@@ -158,6 +159,33 @@ export function RankSettlement({ rank, onClose }) {
   </div>`;
 }
 
+export function detailResultBonds(bonds, bondRec = () => null) {
+  const activeCore = (b) => Number(!!b.active && !!bondRec(b.bondId)?.isCore);
+  return (Array.isArray(bonds) ? bonds : [])
+    .filter((b) => b && (b.active || b.layers > 0))
+    .sort((a, b) => activeCore(b) - activeCore(a) || (b.layers || 0) - (a.layers || 0));
+}
+
+/** Preserve explicit unavailable fields instead of the legacy normalizer's defaults. */
+export function reportResult(result, pub = null) {
+  const r = normalizeResult(result, pub);
+  const rawRows = new Map((Array.isArray(result?.players) ? result.players : []).map(p => [p?.playerId, p]));
+  r.settlementPending = result?.settlementPending === true;
+  r.incomplete = !!(result?.incomplete || result?.settlementErrors?.length);
+  for (const p of r.players) {
+    // Battle statistics are ready before the durable economic receipt. Do not
+    // present provisional rewards/rating as credited, or discard healthy stats.
+    if (r.settlementPending) { p.reward = null; p.trophies = null; p.rank = null; }
+    const raw = rawRows.get(p.playerId);
+    if (!raw?.settlementError && raw?.stats !== null) continue;
+    r.incomplete = true;
+    p.settlementError = raw.settlementError || { code: 'RESULT_STATS_UNAVAILABLE' };
+    p.stats = {}; p.roundsPassed = null; p.lp = null;
+    p.reward = null; p.trophies = null; p.rank = null;
+  }
+  return r;
+}
+
 function PlayerCard({ p, myId, titles, best, solo = false }) {
   const gd = useGameData();
   const titleRec = p.title ? titles.find((t) => t.id === p.title.id) || null : null;
@@ -165,7 +193,7 @@ function PlayerCard({ p, myId, titles, best, solo = false }) {
   const stats = STAT_ROWS.filter(([k]) => Number.isFinite(p.stats[k])).slice(0, 7);
   const band = p.bandId ? gd.band(p.bandId) : null;
   const lineup = p.lineup.slice(0, 10);
-  const bonds = p.bonds.filter((b) => b.active || b.layers > 0).sort((a, b) => (b.layers || 0) - (a.layers || 0)).slice(0, 6);
+  const bonds = detailResultBonds(p.bonds, (id) => gd.bond(id));
   return html`<article class=${cx('rcard', p.playerId === myId && 'is-self', p.alive === false && 'is-dead')}>
     <header class="rcard__head">
       <${PlayerAvatar} player=${p} self=${p.playerId === myId} />
@@ -181,7 +209,7 @@ function PlayerCard({ p, myId, titles, best, solo = false }) {
         ${bonds.length ? html`<div class="rcard__bonds">${bonds.map((b) => html`<span key=${b.bondId} class=${cx('rbond', b.active && 'is-on')} title=${gd.bond(b.bondId)?.name || b.bondId}>
           <${BondGlyph} bondId=${b.bondId} /><b class="num">${b.layers ?? 0}</b></span>`)}</div>` : null}
       </div>
-      <div class="rcard__round"><${MicroLabel}>ROUNDS</${MicroLabel}><b class="num">${p.roundsPassed}</b>
+      <div class="rcard__round"><${MicroLabel}>${p.settlementError ? trA('结算未完成') : 'ROUNDS'}</${MicroLabel}><b class="num">${p.settlementError ? '—' : p.roundsPassed}</b>
         ${p.reward > 0 ? html`<span class="rcard__gain"><span title=${trA("卫戍认证")}><${Icon} name="shield" /><b class="num">+${p.reward}</b></span></span>` : null}
       </div>
       ${p.rank ? html`<${RankRow} rank=${p.rank} />` : null}
@@ -191,6 +219,7 @@ function PlayerCard({ p, myId, titles, best, solo = false }) {
       </div>` : html`<span class="rcard__title rcard__title--none" aria-hidden="true"></span>`}
     </header>
     <div class="rcard__stats">
+      ${p.settlementError ? html`<p class="t-dim" role="status">${trA('结算未完成')} · ${trA('发生错误！请复制诊断信息并联系服主')}</p>` : null}
       ${stats.map(([k, label]) => html`<div key=${k} class=${cx('rstat', best[k] === p.playerId && 'is-best')}><span>${trA(label)}</span><b class="num">${fmtNum(p.stats[k])}</b></div>`)}
       ${Number.isFinite(p.lp) ? html`<div class="rstat" title=${p.lpShared && !solo ? trA("最终攻势起全队共享目标生命值") : ''}><span>${p.lpShared && !solo ? trA("同盟剩余生命") : trA("剩余生命")}</span><${LpTower} value=${p.lp} size="sm" /></div>` : null}
     </div>
@@ -211,7 +240,7 @@ export function ResultScreen() {
 /** Shared live/historical report. History passes its own callback; never touches match state or audio. */
 export function ResultView({ result, pub = null, myId, onBack, backLabel = '返回大厅', showSettlement = false }) {
   const gd = useGameData();
-  const r = normalizeResult(result, pub);
+  const r = useMemo(() => reportResult(result, pub), [result, pub]);
   const titles = Array.isArray(gd.config?.titles) ? gd.config.titles : [];
   const best = {};
   for (const [k] of STAT_ROWS) {
@@ -221,7 +250,7 @@ export function ResultView({ result, pub = null, myId, onBack, backLabel = '返�
   }
   // Historical reports keep the static rank row, but never replay the rank settlement overlay.
   const meRow = r.players.find((p) => p.playerId === myId);
-  const myRank = showSettlement && meRow && meRow.rank && typeof meRow.rank === 'object' ? meRow.rank : null;
+  const myRank = !r.incomplete && !r.settlementPending && showSettlement && meRow && meRow.rank && typeof meRow.rank === 'object' ? meRow.rank : null;
   const [settleOpen, setSettleOpen] = useState(!!myRank);
   const boss = r.bossId ? gd.boss(r.bossId) : null;
   // the Hidden Core medal (and its corrupted leader) only once R15 was actually fought
@@ -240,8 +269,8 @@ export function ResultView({ result, pub = null, myId, onBack, backLabel = '返�
         ${r.difficulty ? html`<${DifficultyTag} difficulty=${r.difficulty} size="lg" />` : null}
         ${result?.unofficial === true || pub?.unofficial === true ? html`<span class="modmark" data-testid="result-unofficial" title=${trA('非官方玩法插件对局，不计入统计总览')}>${trA('非官方')}</span>` : null}
         ${(result?.variant || pub?.variant) === 'entertainment_endless' ? html`<p class="t-mint">娱乐 · 无尽模式 · 不计排位</p>` : (result?.variant || pub?.variant) === 'entertainment_multi' ? html`<p class="t-mint">娱乐 · 多人同盟 · 不计排位</p>` : null}
-        <h1 class="result__headline">${r.victory ? trA("模拟完成") : trA("模拟失败")}</h1>
-        <p class="result__sub">${r.victory ? trA("成功卫戍 · 敌方领袖已被击败") : trA("防线已被突破")}</p>
+        <h1 class="result__headline">${r.incomplete ? trA('结算未完成') : r.settlementPending ? trA('结算处理中') : r.victory ? trA("模拟完成") : trA("模拟失败")}</h1>
+        <p class="result__sub" role=${r.incomplete || r.settlementPending ? 'status' : undefined}>${r.incomplete ? trA('发生错误！请复制诊断信息并联系服主') : r.settlementPending ? trA('对局统计已就绪，积分与奖励结算处理中，可先返回。') : r.victory ? trA("成功卫戍 · 敌方领袖已被击败") : trA("防线已被突破")}</p>
         <div class="result__rounds">
           <span class="result__rlabel">${trA("通过回合")}</span>
           <b class="result__rnum num">${r.roundsPassed}</b>

@@ -298,6 +298,11 @@ export function passiveBuff(battle, u, key, mods, extra = {}) {
   return battle.addBuff(u, { key, mods, persist: true, allowDead: true, refresh: 'replace', ...extra });
 }
 
+/** Isolate an independent content recipient without adding an event/callback nesting frame. */
+export function isolateContentCallback(battle, fn, label, owner = null) {
+  try { return fn(); } catch (e) { battle._handlerError(label, owner, e); return undefined; }
+}
+
 /** Client VFX anchored on a unit: `battle.fx(kind, { x, y, id, src, key, …extra })`. */
 export function fxOn(battle, kind, u, src, key, extra = {}) {
   if (!u) return;
@@ -336,20 +341,28 @@ export function gainLayers(battle, { playerId, bonds, n, requireActive = true, s
   const caps = capKey != null && Number.isFinite(cap) ? battleStore(battle, 'support:layerCaps', () => new Map()) : null;
   let total = 0;
   for (const b of list) {
-    if (typeof b !== 'string' || !b) continue;
-    if (requireActive && !bondActive(battle, playerId, b)) continue;
-    let k = k0;
-    let ck = null;
-    if (caps) {
-      ck = `${capKey}|${b}`;
-      const used = caps.get(ck) ?? 0;
-      k = Math.min(k, Math.max(0, Math.floor(cap) - used));
-      if (!(k > 0)) continue;
-    }
-    const added = battle.addLayers(playerId, b, k, reason, { source });
-    if (added > 0) {
-      total += added;
-      if (ck) caps.set(ck, (caps.get(ck) ?? 0) + k);
+    const receipt = { added: 0 };
+    let added = 0, ck = null, k = k0;
+    try {
+      if (typeof b !== 'string' || !b) continue;
+      if (requireActive && !bondActive(battle, playerId, b)) continue;
+      if (caps) {
+        ck = `${capKey}|${b}`;
+        const used = caps.get(ck) ?? 0;
+        k = Math.min(k, Math.max(0, Math.floor(cap) - used));
+        if (!(k > 0)) continue;
+      }
+      added = battle.addLayers(playerId, b, k, reason, { source, receipt });
+    } catch (error) {
+      if (typeof battle._handlerError !== 'function') throw error;
+      battle._handlerError(`content:layers:${b}`, source, error);
+    } finally {
+      // The event/view update may fail after the authoritative write. Account for it, but never grant again.
+      const delivered = receipt.added > 0 ? receipt.added : added;
+      if (delivered > 0) {
+        total += delivered;
+        if (ck) caps.set(ck, (caps.get(ck) ?? 0) + k);
+      }
     }
   }
   return total;

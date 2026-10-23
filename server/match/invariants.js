@@ -56,7 +56,8 @@ export function collectViolations(m, { limit = 25 } = {}) {
     if (!Number.isFinite(ps.lp)) fail(`${id}: lp ${ps.lp}`);
     if (ps.alive && m.phase !== PHASE.SETTLE && ps.lp <= 0 && m.teamLp == null && m.round > 0 && ps.bandId) fail(`${id}: alive with lp ${ps.lp}`);
     if (ps.hand.length !== gd.benchSize) fail(`${id}: hand has ${ps.hand.length} slots`);
-    if (ps.temp.length < gd.tempSize || ps.temp.slice(gd.tempSize).some((p) => p && p.kind !== 'item')) fail(`${id}: invalid temp overflow`);
+    const unlimitedItems = !m.ranked && (m.variant === 'entertainment_multi' || m.variant === 'entertainment_cyclops' || m.variant === 'entertainment_endless');
+    if (ps.temp.length < gd.tempSize || ps.temp.slice(gd.tempSize).some((p) => p && (p.kind !== 'item' || !unlimitedItems))) fail(`${id}: invalid temp overflow`);
     if (!(ps.shop.level >= 1 && ps.shop.level <= gd.maxShopLevel)) fail(`${id}: shop level ${ps.shop.level}`);
     if (!(ps.shop.upgradePrice >= 0)) fail(`${id}: upgradePrice ${ps.shop.upgradePrice}`);
     if (!Number.isInteger(ps.shop.freeRefreshes) || ps.shop.freeRefreshes < 0) fail(`${id}: freeRefreshes ${ps.shop.freeRefreshes}`);

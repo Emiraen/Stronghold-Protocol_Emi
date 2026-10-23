@@ -132,43 +132,47 @@ export class MatchSpDraft {
     return b.id;
   }
 
-  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6 } = {}) {
+  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6, exclude = [] } = {}) {
     const pools = this.gd.choices.pools && typeof this.gd.choices.pools === 'object' ? this.gd.choices.pools : {};
     const p = typeof pool === 'string' && Object.hasOwn(pools, pool) ? pools[pool] : null;
     const rng = this.rngMeta;
+    const excluded = new Set(Array.isArray(exclude) ? exclude.filter((id) => typeof id === 'string') : []);
+    const eligible = (ids) => excluded.size ? ids.filter((id) => !excluded.has(id)) : ids;
     const tierList = (lo, hi) => { const out = []; for (let t = lo; t <= hi; t++) for (const id of this.gd.shopItemsByTier[t] || []) out.push(id); return out; };
     if (p && p.kind === 'equip') {
       if (Array.isArray(p.weighted) && p.weighted.length) {
-        const pairs = p.weighted.filter((x) => Array.isArray(x) && this.gd.item(x[0]) && this.itemPool.canGain(x[0]));
+        const pairs = p.weighted.filter((x) => Array.isArray(x) && !excluded.has(x[0]) && this.gd.item(x[0]) && this.itemPool.canGain(x[0]));
         return this.itemPool.pick(rng, pairs.map((x) => x[0]), new Map(pairs));
       }
       if (Array.isArray(p.items) && p.items.length) {
-        const items = p.items.filter((id) => this.gd.item(id));
+        const items = p.items.filter((id) => !excluded.has(id) && this.gd.item(id));
         return this.itemPool.pick(rng, items);
       }
       let list;
       if (Array.isArray(p.tiers) && p.tiers.length) list = p.tiers.flatMap((t) => this.gd.shopItemsByTier[t] || []);
       else list = tierList(1, p.maxTier === 'shopLevel' ? Math.max(1, Math.min(6, shopLevel)) : 6);
-      return this.itemPool.pick(rng, list);
+      return this.itemPool.pick(rng, eligible(list));
     }
     const list = Number.isInteger(tier) ? tierList(tier, tier) : tierList(1, Math.max(1, Math.min(6, maxTier)));
-    return this.itemPool.pick(rng, list);
+    return this.itemPool.pick(rng, eligible(list));
   }
 
-  rollPool(poolId, { shopLevel = 6, extra = null, chessOf = null, player = null } = {}) {
+  rollPool(poolId, { shopLevel = 6, extra = null, chessOf = null, player = null, exclude = [] } = {}) {
     const stock = this.poolFor(player);
     const pools = this.gd.choices.pools && typeof this.gd.choices.pools === 'object' ? this.gd.choices.pools : {};
     const p = typeof poolId === 'string' && Object.hasOwn(pools, poolId) ? pools[poolId] : null;
     if (!p || typeof p !== 'object') return null;
     const lvl = Math.max(1, Math.min(6, Number.isInteger(shopLevel) ? shopLevel : 6));
     if (p.kind === 'equip') {
-      const id = this.rollItemId({ pool: poolId, shopLevel: lvl });
+      const id = this.rollItemId({ pool: poolId, shopLevel: lvl, exclude });
       return id ? { kind: 'item', id } : null;
     }
     if (p.kind !== 'chess') return null;
     const rng = this.rngMeta;
+    const excluded = new Set(Array.isArray(exclude) ? exclude.filter((id) => typeof id === 'string') : []);
+    const allowed = (id) => !excluded.size || (!excluded.has(id) && (!p.golden || !excluded.has(this.gd.goldenIdOf(id) || id)));
     const free = (id) => {
-      if (typeof id !== 'string' || !this.gd.chess(id)) return false;
+      if (typeof id !== 'string' || !allowed(id) || !this.gd.chess(id)) return false;
       const base = this.gd.baseIdOf(id);
       if (this.bannedChess.includes(base)) return false;
       return !stock.has(base) || stock.left(base) > 0;
@@ -189,7 +193,7 @@ export class MatchSpDraft {
         extra,
         tier: Number.isInteger(p.tier) ? p.tier : null,
         maxTier,
-        filter: (cid, e) => e.tier >= minTier && (!bond || (Array.isArray(recOf(cid)?.bonds) && recOf(cid).bonds.includes(bond))),
+        filter: (cid, e) => (!excluded.size || allowed(cid)) && e.tier >= minTier && (!bond || (Array.isArray(recOf(cid)?.bonds) && recOf(cid).bonds.includes(bond))),
       });
     }
     if (!id) return null;

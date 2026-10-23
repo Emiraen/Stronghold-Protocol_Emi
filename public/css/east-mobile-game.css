@@ -145,8 +145,6 @@
   .gm .rwtag__micro, .gm .rwtag__sub { display: none; }
   .gm .rwtag__later { min-height: calc(30 * var(--battle-ui-unit, 1px)); font-size: calc(10 * var(--battle-ui-unit, 1px)); padding: 2px; }
   .gm .shopbar__risk { position: absolute; bottom: calc(100% + calc(24 * var(--battle-ui-unit, 1px))); right: 0; max-width: 100%; font-size: calc(11 * var(--battle-ui-unit, 1px)); }
-  .gm .gm__inventory-pages { bottom: calc(112 * var(--battle-ui-unit, 1px)); left: calc(50% + calc(40 * var(--battle-ui-unit, 1px))); max-width: calc(100% - calc(184 * var(--battle-ui-unit, 1px))); width: max-content; gap: calc(6 * var(--battle-ui-unit, 1px)); font-size: calc(10 * var(--battle-ui-unit, 1px)); padding: calc(4 * var(--battle-ui-unit, 1px)); }
-  .gm .gm__inventory-pages .btn { min-height: calc(32 * var(--battle-ui-unit, 1px)); font-size: calc(10 * var(--battle-ui-unit, 1px)); padding: calc(3 * var(--battle-ui-unit, 1px)) calc(6 * var(--battle-ui-unit, 1px)); }
   .gm .rewardpill { bottom: calc(114 * var(--battle-ui-unit, 1px)); right: calc(8 * var(--battle-ui-unit, 1px)); font-size: calc(12 * var(--battle-ui-unit, 1px)); min-height: calc(36 * var(--battle-ui-unit, 1px)); }
 }
 @media (max-height: 340px) and (orientation: landscape) and (pointer: coarse) {

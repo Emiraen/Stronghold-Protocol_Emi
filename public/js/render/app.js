@@ -3,6 +3,7 @@ import { GEO, ANIM } from '../../../shared/constants.js';
 import { applyFrameRate, renderFrameBudget } from '../frameRate.js';
 import { loadImageElement } from '../assets.js';
 import { resourceCache } from '../resourceCache.js';
+import { createFrameGuard } from './frameGuard.js';
 import { SKADI_SEABORN, seabornOwnerSkin } from '../tokenSkins.js';
 import { fxForm } from '../../../shared/protocol.js';
 import { Camera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
@@ -82,6 +83,7 @@ export async function createFieldView(host, options = {}) {
   });
   if (P.BatchRenderer) P.BatchRenderer.canUploadSameBuffer = false;
   const canvas = app.view;
+  const frameStep = createFrameGuard(() => ({ resolution: app.renderer.resolution, canvas: [canvas.width, canvas.height] }));
   setupCleanup.push(restorePixiExtensions(app.renderer));
   applyFrameRate(app.ticker, settings.fpsLimit);
   setupCleanup.push(() => {
@@ -1092,9 +1094,17 @@ export async function createFieldView(host, options = {}) {
     clearHl('dragFrom'); clearHl('dragTarget'); clearHl('legal');
   }
 
+  // Pointer/client geometry uses the displayed canvas, while projection uses renderer logical pixels.
+  // Keep both directions consistent when the browser or a containing layout stretches the canvas (not its DPR).
+  function canvasSpace() {
+    const r = canvas.getBoundingClientRect(), screen = app.renderer.screen;
+    return { r, sx: r.width > 0 && screen.width > 0 ? r.width / screen.width : 1,
+      sy: r.height > 0 && screen.height > 0 ? r.height / screen.height : 1 };
+  }
+
   function canvasPoint(e) {
-    const r = canvas.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    const { r, sx, sy } = canvasSpace();
+    return { x: (e.clientX - r.left) / sx, y: (e.clientY - r.top) / sy };
   }
 
   function evPayload(e) {
@@ -1586,13 +1596,15 @@ export async function createFieldView(host, options = {}) {
   }
   function frameBody(now) {
     frameNo++;
-    ofx.frameStats();
-    if (frameNo % 30 === 1) {
-      impInterval = pickImpostorInterval(); clipAllowed = pickClipping();
-      culledCount = 0;
-      for (const v of views.values()) if (v.culled) culledCount++;
-      for (const v of penViews.values()) if (v.culled) culledCount++;
-    }
+    frameStep('official-stats', null, () => ofx.frameStats());
+    frameStep('load-stats', null, () => {
+      if (frameNo % 30 === 1) {
+        impInterval = pickImpostorInterval(); clipAllowed = pickClipping();
+        culledCount = 0;
+        for (const v of views.values()) if (v.culled) culledCount++;
+        for (const v of penViews.values()) if (v.culled) culledCount++;
+      }
+    });
     const dtRaw = (now - lastNow) / 1000;
     lastNow = now;
     const dt = Math.min(0.1, Math.max(0, dtRaw));
@@ -1601,27 +1613,36 @@ export async function createFieldView(host, options = {}) {
     adaptLoad(dtRaw);
     vp.width = Math.max(1, host.clientWidth || 1); vp.height = Math.max(1, host.clientHeight || 1);
     clock += dt;
-    if ((globalThis.devicePixelRatio || 1) !== lastDpr) { lastDpr = globalThis.devicePixelRatio || 1; resize(); }
-    try {
-      stepCamera(now);
+    if ((globalThis.devicePixelRatio || 1) !== lastDpr) frameStep('dpr-resize', null, () => {
+      resize();
+      lastDpr = globalThis.devicePixelRatio || 1;
+    });
+    frameStep('camera', null, () => stepCamera(now));
+    frameStep('board', null, () => {
       if (board3d) {
         if (board3d.lost) onBoard3dLost();
         else board3d.render(cam, clock);
       }
-      tiles.project(cam);
-      updateBackdrop(clock);
-      if (mode === 'battle') {
-        const renderT = interp.update(now / 1000);
-        if (Number.isFinite(renderT)) {
-          processEvents(renderT);
-          syncBattle(renderT);
-          windUpAttacks(renderT);
-          const gdt = ofxPrevT == null ? 0 : Math.min(0.25, Math.max(0, renderT - ofxPrevT));
-          ofxPrevT = renderT;
-          wiring.sync(views.values());
-          if (ofx.active) { wiring.tick(); ofx.update(gdt); }
+    });
+    frameStep('tile-project', null, () => tiles.project(cam));
+    frameStep('backdrop', null, () => updateBackdrop(clock));
+    if (mode === 'battle') {
+      let renderT;
+      frameStep('battle-clock', null, () => { renderT = interp.update(now / 1000); });
+      if (Number.isFinite(renderT)) {
+        frameStep('events', null, () => processEvents(renderT));
+        frameStep('battle-sync', null, () => syncBattle(renderT));
+        frameStep('attack-windup', null, () => windUpAttacks(renderT));
+        const gdt = ofxPrevT == null ? 0 : Math.min(0.25, Math.max(0, renderT - ofxPrevT));
+        ofxPrevT = renderT;
+        frameStep('official-sync', null, () => wiring.sync(views.values()));
+        if (ofx.active) {
+          frameStep('official-wiring', null, () => wiring.tick());
+          frameStep('official-fx', null, () => ofx.update(gdt));
         }
-      } else if (mode === 'prep') {
+      }
+    } else if (mode === 'prep') {
+      frameStep('prep-pending', null, () => {
         for (const [key, pd] of pending) {
           if (now - pd.t > DROP_PENDING_MS) {
             pending.delete(key);
@@ -1629,9 +1650,11 @@ export async function createFieldView(host, options = {}) {
             if (v && v._home && (!dragState || dragState.key !== key)) v._tween = { fx: v.x, fy: v.y, fz: v.z, tx: v._home.x, ty: v._home.y, tz: v._home.z, t: 0 };
           }
         }
-      }
-      stepClipBounds();
-      for (const [key, v] of views) {
+      });
+    }
+    frameStep('clip-bounds', null, () => stepClipBounds());
+    for (const [key, v] of views) {
+      frameStep('unit', v, () => {
         if (v._tween) {
           const tw = v._tween;
           tw.t = Math.min(1, tw.t + dt / 0.22);
@@ -1640,16 +1663,14 @@ export async function createFieldView(host, options = {}) {
           if (tw.t >= 1) v._tween = null;
         }
         v.update(dt, cam, clock);
-        if (v.remove) { dropView(key); if (mode === 'battle') gone.add(key); }
-      }
-      if (!penHidden) for (const v of penViews.values()) v.update(dt, cam, clock);
-      if (leader && !leaderHidden) leader.view.update(dt, cam, clock);
-      tiles.update(dt);
-      fx.update(dt);
-      impostors.flush();
-    } catch (err) {
-      if (!frame.warned) { frame.warned = true; console.error('[render] frame failed', err); }
+      });
+      if (v.remove) frameStep('unit-remove', v, () => { dropView(key); if (mode === 'battle') gone.add(key); });
     }
+    if (!penHidden) for (const v of penViews.values()) frameStep('pen-unit', v, () => v.update(dt, cam, clock));
+    if (leader && !leaderHidden) frameStep('leader', leader.view, () => leader.view.update(dt, cam, clock));
+    frameStep('tiles', null, () => tiles.update(dt));
+    frameStep('fx', null, () => fx.update(dt));
+    frameStep('atlas', null, () => impostors.flush());
   }
   app.ticker.add(frame);
   // render-cost probe (PIXI renders at UPDATE_PRIORITY.LOW = -25)
@@ -1758,9 +1779,10 @@ export async function createFieldView(host, options = {}) {
       if (!v) for (const x of views.values()) if (x.uid === uid || x.info?.uid === uid || x.id === uid) { v = x; break; }
       if (!v || v.destroyed) return null;
       const b = v.bounds();
-      const r = canvas.getBoundingClientRect();
-      const left = r.left + b.x, top = r.top + b.y;
-      return { left, top, right: left + b.width, bottom: top + b.height, width: b.width, height: b.height, x: left, y: top };
+      const { r, sx, sy } = canvasSpace();
+      const left = r.left + b.x * sx, top = r.top + b.y * sy;
+      const width = b.width * sx, height = b.height * sy;
+      return { left, top, right: left + width, bottom: top + height, width, height, x: left, y: top };
     },
     /**
      * Screen geometry of a BOARD-space tile (in the Final Assault prep: where that board tile is drawn on the boss
@@ -1773,11 +1795,11 @@ export async function createFieldView(host, options = {}) {
       // place there (the same rule as the highlights, render/prepfield.js tilesToDisp)
       if (mode === 'prep' && prepXf !== IDENTITY && !tilesToDisp(prepXf, [[row, col]]).length) return null;
       const z = heightAt(d.row, d.col);
-      const r = canvas.getBoundingClientRect();
+      const { r, sx, sy } = canvasSpace();
       const c = cam.project(d.col, d.row, z);
       if (!c || !Number.isFinite(c.x) || !Number.isFinite(c.y)) return null;
-      const corner = (dx, dy) => { const p = cam.project(d.col + dx, d.row + dy, z); return [r.left + p.x, r.top + p.y]; };
-      return { x: r.left + c.x, y: r.top + c.y, s: c.s, poly: [corner(-0.5, 0.5), corner(0.5, 0.5), corner(0.5, -0.5), corner(-0.5, -0.5)], mirror: mode === 'prep' && prepXf.mirror };
+      const corner = (dx, dy) => { const p = cam.project(d.col + dx, d.row + dy, z); return [r.left + p.x * sx, r.top + p.y * sy]; };
+      return { x: r.left + c.x * sx, y: r.top + c.y * sy, s: c.s * Math.min(sx, sy), poly: [corner(-0.5, 0.5), corner(0.5, 0.5), corner(0.5, -0.5), corner(-0.5, -0.5)], mirror: mode === 'prep' && prepXf.mirror };
     },
     /**
      * True when the view itself stripes range previews ('facing' / 'selRange' / 'range' groups) under the units (the 2D

@@ -61,7 +61,8 @@ export function GameScreen() {
   }
   let body;
   if (spectator) body = html`<${MatchScreen} />`;
-  else if (over && !endOn) body = html`<${ResultScreen} />`;
+  // Do not keep the Pixi/3D field rendering throughout the end plate. Prepare settlement under the plate.
+  else if (over) body = html`<${ResultScreen} />`;
   else if (mode === 'briefing') body = html`<${BriefingScreen} />`;
   else if (mode === 'draft') body = html`<${BandDraftScreen} />`;
   else body = html`<${MatchScreen} />`;

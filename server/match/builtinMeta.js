@@ -29,6 +29,7 @@
 
 import { getData } from '../data.js';
 import { itemKey } from './gamedata.js';
+import { forEachMeta } from '../sim/content/support/meta.js';
 
 const int = (v, d = 0) => (Number.isFinite(v) ? Math.trunc(v) : d);
 
@@ -69,7 +70,9 @@ const ITEM_HANDLERS = {
   use_equip_reward_char_chess_bond_layer: {
     onEquip(ctx, ev) {
       const n = int(paramsOf(ctx, ev.item).layer, 3);
-      for (const b of ctx.pieceBonds(ev.target.uid)) ctx.addLayers(b, n, { requireActive: false, reason: 'item' });
+      forEachMeta(ctx, 'item:bond', ctx.pieceBonds(ev.target.uid), (b) => {
+        ctx.addLayers(b, n, { requireActive: false, reason: 'item' });
+      });
     },
   },
   use_equip_reward_random_char_chess_in_shop: {

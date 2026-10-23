@@ -52,7 +52,13 @@
 .sp-chat__heading span { color: #344b40; }
 .sp-chat__heading .sp-chat__close { color: #1b3326; }
 .sp-chat__share { border-color: var(--mint-400); font-weight: 700; }
-.east-hall .proto-start { min-height: 44px; }
+/* Keep the full action label clear of the decorative stripe at every text size. */
+.east-hall .proto-foot .proto-start { height: auto; min-height: max(1.04rem, 44px); gap: max(8px, .16rem); padding: max(8px, .12rem) max(24px, .3rem) max(8px, .12rem) max(10px, .2rem); }
+.east-hall .proto-foot .proto-start__label { display: block; flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: max(18px, calc(.36 * var(--t))); line-height: 1.25; letter-spacing: .02em; }
+.east-hall .proto-foot .proto-start__deco { width: max(12px, .15rem); pointer-events: none; }
+@media (max-width: 900px), (max-height: 520px) {
+  .east-hall .proto-foot .proto-start__mark { display: none; }
+}
 @media (max-height: 600px) {
   .east-hub .hub-side { gap: .1rem; padding-top: .08rem; }
   .east-hub .hub-side .tips { display: none; }

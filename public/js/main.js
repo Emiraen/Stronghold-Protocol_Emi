@@ -9,8 +9,8 @@
 // Deep link `?room=CODE`: remembered at boot, auto-joined once the player has entered and the
 // session is online (after a short grace period in case the server restores a room on resume).
 // Reloading a tab that already passed the title re-enters automatically (sessionStorage flag) and
-// resumes the server session with the saved token; stale room/match state is dropped if the
-// server does not re-push it within RESTORE_GRACE_MS after `welcome`. Boot waits for
+// resumes the server session with the saved token; keep the current room/match while recovery
+// snapshots arrive. Only an explicit close or a new server session ends it. Boot waits for
 // `identity.init()` (which token this tab may use without stealing another live tab's session)
 // before the first connect; a page restored from the back/forward cache reloads.
 // A `welcome` with a NEW playerId (the server restarted / the session expired) while a room or match was on screen:
@@ -60,8 +60,8 @@ import { startBuildGuard } from './ui/buildGuard.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
 import { translateWire, t } from '../../shared/i18n.js';
 import { recordError } from './diag.js';
+import { recordRewardFailure, REWARD_FAILURE_TEXT } from './ui/rewardErrors.js';
 
-const RESTORE_GRACE_MS = 1500;
 const JOIN_DELAY_MS = 350;
 const TICKER_KEEP = 20;
 const EMOTE_KEEP = 20;
@@ -86,10 +86,10 @@ function clearRoomParam() {
 // ---- net → store wiring ---------------------------------------------------------------------------
 
 let seq = 0;
-let welcomeAt = 0;
-let roomStateAt = 0;
-let matchAt = 0;
-let restoreTimer = null;
+// Frame generations, not wall-clock times: recovery frames can share a millisecond.
+let restoreGeneration = 0;
+let roomGeneration = 0;
+let matchGeneration = 0;
 let joinTimer = null;
 let joinInFlight = false;
 let appMounted = false;
@@ -124,21 +124,19 @@ function schedulePendingJoin() {
 function maybeFinishRestore() {
   const s = store.get();
   if (!s.ui.restoring) return;
-  const roomOk = !s.room || roomStateAt >= welcomeAt;
-  const matchOk = !s.match.public || matchAt >= welcomeAt || !s.room?.inMatch;
+  const roomOk = !s.room || roomGeneration === restoreGeneration;
+  const matchOk = !s.match.public || matchGeneration === restoreGeneration || !s.room?.inMatch;
   if (roomOk && matchOk) {
-    clearTimeout(restoreTimer);
     store.patch('ui', { restoring: false });
   }
 }
 
 /**
  * Leave whatever room / match was on screen for the lobby with nothing stale left behind: open imperative dialogs,
- * the post-resume restore timer, ticker lines and emote bubbles of the old match (the battle runner and the 暂离 flag
+ * the pending restore state, ticker lines and emote bubbles of the old match (the battle runner and the 暂离 flag
  * follow the store themselves).
  */
 function backToLobby(allowResult = false) {
-  clearTimeout(restoreTimer);
   const s = store.get();
   if (s.room || s.match.public) closeAllDialogs();
   store.set({ room: null, spectator: null, matchChat: { matchId: null, items: [] }, match: emptyMatch(), ticker: [], emotes: [] });
@@ -148,13 +146,14 @@ function backToLobby(allowResult = false) {
 
 function onWelcome(msg) {
   matchDismissed = false;
-  identity.saveToken(msg.token);
   const prev = store.get();
   const prevId = prev.me.playerId;
   const name = typeof msg.name === 'string' && msg.name ? msg.name : prev.me.name;
+  identity.saveName(name);
+  identity.saveToken(msg.token);
   store.set({ me: { playerId: msg.playerId ?? null, name, token: typeof msg.token === 'string' ? msg.token : null } });
   store.set({ content: { vanilla: msg.content?.vanilla || null }, installedPlugins: Number.isInteger(msg.content?.plugins) ? msg.content.plugins : 0 });
-  welcomeAt = Date.now();
+  restoreGeneration++;
 
   if (prevId != null && prevId !== msg.playerId) {
     // A brand-new server session (the server restarted — crashed / killed, so no room.closed arrived — or this session
@@ -163,34 +162,29 @@ function onWelcome(msg) {
     backToLobby();
     store.set({ chat: { items: [] } });
     if (notice) toast(notice, 'warn', { ttl: 7000 });
-  } else if (prev.room || prev.match.public) {
-    // Resumed session: the server re-pushes room/match state; drop whatever it doesn't.
+  } else if (msg.roomCode === null && msg.spectatorCode === null) {
+    // A processed leave may lose its ACK when the connection drops. New servers
+    // explicitly confirm no membership; old servers omit these fields, not null.
+    // Still allow a pending RESULT replay immediately after this welcome.
+    backToLobby(true);
+  } else if (prev.room || prev.match.public || prev.spectator) {
+    // welcome precedes async profile/chat loading and the full recovery snapshots.
+    // A slow snapshot or another disconnect does not mean the match ended. Retain
+    // the current screen/runner until room.closed, spectator.closed or a new session.
     store.patch('ui', { restoring: true });
-    clearTimeout(restoreTimer);
-    restoreTimer = setTimeout(() => {
-      const s = store.get();
-      const patch = {};
-      if (s.room && roomStateAt < welcomeAt) patch.room = null;
-      if (s.match.public && matchAt < welcomeAt) {
-        patch.match = emptyMatch();
-        if (s.spectator) patch.spectator = null;
-      }
-      store.set(patch);
-      store.patch('ui', { restoring: false });
-    }, RESTORE_GRACE_MS);
   }
   schedulePendingJoin();
 }
 
 function onRoomState(msg) {
   const room = payload(msg);
-  roomStateAt = Date.now();
+  roomGeneration = restoreGeneration;
   const myId = store.get().me.playerId;
   const seats = Array.isArray(room.seats) ? room.seats : [];
   if (myId != null && seats.length && !seats.some((s) => s && s.playerId === myId)) {
     // We are no longer seated (kicked / left elsewhere) — neither in a player seat nor a spectator seat.
     if (store.get().room) toast(t('你已不在该同盟中'), 'warn');
-    store.set({ room: null, match: emptyMatch() });
+    backToLobby();
     return;
   }
   const prevRoom = store.get().room;
@@ -210,11 +204,10 @@ const CLOSE_REASON = {
 
 function wireNet() {
   net.on('serverSwitch', () => {
-    clearTimeout(restoreTimer);
     clearTimeout(joinTimer);
-    restoreTimer = joinTimer = null;
+    joinTimer = null;
     joinInFlight = false;
-    seq = welcomeAt = roomStateAt = matchAt = 0;
+    seq = restoreGeneration = roomGeneration = matchGeneration = 0;
     matchDismissed = false;
     closeAllDialogs();
     store.reset();
@@ -231,7 +224,15 @@ function wireNet() {
   });
   net.on('clock', (c) => store.set({ clock: { offset: c.offset, rtt: c.rtt, synced: c.synced } }));
   net.on('welcome', onWelcome);
-  net.on('helloError', (err) => toastError(err));
+  net.on('helloError', (err) => {
+    const name = err.accountName || store.get().me.name;
+    if (err.code?.startsWith('AUTH_')) identity.clearAuth(name);
+    identity.clearToken();
+    identity.setEntered(false);
+    backToLobby();
+    store.set({ me: { playerId: null, name, token: null }, session: { entered: false } });
+    // The title form owns authentication feedback, including the required-reset modal.
+  });
   net.on('replaced', () => toast('此设备的该账号已在另一页面恢复，本页已断开', 'info', { ttl: 6000 }));
   net.on('kicked', () => {
     closeAllDialogs();
@@ -245,7 +246,6 @@ function wireNet() {
     toast(t('{reason}；{status}', { reason: msg.reason, status: t(msg.requeued ? '原队伍已安全返回匹配队列' : '原队伍保留，请重新发起匹配') }), 'warn', { ttl: 6000 });
   });
   net.on('spectator.state', (msg) => {
-    clearTimeout(restoreTimer);
     store.set({ spectator: payload(msg), room: null, match: emptyMatch(), matchChat: { matchId: null, items: [] } });
     matchDismissed = false;
     store.patch('ui', { restoring: false });
@@ -275,7 +275,10 @@ function wireNet() {
     if (key === 'matchChat' && store.get().matchChat.matchId !== msg.matchId) return;
     store.set((s) => ({ [key]: { ...s[key], items: [...(s[key]?.items || []).filter((item) => item.id !== msg.id).slice(-49), msg] } }));
   });
-  net.on('rank.me', (msg) => { store.set({ rank: payload(msg) }); });
+  net.on('rank.me', (msg) => {
+    const profile = payload(msg);
+    store.set({ rank: profile });
+  });
   net.on('room.closed', (msg) => {
     // 超时移除后的合法结算会紧随 room.closed 重播，不能一概拦截。
     backToLobby(true);
@@ -284,11 +287,11 @@ function wireNet() {
   net.on('m.public', (msg) => {
     const s = store.get();
     if (matchDismissed || (!s.room?.inMatch && !s.spectator && msg.phase !== 'RESULT')) return;
-    matchAt = Date.now(); store.patch('match', { public: payload(msg) }); maybeFinishRestore();
+    matchGeneration = restoreGeneration; store.patch('match', { public: payload(msg) }); maybeFinishRestore();
   });
   net.on('m.private', (msg) => {
     if (matchDismissed || !store.get().room?.inMatch) return;
-    matchAt = Date.now(); store.patch('match', { private: payload(msg) });
+    store.patch('match', { private: payload(msg) });
   });
   net.on('m.field', (msg) => {
     const s = store.get();
@@ -296,14 +299,23 @@ function wireNet() {
     store.patch('match', { field: payload(msg) });
   });
   net.on('m.result', (msg) => {
-    if (matchDismissed) return;
     const result = payload(msg);
     const s = store.get();
-    store.patch('match', { result });
-    recordResult(result, { myId: s.me.playerId, roomMode: s.room?.mode, now: Date.now() });
+    const currentId = s.match.public?.matchId || s.match.result?.matchId || s.spectator?.matchId;
+    const completed = result.matchId && s.match.result?.matchId === result.matchId && !s.match.result.settlementPending;
+    // A committed receipt may arrive after returning to the lobby or starting
+    // another match. Keep its history, but never reopen/replace the current game.
+    const showResult = !matchDismissed && !!s.match.public && !(result.settlementPending && completed)
+      && (!result.matchId || !currentId || result.matchId === currentId);
+    recordResult(result, { myId: s.me.playerId, roomMode: s.room?.mode, now: Date.now(), historyOnly: !showResult });
+    if (showResult) store.patch('match', { result });
   });
   net.on('m.toast', (msg) => {
     const kind = ['info', 'success', 'warn', 'error'].includes(msg.kind) ? msg.kind : 'info';
+    if (recordRewardFailure(msg)) {
+      toast(REWARD_FAILURE_TEXT, 'error', { ttl: 12000 });
+      return;
+    }
     toast(translateWire(msg), kind);
   });
   net.on('m.ticker', (msg) => {
@@ -460,7 +472,8 @@ async function boot() {
 
   const pendingJoin = handoff ? handoff.join || null : parseRoomTarget(parseRoomParam(location.search));
   const savedName = sanitizeName(identity.loadName());
-  const entered = identity.wasEntered() && !!savedName;
+  const entered = identity.wasEntered() && !!savedName && !!identity.getAuth(savedName);
+  if (!entered) identity.setEntered(false);
   store.set((s) => ({
     me: { ...s.me, name: savedName },
     session: { entered: false },
@@ -488,7 +501,7 @@ async function boot() {
   const connectWhenReady = identityReady.then(async () => {
     if (!await prepareServerConnection(directoryReady)) return;
     // Neither a saved tab flag nor ordinary login may bypass the actual local-resource check.
-    if (entered) void enterSession(savedName);
+    if (entered) void enterSession(savedName).catch(() => false);
     net.connect();
   });
   // The title screen does not depend on the server directory, IndexedDB scan, fonts, or a language pack.

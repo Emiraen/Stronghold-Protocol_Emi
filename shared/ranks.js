@@ -3,7 +3,7 @@
 // 段位模型（用户标尺）：
 //   黑铁/青铜/白银/黄金/白金/钻石/超凡 各 3 小段，每小段 100 分；
 //   神话（不朽）区按分数分档：2100–2199 神话一，2200–2299 神话二，2300–2549 神话三；
-//   ≥2550 赋能战魂。神话区以上显示 #全服排名。
+//   ≥2550（神话450分）且全服前50名为源能战魂，其余仍为神话三。神话区以上显示 #全服排名。
 //   分组：低段 = 黑铁..黄金（<1200），中段 = 白金..超凡（1200–2099），高段 = 神话/赋能（≥2100）。
 //
 // 定级赛（3 场，只能 险境/绝境/终极）：
@@ -27,7 +27,7 @@
 //   定级赛期间隐藏分加减更剧烈：赢 +32~+96、输 −96~−32（见 mmrUpdate）。
 // 段位展示（rankOf().label，客户端徽章直接渲染）：
 //   普通段位「钻石二 50分」（本段内小分）；神话区从「神话一 0 分」连续计（神话一 60分 / 神话二 120分 /
-//   赋能战魂 600分）；神话以上由 RankedStore 在 label 尾部追加「#全服排名」；未定级显示「未定级 (x/y)」。
+//   源能战魂 600分）；神话以上由 RankedStore 在 label 尾部追加「#全服排名」；未定级显示「未定级 (x/y)」。
 
 export const RANKED_DIFFICULTIES = ['NORMAL', 'HARD', 'ABYSS'];
 /** Ranked preference and actual rating eligibility are separate: standard never changes a profile. */
@@ -35,6 +35,7 @@ export const isRankedMatch = (ranked, difficulty) => ranked === true && RANKED_D
 export const PLACEMENT_MATCHES = 3;
 export const PLACEMENT_MAX_POINTS = 2050;   // 超凡三 50 分
 export const RADIANT_POINTS = 2550;
+export const RADIANT_GLOBAL_LIMIT = 50;
 export const RANK_BASE_GAIN_MAX = 50;
 
 const CN_NUM = { 1: '一', 2: '二', 3: '三' };
@@ -48,8 +49,15 @@ const DIVISIONS = [
   { key: 'diamond', cn: '钻石', from: 1500 },
   { key: 'ascendant', cn: '超凡', from: 1800 },
   { key: 'immortal', cn: '神话', from: 2100 },
-  { key: 'radiant', cn: '赋能战魂', from: RADIANT_POINTS },
+  { key: 'radiant', cn: '源能战魂', from: RADIANT_POINTS },
 ];
+
+/** Compare actual division identities, never raw points or a client-provided rank. */
+export function isRankDivisionAtLeast(division, minimum) {
+  const current = DIVISIONS.findIndex((entry) => entry.key === division);
+  const threshold = DIVISIONS.findIndex((entry) => entry.key === minimum);
+  return threshold >= 0 && current >= threshold;
+}
 
 /** 未定级视图。 */
 export const UNRANKED = Object.freeze({
@@ -57,27 +65,34 @@ export const UNRANKED = Object.freeze({
   icon: 'unranked', label: '未定级', points: 0, globalRanked: false,
 });
 
+/** Normalize stored display labels without rewriting historical match records. */
+export function normalizeRankLabel(label) {
+  return typeof label === 'string' ? label.replace(/赋能战魂/g, '源能战魂') : label;
+}
+
 /**
  * 分数 → 段位视图。label 为完整展示串，含当前小段小分：
  *   普通段位按本段内小分（如 1550 ⇒「钻石二 50分」）；
  *   神话及以上从「神话一 0 分」起连续计分（小分 = 分数 − 2100）：
- *   2160 ⇒「神话一 60分」，2220 ⇒「神话二 120分」，2700 ⇒「赋能战魂 600分」。
- *   #全服排名后缀由 RankedStore.summary / settleMatch 追加（rankOf 本身不知道全服排名）。
- * @param {number} points @returns {{ division: string|null, divisionName: string, tier: number|null,
+ *   2160 ⇒「神话一 60分」，2220 ⇒「神话二 120分」，2700 ⇒「源能战魂 600分」。
+ *   赋能需同时满足积分门槛与全服前50名；未提供排名时不授予赋能段位。
+ *   #全服排名后缀由 RankedStore.summary / settleMatch 追加。
+ * @param {number} points @param {number|null} [globalRank]
+ * @returns {{ division: string|null, divisionName: string, tier: number|null,
  *   group: 'low'|'mid'|'high'|null, icon: string, label: string, points: number, globalRanked: boolean }}
  */
-export function rankOf(points) {
+export function rankOf(points, globalRank = null) {
   const p = Math.max(0, Math.floor(Number(points) || 0));
   let div = DIVISIONS[0];
   for (const d of DIVISIONS) if (p >= d.from) div = d;
   const group = p >= 2100 ? 'high' : p >= 1200 ? 'mid' : 'low';
   if (p >= 2100) {
     const sub = p - 2100; // 神话区连续计分（神话一 0 分起）
-    if (div.key === 'radiant') {
-      return { division: 'radiant', divisionName: div.cn, tier: null, group, icon: 'radiant', label: `赋能战魂 ${sub}分`, points: p, globalRanked: true };
+    if (div.key === 'radiant' && Number.isInteger(globalRank) && globalRank >= 1 && globalRank <= RADIANT_GLOBAL_LIMIT) {
+      return { division: 'radiant', divisionName: div.cn, tier: null, group, icon: 'radiant', label: `源能战魂 ${sub}分`, points: p, globalRanked: true };
     }
     const tier = p < 2200 ? 1 : p < 2300 ? 2 : 3;
-    return { division: 'immortal', divisionName: div.cn, tier, group, icon: `immortal_${tier}`, label: `神话${CN_NUM[tier]} ${sub}分`, points: p, globalRanked: true };
+    return { division: 'immortal', divisionName: '神话', tier, group, icon: `immortal_${tier}`, label: `神话${CN_NUM[tier]} ${sub}分`, points: p, globalRanked: true };
   }
   const tier = Math.min(3, Math.floor((p - div.from) / 100) + 1);
   const sub = (p - div.from) % 100; // 本小段（100 分一档）内的小分
@@ -88,7 +103,7 @@ export function rankOf(points) {
 export function rankBoundaries() {
   const rows = [];
   for (let points = 0; points <= RADIANT_POINTS; points++) {
-    const rank = rankOf(points);
+    const rank = rankOf(points, 1); // 规则表展示满足排名条件时的赋能门槛。
     const previous = rows.at(-1);
     if (previous?.icon === rank.icon) continue;
     if (previous) previous.to = points - 1;

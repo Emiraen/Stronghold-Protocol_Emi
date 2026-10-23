@@ -16,25 +16,8 @@
     <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
     <p class="eyebrow">STRONGHOLD / CONTROL</p>
     <h1>正在连接控制台</h1>
-    <p id="bootMessage" class="muted">正在验证访问权限…</p>
+    <p id="bootMessage" class="muted">正在加载实时数据…</p>
     <button id="bootRetry" class="button button-outline" type="button" hidden>重新连接</button>
-  </main>
-
-  <main id="loginView" class="entry-screen" hidden>
-    <div class="login-card">
-      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-      <p class="eyebrow">STRONGHOLD / CONTROL</p>
-      <h1>管理控制台<span class="title-dot">.</span></h1>
-      <p class="login-intro">实时掌握房间、玩家与排位动态。</p>
-      <form id="loginForm" class="login-form">
-        <label for="password">管理密码</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入访问密码">
-        <p id="loginError" class="form-error" role="alert" hidden></p>
-        <button id="loginButton" class="button button-primary" type="submit">进入控制台 <span aria-hidden="true">↗</span></button>
-      </form>
-      <p class="login-footnote"><span class="signal-dot"></span> 独立管理入口 · 仅授权访问</p>
-    </div>
-    <p class="entry-copyright">STRONGHOLD PROTOCOL <span>©</span> ADMIN</p>
   </main>
 
   <main id="dashboardView" class="dashboard" hidden>
@@ -47,7 +30,6 @@
         <div class="topbar-actions">
           <span id="connectionStatus" class="connection-status" role="status"><span class="signal-dot"></span><span id="connectionText">正在同步</span></span>
           <button id="refreshButton" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新">↻</button>
-          <button id="logoutButton" class="button button-outline logout-button" type="button">退出</button>
         </div>
       </div>
     </header>

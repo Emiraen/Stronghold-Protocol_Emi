@@ -296,18 +296,23 @@ function readRaw() {
  * @returns {{ v: number, records: any[], newer: boolean, dropped: number, damaged: boolean }}
  */
 export function loadStats() {
+  return loadStatsSnapshot().stats;
+}
+
+// A recording transaction already owns the normalized snapshot; do not normalize the entire history again on save.
+function loadStatsSnapshot() {
   const raw = readRaw();
-  if (raw == null) return { ...emptyStats(), newer: false, dropped: 0, damaged: false };
+  if (raw == null) return { raw, stats: { ...emptyStats(), newer: false, dropped: 0, damaged: false } };
   let parsed;
   try { parsed = JSON.parse(raw); } catch { parsed = undefined; }
   if (!isObj(parsed) || !Array.isArray(parsed.records)) {
     // keep the bad value where a person can find it; if even that write fails the next save simply replaces it
     try { globalThis.localStorage?.setItem(DAMAGED_KEY, raw); globalThis.localStorage?.removeItem(FULL_KEY); } catch { /* keep it in place */ }
-    return { ...emptyStats(), newer: false, dropped: 0, damaged: true };
+    return { raw, stats: { ...emptyStats(), newer: false, dropped: 0, damaged: true } };
   }
   const { stats, changed, newer, dropped } = migrateStats(parsed);
-  if (!newer && changed) saveStats(stats);
-  return { ...stats, newer, dropped, damaged: false };
+  if (!newer && changed) saveNormalizedStats(stats.records, raw);
+  return { raw, stats: { ...stats, newer, dropped, damaged: false } };
 }
 
 // ---- compaction + the storage budget ---------------------------------------------------------------------------
@@ -341,7 +346,12 @@ export function compactRecord(rec) {
  * @returns {any[]}
  */
 export function fitToBudget(records, maxChars = MAX_CHARS) {
+  return fitForStorage(records, maxChars).records;
+}
+
+function fitForStorage(records, maxChars = MAX_CHARS) {
   const kept = [];
+  const parts = [];
   // Retain each bond's best roster: the overview can exclude noStack bonds
   // without choosing an older compact record whose display data was discarded.
   const bestByBond = new Map();
@@ -363,12 +373,15 @@ export function fitToBudget(records, maxChars = MAX_CHARS) {
       const self = selfRowOf(r);
       Object.assign(rec.players[0], { lineup: self.lineup, bonds: self.bonds, name: self.name });
     }
-    const n = JSON.stringify(rec).length + 1;
+    // Reuse this bounded serialization for the final envelope (and quota retries).
+    const json = JSON.stringify(rec);
+    const n = json.length + 1;
     if (kept.length && used + n > maxChars) return;
     used += n;
     kept.push(rec);
+    parts.push(json);
   });
-  return kept;
+  return { records: kept, parts };
 }
 
 /**
@@ -379,18 +392,27 @@ export function fitToBudget(records, maxChars = MAX_CHARS) {
  */
 export function saveStats(stats) {
   if (stats.newer || stats.v > STATS_VERSION) return false;
+  return saveNormalizedStats(migrateStats(stats).stats.records);
+}
+
+function saveNormalizedStats(records, knownRaw) {
   // 导入确认期间或其他标签页可能升级存储；写入前再次拒绝覆盖新版本。
-  try { if (JSON.parse(readRaw())?.v > STATS_VERSION) return false; } catch { /* 损坏旧值允许恢复 */ }
-  let recs = fitToBudget(migrateStats(stats).stats.records);
+  // A byte-identical snapshot was parsed above; avoid parsing up to 800 KB a second time.
+  try {
+    const raw = readRaw();
+    if (raw !== knownRaw && JSON.parse(raw)?.v > STATS_VERSION) return false;
+  } catch { /* 损坏旧值允许恢复 */ }
+  let { records: recs, parts } = fitForStorage(records);
   for (;;) {
     try {
       const ls = globalThis.localStorage;
       if (!ls) return false; // no storage at all (disabled by the browser)
-      ls.setItem(FULL_KEY, JSON.stringify({ v: STATS_VERSION, records: recs }));
+      ls.setItem(FULL_KEY, '{"v":' + STATS_VERSION + ',"records":[' + parts.join(',') + ']}');
       return true;
     } catch { /* quota or storage disabled — fall through to shrinking */ }
     if (recs.length <= 1) return false;
     recs = recs.slice(0, Math.max(1, Math.ceil(recs.length / 2)));
+    parts = parts.slice(0, recs.length);
   }
 }
 
@@ -418,6 +440,7 @@ export function roomModeOf(modeId, roomMode) {
  */
 export function buildRecord(res, ctx = {}) {
   const r = isObj(res) ? res : {};
+  if (r.settlementPending || r.incomplete || r.settlementErrors?.length || r.players?.some?.((p) => p?.settlementError || p?.stats === null)) return null;
   if (!Array.isArray(r.players) || !r.players.length) return null;
   const myId = str(ctx.myId);
   const selfRow = r.players.find((p) => isObj(p) && p.playerId === myId);
@@ -614,11 +637,11 @@ export function appendRecord(stats, record) {
 /** load → append → save of one built record (never over an envelope of a newer build). @returns {any|null} the record when stored */
 function storeRecord(rec) {
   if (!rec) return null;
-  const stats = loadStats();
+  const { stats, raw } = loadStatsSnapshot();
   if (stats.newer) return null;
   const { stats: next, added } = appendRecord(stats, rec);
   if (!added) return null;
-  if (!saveStats(next)) {
+  if (!saveNormalizedStats(next.records, raw)) {
     console.warn('[stats] 本机存储写入失败，记录未持久化');
     return null;
   }
@@ -629,12 +652,13 @@ function storeRecord(rec) {
  * Record a finished match end-to-end (load → append → save). Returns the built record, or null when
  * nothing was stored (no players / not my match / replay).
  * @param {any} res raw m.result payload
- * @param {{ myId?: string|null, roomMode?: string|null, now?: number }} [ctx]
+ * @param {{ myId?: string|null, roomMode?: string|null, now?: number, historyOnly?: boolean }} [ctx]
  * @returns {any|null}
  */
 export function recordResult(res, ctx = {}) {
+  if (res?.settlementPending || res?.incomplete || res?.settlementErrors?.length || res?.players?.some?.((p) => p?.settlementError || p?.stats === null)) return null;
   const rec = buildRecord(res, ctx);
-  if (rec) {
+  if (rec && !ctx.historyOnly) {
     liveMatch.settledSerial++;
     liveMatch.active = false;
   }

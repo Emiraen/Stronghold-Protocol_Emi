@@ -176,7 +176,7 @@ function BestRecord({ best, gd }) {
   if (!best) return html`<p class="ach-empty">${t('还没有可展示的战果：完成一局模拟后在这里记录盟约叠加最高的一局')}</p>`;
   const lineup = Array.isArray(best.self.lineup) ? best.self.lineup : [];
   const slots = Array.from({ length: 10 }, (_, i) => lineup[i] || null);
-  const bonds = recordBonds(best.self.bonds, (id) => !!gd.bond?.(id)?.noStack);
+  const bonds = recordBonds(best.self.bonds, (id) => !!gd.bond?.(id)?.noStack, (id) => !!gd.bond?.(id)?.isCore);
   const bond = gd.bond?.(best.bondId);
   return html`<div class="ach-best">
     <div class="ach-best__left">
@@ -200,15 +200,16 @@ function BestRecord({ best, gd }) {
 }
 
 /**
- * The 战果纪录's bonds beside the lineup: that match's bonds (active ones first, then by layers), at most six — the
- * 2×3 grid of the reference. `noStack(bondId)`: a bond whose layers the game never shows prints a dash.
+ * The 战果纪录's bonds beside the lineup: all recorded bonds, activated core bonds first, then active ones / layers.
+ * `noStack(bondId)`: a bond whose layers the game never shows prints a dash.
  */
-export function recordBonds(list, noStack = () => false) {
+export function recordBonds(list, noStack = () => false, isCore = () => false) {
+  const activeCore = (b) => Number(b.active && !!isCore(b.bondId));
   return (Array.isArray(list) ? list : [])
     .filter((b) => b && b.bondId && (b.active || Number(b.layers) > 0))
     .map((b) => ({ bondId: b.bondId, active: !!b.active, layers: Math.max(0, Number(b.layers) || 0), hidden: noStack(b.bondId) }))
-    .sort((a, b) => (b.active - a.active) || ((b.hidden ? -1 : b.layers) - (a.hidden ? -1 : a.layers)))
-    .slice(0, 6);
+    .sort((a, b) => activeCore(b) - activeCore(a) || (b.active - a.active)
+      || ((b.hidden ? -1 : b.layers) - (a.hidden ? -1 : a.layers)));
 }
 
 function Maxima({ maxima }) {

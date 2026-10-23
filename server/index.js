@@ -112,6 +112,7 @@ function makeLogger(quiet) {
  *   port?: number, host?: string, quiet?: boolean, log?: object,
  *   publicDir?: string, dataDir?: string, sharedDir?: string, simDir?: string, packsDir?: string,
  *   ranked?: import('./rankedStore.js').RankedStore, players?: import('./playerStore.js').PlayerStore,
+ *   accountFile?: string | null,
  *   admin?: object | null | false,
  *   MatchClass?: Function, seedFn?: () => number, history?: import('./historyStore.js').HistoryStore,
  *   lobbyGraceMs?: number, reconnectWindowMs?: number, heartbeatMs?: number, helloTimeoutMs?: number,
@@ -171,6 +172,7 @@ export async function startServer(opts = {}) {
   };
   const profiles = createProfileAccess({ ...config,
     getData: () => data,
+    accountFile: opts.accountFile !== undefined ? opts.accountFile : (opts.env || process.env).ACCOUNT_AUTH_FILE || undefined,
     announcementFile: opts.announcementFile !== undefined ? opts.announcementFile : isMain() ? path.join(publicDir, 'announcement.json') : null,
     announcementInitialFile: path.join(publicDir, 'announcement.json'),
   }, stores, log);
@@ -215,8 +217,10 @@ export async function startServer(opts = {}) {
   const startedAt = Date.now();
   const traffic = createTrafficCounter();
   const csp = siteCsp(publicDir, [config.mainUrl, config.secondaryUrl]);
-  const adminOpts = opts.admin !== undefined ? opts.admin : (process.env.ADMIN_PASSWORD_HASH ? {
-    passwordHash: process.env.ADMIN_PASSWORD_HASH,
+  // Accept existing deployments' password setting as an enable flag only.
+  const adminEnabled = process.env.ADMIN_ENABLED === '1' || (process.env.ADMIN_ENABLED !== '0'
+    && (process.env.ADMIN_PORT || process.env.ADMIN_PASSWORD_HASH));
+  const adminOpts = opts.admin !== undefined ? opts.admin : (adminEnabled ? {
     tls: process.env.ADMIN_TLS_KEY && process.env.ADMIN_TLS_CERT ? {
       key: fs.readFileSync(process.env.ADMIN_TLS_KEY), cert: fs.readFileSync(process.env.ADMIN_TLS_CERT),
     } : null,
@@ -393,6 +397,18 @@ async function main() {
     for (const u of lanUrls(srv.port)) console.log(`  LAN:     ${u}`);
   }
   console.log('  Internet: cloudflared tunnel --url ' + `http://localhost:${srv.port}` + '\n');
+
+  // Serve players first; resume the frozen memorial-card cohort after startup.
+  if (srv.lobby.profiles?.authority) {
+    const grantMemorialCards = () => {
+      void srv.lobby.profiles.authority.migrateTricksterNameCards()
+        .then((report) => console.log('[profiles] 捣蛋鬼出没玩家纪念发放', {
+          total: report.total, granted: report.granted.length, deferred: report.deferredAids.length,
+        }))
+        .catch((error) => console.error('[profiles] 捣蛋鬼出没发放暂停；重启后继续', error));
+    };
+    setTimeout(grantMemorialCards, 30_000).unref();
+  }
 
   let stopping = false;
   const stop = (signal) => {

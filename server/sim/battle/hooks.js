@@ -171,7 +171,21 @@ export class BattleHooks {
     if (!this._errKeys.has(key)) {
       this._errKeys.add(key);
       if (this.errors.length < 100) this.errors.push({ label, who, message: String(e && e.message), stack: e && e.stack });
-      if (this.opts.quiet !== true) this.logger.error?.(`[sim] ${label}${who ? ' (' + who + ')' : ''} failed: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`);
+      if (this.opts.quiet !== true) {
+        try {
+          this.logger.error?.(`[sim] ${label}${who ? ' (' + who + ')' : ''} failed: ${e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e}`);
+        } catch (loggingError) {
+          // Reporting must never escape the callback boundary or prevent the engine-error threshold below.
+          // Keep a bounded in-memory diagnostic; never send this failure back through the failing logger.
+          this.loggerErrorCount = (this.loggerErrorCount ?? 0) + 1;
+          const message = String(loggingError && loggingError.message);
+          const logKey = `logger:error||${message}`;
+          if (!this._errKeys.has(logKey)) {
+            this._errKeys.add(logKey);
+            if (this.errors.length < 100) this.errors.push({ label: 'logger:error', who: '', message });
+          }
+        }
+      }
     }
     // Content handler errors are isolated (the handler is skipped, the battle continues). Repeated *engine*
     // errors mean the field state is suspect: force-end it as a timeout (DESIGN §11).

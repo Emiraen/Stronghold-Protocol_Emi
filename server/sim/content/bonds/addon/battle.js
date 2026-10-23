@@ -79,7 +79,7 @@ import { BOSS_ROW_OFFSET } from '../../../constants.js';
 import { GEO } from '../../../../../shared/constants.js';
 import {
   num, bondRecord, buffParams, bondTier, bondLayers, isMember, isElite, isGroundOp, onField, playerOps, passiveBuff,
-  fxOn, N4, N8, directMods, COLS,
+  fxOn, N4, N8, directMods, COLS, isolateContentCallback,
 } from '../../support/index.js';
 
 export const ID = Object.freeze({
@@ -97,6 +97,10 @@ const STEAD_CD = 'bond:steadShip:cd';
 const AURA_POLL = 0.25;
 const RAID_POLL = 0.25;
 const RAID_SEARCH = 2; // landing tiles within this Chebyshev distance of the target enemy
+
+function isolatedPassiveBuff(battle, unit, key, ...rest) {
+  return isolateContentCallback(battle, () => passiveBuff(battle, unit, key, ...rest), key, unit);
+}
 const RAID_TARGETS = 8; // candidate enemies a poll tries per member, the most advanced first (raidTargets)
 
 /** 奥术 vulnerability mods for a multiplier (battle.applyStrongest). */
@@ -118,11 +122,15 @@ function makeState(battle, p) {
   const ops = playerOps(battle, pid);
   const st = { pid, ops, tiers: {}, bb: {}, members: {} };
   for (const id of Object.values(ID)) {
-    const t = bondTier(battle, pid, id);
-    if (t <= 0) continue;
-    st.tiers[id] = t;
-    st.bb[id] = bondBb(id);
-    st.members[id] = new Set(ops.filter((u) => isMember(battle, u, id)));
+    isolateContentCallback(battle, () => {
+      const t = bondTier(battle, pid, id);
+      if (t <= 0) return;
+      const bb = bondBb(id);
+      const members = new Set(ops.filter((u) => isMember(battle, u, id)));
+      st.tiers[id] = t;
+      st.bb[id] = bb;
+      st.members[id] = members;
+    }, `bond:state:${pid}:${id}`);
   }
   return st;
 }
@@ -133,32 +141,32 @@ const L = (battle, st, id) => bondLayers(battle, st.pid, id);
 
 function applyPassives(battle, st) {
   const t = st.tiers;
-  if (t[ID.preci]) {
+  if (t[ID.preci]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.preci];
     const wide = t[ID.preci] >= 2;
     const mods = directMods({ atk: num(bb.base_atk) + num(bb.atk_per_stack) * L(battle, st, ID.preci) });
     if (wide) { mods.defIgnorePct = num(bb.power_def_penetrate); mods.resIgnorePct = num(bb.power_magic_resist_penetrate); }
     for (const u of st.ops) {
-      if (st.members[ID.preci].has(u) || (wide && u.def?.position === 'RANGED')) passiveBuff(battle, u, KEY.preci, mods);
+      if (st.members[ID.preci].has(u) || (wide && u.def?.position === 'RANGED')) isolatedPassiveBuff(battle, u, KEY.preci, mods);
     }
-  }
-  if (t[ID.stead]) {
+  }, `bond:applyPassives:${st.pid}:${ID.preci}`);
+  if (t[ID.stead]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.stead];
     const mods = directMods({ hp: num(bb.base_max_hp) + num(bb.max_hp_per_stack) * L(battle, st, ID.stead) });
-    for (const u of st.ops) passiveBuff(battle, u, KEY.stead, mods);
-  }
-  if (t[ID.deput]) {
+    for (const u of st.ops) isolatedPassiveBuff(battle, u, KEY.stead, mods);
+  }, `bond:applyPassives:${st.pid}:${ID.stead}`);
+  if (t[ID.deput]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.deput];
     const mods = directMods({ def: num(bb.base_def) + num(bb.def_per_stack) * L(battle, st, ID.deput) }, { redeployMul: Math.max(0, 1 + num(bb.respawn_time)) });
-    for (const u of st.ops) passiveBuff(battle, u, KEY.deput, mods);
-  }
-  if (t[ID.raid]) {
+    for (const u of st.ops) isolatedPassiveBuff(battle, u, KEY.deput, mods);
+  }, `bond:applyPassives:${st.pid}:${ID.deput}`);
+  if (t[ID.raid]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.raid];
     const lv = L(battle, st, ID.raid);
     const milestone = num(bb.power_bond_stack_cnt, Infinity);
     if (lv >= milestone) {
       const mods = { aspd: num(bb.power_attack_speed) };
-      for (const u of st.ops) passiveBuff(battle, u, KEY.raidAspd, mods);
+      for (const u of st.ops) isolatedPassiveBuff(battle, u, KEY.raidAspd, mods);
       if (!st.raidMilestone) { st.raidMilestone = true; for (const u of st.members[ID.raid]) if (onField(u)) { fxOn(battle, 'bondMilestone', u, KEY.raid, 'aspd'); break; } }
     }
     st.raidMods = raidMods(bb, lv);
@@ -166,20 +174,20 @@ function applyPassives(battle, st) {
       const b = u.findBuff(KEY.raid);
       if (b) { b.mods = st.raidMods; u.markDirty(); }
     }
-  }
-  if (t[ID.arcane]) {
+  }, `bond:applyPassives:${st.pid}:${ID.raid}`);
+  if (t[ID.arcane]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.arcane];
     const m = num(bb.base_damage_scale, 1) + num(bb.damage_scale_per_stack) * L(battle, st, ID.arcane);
     st.arcaneMul = Math.max(0, m);
     st.arcaneLowMul = Math.max(0, m * num(bb.power_weak_scale, 1));
-  }
-  if (t[ID.skillful]) {
+  }, `bond:applyPassives:${st.pid}:${ID.arcane}`);
+  if (t[ID.skillful]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.skillful];
     const lv = L(battle, st, ID.skillful);
     const v = num(bb.base_attack_speed) + num(bb.attack_speed_per_stack) * lv;
     if (!st.auraMods || st.auraMods.aspd !== v) st.auraMods = { aspd: v };
     st.auraWide = lv >= num(bb.power_bond_stack_cnt, Infinity);
-  }
+  }, `bond:applyPassives:${st.pid}:${ID.skillful}`);
 }
 
 function raidMods(bb, lv) {
@@ -195,30 +203,30 @@ function raidMods(bb, lv) {
 /** Layer-independent passives (协防 / 独行 / 绝技), applied once. */
 function applyStatic(battle, st) {
   const t = st.tiers;
-  if (t[ID.empty]) {
+  if (t[ID.empty]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.empty];
     const taken = Math.max(0, 1 - num(bb.damage_resistance));
     for (const u of st.ops) {
-      passiveBuff(battle, u, KEY.empty, { physTakenMul: taken, artsTakenMul: taken });
+      isolatedPassiveBuff(battle, u, KEY.empty, { physTakenMul: taken, artsTakenMul: taken });
       if (st.members[ID.empty].has(u)) {
-        passiveBuff(battle, u, KEY.emptyDmg, { dmgDealtMul: num(isElite(u) ? bb.damage_scale_extra : bb.damage_scale_normal, 1) });
+        isolatedPassiveBuff(battle, u, KEY.emptyDmg, { dmgDealtMul: num(isElite(u) ? bb.damage_scale_extra : bb.damage_scale_normal, 1) });
       }
     }
-  }
-  if (t[ID.solo]) {
+  }, `bond:applyStatic:${st.pid}:${ID.empty}`);
+  if (t[ID.solo]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.solo];
     const mods = directMods({ atk: num(bb.atk), hp: num(bb.max_hp) });
-    for (const u of st.members[ID.solo]) passiveBuff(battle, u, KEY.solo, mods);
-  }
-  if (t[ID.sunt]) {
+    for (const u of st.members[ID.solo]) isolatedPassiveBuff(battle, u, KEY.solo, mods);
+  }, `bond:applyStatic:${st.pid}:${ID.solo}`);
+  if (t[ID.sunt]) isolateContentCallback(battle, () => {
     const bb = st.bb[ID.sunt];
     const mods = directMods({ atk: num(bb.power_atk) });
     for (const u of st.ops) {
       if (!isElite(u)) continue;
-      passiveBuff(battle, u, KEY.sunt, mods);
+      isolatedPassiveBuff(battle, u, KEY.sunt, mods);
       if (t[ID.sunt] >= 2) suntSpCost(u, bb);
     }
-  }
+  }, `bond:applyStatic:${st.pid}:${ID.sunt}`);
 }
 
 function suntSpCost(u, bb) {
@@ -238,23 +246,27 @@ function updateAura(battle, st) {
   next.clear();
   const offs = st.auraWide ? N8 : N4;
   for (const m of st.members[ID.skillful]) {
-    const active = onField(m);
-    // isDown also covers voluntary / forced exits since v0.1.2. Only a kill keeps the aura.
-    if (!active && (m.removeReason !== 'killed' || !battle.isDown(m))) continue;
-    if (active) next.add(m);
-    // A knocked-out member still covers neighbours around the tile where it waits to redeploy.
-    const [r, c] = active ? [m.tileR, m.tileC] : battle.restTile(m);
-    for (const [dr, dc] of offs) {
-      const a = battle.unitAt(r + dr, c + dc);
-      if (a && a.kind === 'op' && a.ownerId === st.pid && onField(a)) next.add(a);
-    }
+    try {
+      const active = onField(m);
+      // isDown also covers voluntary / forced exits since v0.1.2. Only a kill keeps the aura.
+      if (!active && (m.removeReason !== 'killed' || !battle.isDown(m))) continue;
+      if (active) next.add(m);
+      // A knocked-out member still covers neighbours around the tile where it waits to redeploy.
+      const [r, c] = active ? [m.tileR, m.tileC] : battle.restTile(m);
+      for (const [dr, dc] of offs) {
+        const a = battle.unitAt(r + dr, c + dc);
+        if (a && a.kind === 'op' && a.ownerId === st.pid && onField(a)) next.add(a);
+      }
+    } catch (e) { battle._handlerError(`bond:updateAura:${st.pid}`, m, e); }
   }
   const cur = st.aura ?? (st.aura = new Set());
-  for (const u of cur) if (!next.has(u)) battle.removeBuff(u, KEY.skillful);
+  for (const u of cur) if (!next.has(u)) isolateContentCallback(battle, () => battle.removeBuff(u, KEY.skillful), 'bond:aura:remove', u);
   for (const u of next) {
-    const b = u.findBuff(KEY.skillful);
-    if (!b) battle.addBuff(u, { key: KEY.skillful, mods });
-    else if (b.mods !== mods) { b.mods = mods; u.markDirty(); }
+    isolateContentCallback(battle, () => {
+      const b = u.findBuff(KEY.skillful);
+      if (!b) battle.addBuff(u, { key: KEY.skillful, mods });
+      else if (b.mods !== mods) { b.mods = mods; u.markDirty(); }
+    }, 'bond:aura:apply', u);
   }
   st.aura = next;
   st.auraNext = cur;
@@ -411,51 +423,53 @@ function raidPoll(battle, st) {
   // Ordinary and post-revive orders stay separate: one poll can hold a member of each.
   let plain = null, taunted = null;
   for (const u of st.members[ID.raid]) {
-    if (!onField(u) || !u.canAct) continue;
-    // Maintainer 2026-10-10: one fresh target check after revival when unblocked, even with enemies in attack range.
-    // Ordinary later polls retain their original empty-range rule and distance order. A Raid jump cannot arm another check.
-    const revived = u.mem.raidReviveSeq === u.deploySeq;
-    if (revived) {
-      u.mem.raidReviveSeq = 0;
-      raidRefreshContact(battle, u);
-    }
-    if (revived && u.blocking.some((e) => e.alive && e.blockedBy === u)) continue;
-    const since = Math.max(u.lastAttackAt ?? -Infinity, u.deployedAt ?? -Infinity, u.mem[KEY.raid] ?? -Infinity);
-    // 技能就绪: a charged skill, or a passive skill that is on (GitHub #49: skills.js `ready` is false for every passive,
-    // so 缄默德克萨斯 / 宴 … only ever jumped on the idle trigger; the reporter's footage of the official game shows
-    // 缄默德克萨斯 jumping within her passive's 10 s with no enemy in range). The engine keeps a passive on for the whole
-    // deployment, so such a member may jump whenever nothing is in its range [ASSUMED: "技能就绪" of a passive = the
-    // skill being on]; the landing rule below keeps it from hopping. Here only — the global `ready` stays as it is.
-    // A deploy-timed skill (#109: kind 'duration' with no SP — spType 'none' — run from the deployment: 宴 S2, 斯卡蒂 S2,
-    // 伊内丝 S3, 缄默德克萨斯 S1–S3, 耀骑士临光 S2, the generic "部署后…N秒内" passives) counts the same way while its
-    // window runs — the 10 s of the reporter's footage; once it has ended only the idle trigger is left.
-    const sk = u.skill;
-    const deploySkillOn = !!(sk && sk.active && (sk.kind === 'passive' || sk.spType === 'none'));
-    const ready = !!(sk && !sk.noSkill && ((sk.ready && !(sk.active && sk.isTimed)) || deploySkillOn));
-    const idleOk = battle.time - since >= idle - 1e-9;
-    if (!(revived || ready || idleOk)) continue;
-    // 「若范围内没有敌人」: a targetable enemy, or a 隐匿 ground one (the owner's decision of 2026-10-08, raidGroundEnemy)
-    if (!revived && (battle.enemiesInKeys(u.rangeKeys || [], u, u.profile).length || raidStealthInRange(battle, u))) continue;
-    const list = revived ? (taunted ??= raidTargets(battle, u, st.pid, { taunt: true })) : (plain ??= raidTargets(battle, u, st.pid));
-    if (!list.length) continue;
-    // either trigger: raidTile only offers tiles with the target in range (without that a ready skill that finds no
-    // target would redeploy — firing every 部署时 effect — at every poll; the idle trigger, which lacked it up to
-    // 0.1.1, hopped every 10 s: issue #51)
-    const reach = raidReach(u);
-    for (let i = 0; i < list.length && i < RAID_TARGETS; i++) {
-      const tile = raidTile(battle, u, list[i], reach);
-      if (!tile) continue;
-      plain = taunted = null; // the retreat / redeploy handlers (部署时 effects) may change the enemies: the next member re-sorts
-      const res = raidRedeploy(battle, u, tile[0], tile[1]);
-      u.mem.raidReviveSeq = 0;
-      if (!res) continue;
-      u.mem[KEY.raid] = battle.time; // with deployedAt: the idle time starts again from the landing
-      if (res === 'raid') {
-        battle.addBuff(u, { key: KEY.raid, mods: st.raidMods });
-        fxOn(battle, 'blink', u, KEY.raid, 'relocate', { target: list[i].id });
+    try {
+      if (!onField(u) || !u.canAct) continue;
+      // Maintainer 2026-10-10: one fresh target check after revival when unblocked, even with enemies in attack range.
+      // Ordinary later polls retain their original empty-range rule and distance order. A Raid jump cannot arm another check.
+      const revived = u.mem.raidReviveSeq === u.deploySeq;
+      if (revived) {
+        u.mem.raidReviveSeq = 0;
+        raidRefreshContact(battle, u);
       }
-      break;
-    }
+      if (revived && u.blocking.some((e) => e.alive && e.blockedBy === u)) continue;
+      const since = Math.max(u.lastAttackAt ?? -Infinity, u.deployedAt ?? -Infinity, u.mem[KEY.raid] ?? -Infinity);
+      // 技能就绪: a charged skill, or a passive skill that is on (GitHub #49: skills.js `ready` is false for every passive,
+      // so 缄默德克萨斯 / 宴 … only ever jumped on the idle trigger; the reporter's footage of the official game shows
+      // 缄默德克萨斯 jumping within her passive's 10 s with no enemy in range). The engine keeps a passive on for the whole
+      // deployment, so such a member may jump whenever nothing is in its range [ASSUMED: "技能就绪" of a passive = the
+      // skill being on]; the landing rule below keeps it from hopping. Here only — the global `ready` stays as it is.
+      // A deploy-timed skill (#109: kind 'duration' with no SP — spType 'none' — run from the deployment: 宴 S2, 斯卡蒂 S2,
+      // 伊内丝 S3, 缄默德克萨斯 S1–S3, 耀骑士临光 S2, the generic "部署后…N秒内" passives) counts the same way while its
+      // window runs — the 10 s of the reporter's footage; once it has ended only the idle trigger is left.
+      const sk = u.skill;
+      const deploySkillOn = !!(sk && sk.active && (sk.kind === 'passive' || sk.spType === 'none'));
+      const ready = !!(sk && !sk.noSkill && ((sk.ready && !(sk.active && sk.isTimed)) || deploySkillOn));
+      const idleOk = battle.time - since >= idle - 1e-9;
+      if (!(revived || ready || idleOk)) continue;
+      // 「若范围内没有敌人」: a targetable enemy, or a 隐匿 ground one (the owner's decision of 2026-10-08, raidGroundEnemy)
+      if (!revived && (battle.enemiesInKeys(u.rangeKeys || [], u, u.profile).length || raidStealthInRange(battle, u))) continue;
+      const list = revived ? (taunted ??= raidTargets(battle, u, st.pid, { taunt: true })) : (plain ??= raidTargets(battle, u, st.pid));
+      if (!list.length) continue;
+      // either trigger: raidTile only offers tiles with the target in range (without that a ready skill that finds no
+      // target would redeploy — firing every 部署时 effect — at every poll; the idle trigger, which lacked it up to
+      // 0.1.1, hopped every 10 s: issue #51)
+      const reach = raidReach(u);
+      for (let i = 0; i < list.length && i < RAID_TARGETS; i++) {
+        const tile = raidTile(battle, u, list[i], reach);
+        if (!tile) continue;
+        plain = taunted = null; // the retreat / redeploy handlers (部署时 effects) may change the enemies: the next member re-sorts
+        const res = raidRedeploy(battle, u, tile[0], tile[1]);
+        u.mem.raidReviveSeq = 0;
+        if (!res) continue;
+        u.mem[KEY.raid] = battle.time; // with deployedAt: the idle time starts again from the landing
+        if (res === 'raid') {
+          battle.addBuff(u, { key: KEY.raid, mods: st.raidMods });
+          fxOn(battle, 'blink', u, KEY.raid, 'relocate', { target: list[i].id });
+        }
+        break;
+      }
+    } catch (e) { battle._handlerError(`bond:raidPoll:${st.pid}`, u, e); }
   }
 }
 
@@ -480,12 +494,18 @@ export function install(battle) {
   if (!battle || !Array.isArray(battle.players) || !battle.players.length) return;
   const states = [];
   for (const p of battle.players) {
-    const st = makeState(battle, p);
-    if (Object.keys(st.tiers).length) states.push(st);
+    isolateContentCallback(battle, () => {
+      const st = makeState(battle, p);
+      if (Object.keys(st.tiers).length) states.push(st);
+    }, `bond:state:${p.playerId}`);
   }
   if (!states.length) return;
   const byPid = Object.create(null);
-  for (const st of states) { byPid[st.pid] = st; applyPassives(battle, st); applyStatic(battle, st); }
+  for (const st of states) {
+    byPid[st.pid] = st;
+    isolateContentCallback(battle, () => applyPassives(battle, st), `bond:passives:${st.pid}`);
+    isolateContentCallback(battle, () => applyStatic(battle, st), `bond:static:${st.pid}`);
+  }
   const has = (id, tier = 1) => states.some((st) => (st.tiers[id] ?? 0) >= tier);
 
   // live layers
@@ -496,8 +516,8 @@ export function install(battle) {
       st.pending = true;
       battle.after(0, () => {
         st.pending = false;
-        applyPassives(battle, st);
-        if (st.tiers[ID.skillful]) updateAura(battle, st);
+        isolateContentCallback(battle, () => applyPassives(battle, st), `bond:passives:${st.pid}`);
+        if (st.tiers[ID.skillful]) isolateContentCallback(battle, () => updateAura(battle, st), `bond:aura:${st.pid}`);
       });
     });
   }
@@ -505,7 +525,7 @@ export function install(battle) {
   // 灵巧 aura (deploy / death immediately, relocations through a cheap poll)
   if (has(ID.skillful)) {
     const aura = states.filter((st) => st.tiers[ID.skillful]);
-    const refresh = (pid) => { for (const st of aura) if (pid == null || st.pid === pid) updateAura(battle, st); };
+    const refresh = (pid) => { for (const st of aura) if (pid == null || st.pid === pid) isolateContentCallback(battle, () => updateAura(battle, st), `bond:aura:${st.pid}`); };
     battle.on('battleStart', () => refresh(null));
     battle.on('deploy', (c) => { if (c.unit && c.unit.kind === 'op' && byPid[c.unit.ownerId]?.tiers[ID.skillful]) refresh(c.unit.ownerId); });
     battle.on('death', (c) => { if (c.unit && c.unit.kind === 'op' && byPid[c.unit.ownerId]?.tiers[ID.skillful]) refresh(c.unit.ownerId); });
@@ -523,7 +543,7 @@ export function install(battle) {
         if (!u || c.initial || c.move || u.removeReason !== 'killed' || !(u.respawnAt > battle.time + 1e-9)) return;
         if (raid.some((st) => st.members[ID.raid].has(u))) u.mem.raidReviveSeq = u.deploySeq;
       });
-      battle.every(RAID_POLL, () => { for (const st of raid) raidPoll(battle, st); });
+      battle.every(RAID_POLL, () => { for (const st of raid) isolateContentCallback(battle, () => raidPoll(battle, st), `bond:raid:${st.pid}`); });
     }
   }
 
@@ -574,6 +594,7 @@ export function install(battle) {
   // ranged operator on a melee tile does not — community report 「不屈盟约效果高台干员也错误的吃到了」, 0.1.3).
   if (has(ID.indom)) {
     const INDOM_EXITS = new Set(['killed', 'retreat', 'merchant']);
+    const deploying = new Set();
     const stOf = (u) => { const st = isGroundOp(u) ? byPid[u.ownerId] : null; return st && st.tiers[ID.indom] ? st : null; };
     battle.on('death', (c) => {
       const u = c.unit;
@@ -583,21 +604,43 @@ export function install(battle) {
       const bb = st ? st.bb[ID.indom] : null;
       if (st && c.reason === 'killed' && st.tiers[ID.indom] >= 2) {
         const sp = num(bb.sp);
-        if (sp > 0) for (const o of st.ops) if (onField(o) && o.skill) o.skill.gainSp(sp, 'bond');
+        if (sp > 0) for (const o of st.ops) if (onField(o) && o.skill) isolateContentCallback(battle, () => o.skill.gainSp(sp, 'bond'), 'bond:indom:sp', o);
       }
-      if (u.alive || u.removed || u.mem[ID.indom] === battle.time) return;
+      if (u.alive || u.removed) return;
       if (banked || (st && battle.rng() < prob(bb, L(battle, st, ID.indom)))) {
         u.mem[ID.indom] = battle.time;
-        if (battle.redeploy(u, { free: true })) fxOn(battle, 'revive', u, 'bond:indomShip', 'redeploy');
+        u.mem.indomFreeDeploy = true;
+        u.mem.indomFreeDeploySeq = u.deploySeq;
+        u.respawnAt = battle.time;
+        // Separate deaths in one tick still roll. Only defer a recursive death during this redeployment;
+        // keep its zero-time/free entitlement for the automatic redeploy pass instead of losing it.
+        if (deploying.has(u)) return;
+        deploying.add(u);
+        try {
+          if (battle.redeploy(u, { free: true }) && u.alive) fxOn(battle, 'revive', u, 'bond:indomShip', 'redeploy');
+        } catch (e) {
+          // Actual dead/alive state decides whether the automatic pass retries: no duplicate deployment on a late throw.
+          battle._handlerError('bond:indom:redeploy', u, e);
+        } finally { deploying.delete(u); }
       }
     }, { priority: 10 });
     battle.on('dollSwap', ({ unit: u }) => {
       const st = stOf(u);
       if (!st || !u.alive || u.mem.indomFreeDeploy) return;
-      if (battle.rng() < prob(st.bb[ID.indom], L(battle, st, ID.indom))) u.mem.indomFreeDeploy = true;
+      if (battle.rng() < prob(st.bb[ID.indom], L(battle, st, ID.indom))) {
+        u.mem.indomFreeDeploy = true;
+        u.mem.indomFreeDeploySeq = u.deploySeq;
+      }
     });
     // the zeroed deployment is the next one, whatever brings it (this redeploy, the 阿戈尔 revive, the 突袭 jump …)
-    battle.on('deploy', ({ unit: u }) => { if (u && u.mem && u.mem.indomFreeDeploy) u.mem.indomFreeDeploy = false; });
+    battle.on('deploy', ({ unit: u }) => {
+      // A preceding deployment callback may already have killed this new life and banked another revival.
+      // Consume only an entitlement from an older deployment, never the one created inside this deployment.
+      if (u?.mem?.indomFreeDeploy && u.mem.indomFreeDeploySeq !== u.deploySeq) {
+        u.mem.indomFreeDeploy = false;
+        delete u.mem.indomFreeDeploySeq;
+      }
+    });
   }
 
   // 坚守 (tier 2) redirect + thorns, 奥术 vulnerability

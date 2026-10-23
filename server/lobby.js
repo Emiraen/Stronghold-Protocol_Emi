@@ -61,6 +61,7 @@ import { installPluginLobby } from './plugins/lobby.js';
 import { randomBytes, randomInt } from 'node:crypto';
 import { ERR, MAX_SEATS, ENTERTAINMENT_DEFAULT_SEATS, ENTERTAINMENT_CAPACITIES, CYCLOPS_DEFAULT_SEATS, CYCLOPS_CAPACITIES, ENDLESS_VARIANT, ENDLESS_MODE_ID, ROOM_CODE_LEN, DIFFICULTIES, modeIdFor } from '../shared/constants.js';
 import { isRankedMatch, RANKED_DIFFICULTIES } from '../shared/ranks.js';
+import { isSpecialNameCard, canUseSpecialNameCard } from '../shared/nameCards.js';
 import { KITTED_CHARS } from './sim/content/kits/index.js';
 import { checkNotOwned, checkDiyPicks, checkLoadout, checkLoadoutOps, cultivationCharIds, loadoutEntriesForWire, checkPresentation, defaultPresentation } from '../shared/protocol.js';
 import { encode, sendOptions, clearDeferred, isErrCode, sendRaw, sendSession, terminateSocket } from './net.js';
@@ -213,8 +214,9 @@ export class Room {
           total: this.activeHumans().length, votes: [...this.matchFill.vote.votes] } : null } : null,
       seats: this.seats.map((s) => {
         if (!s) return null;
-        const rank = this.ranked && !s.isBot && rankedStore
-          ? rankedStore.summary(s.aid, s.name).rank : null;
+        const summary = this.ranked && !s.isBot && rankedStore
+          ? rankedStore.summary(s.aid, s.name) : null;
+        const rank = summary?.rank;
         return {
           seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot,
           card: s.card || '',
@@ -223,6 +225,7 @@ export class Room {
           ...(this.modded && !s.isBot ? {content:s.content || 'loading'} : {}),
           // 仅公开展示字段，不传播账号、重连凭据或隐藏分。
           ...(rank ? { rank: { label: rank.label, icon: rank.icon, points: rank.points } } : {}),
+          ...(summary?.rankPyramid ? { rankPyramid: summary.rankPyramid } : {}),
         };
       }),
     };
@@ -404,7 +407,8 @@ export class Lobby {
     this.applySessionPresentation(session, this.presentationFor(session));
     this.sendPresentationState(session);
     if (session.aid && this.ranked) {
-      sendSession(session, { t: 'rank.me', ...this.ranked.summary(session.aid, session.name, session.debugAuthorized === true) });
+      sendSession(session, { t: 'rank.me', ...this.ranked.summary(session.aid, session.name, session.debugAuthorized === true),
+        profileId: this.players.profiles.get(session.aid)?.id || null });
     }
     // Empty chat needs no frame; preserve the existing result-replay order on reconnect.
     if (!repeat) {
@@ -501,7 +505,8 @@ export class Lobby {
       case 'rank.list': {
         const socket = session.ws;
         const items = await (this.profiles || this.ranked).leaderboard();
-        if (session.connected && session.ws === socket) sendSession(session, { t: 'rank.list', rid: msg.rid, items });
+        const radiantThreshold = this.ranked.radiantThreshold(items);
+        if (session.connected && session.ws === socket) sendSession(session, { t: 'rank.list', rid: msg.rid, items, radiantThreshold });
         return OK;
       }
       case 'history.list': return this.historyList(session, msg);
@@ -563,6 +568,8 @@ export class Lobby {
   sendSpectatorState(room, session) {
     sendSession(session, { t: 'spectator.state', code: room.code, matchId: room.matchCtx.matchId,
       mode: room.mode, variant: room.variant, difficulty: room.difficulty, readOnly: true,
+      seats: room.seats.filter(Boolean).map((seat) => ({ playerId: seat.playerId,
+        card: seat.card || '', cardSkin: seat.cardSkin || '' })),
       ...(room.content ? { content: room.content } : {}) });
   }
 
@@ -1149,14 +1156,22 @@ export class Lobby {
     return OK;
   }
 
-  setCard(session, { charId }) {
+  async setCard(session, { charId }) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (isSpecialNameCard(charId)) {
+      let allowed = false;
+      try { allowed = this.profiles ? await this.profiles.canSelectNameCard(session, charId)
+        : canUseSpecialNameCard(this.ranked.summary(session.aid), charId); }
+      catch { return fail(ERR.INTERNAL, '名片权限暂时无法验证，请重试'); }
+      if (!allowed) return fail(ERR.BAD_TARGET, '名片尚未永久解锁');
+      if (this.roomOf(session) !== room || !room.seatOf(session.playerId)) return fail(ERR.NOT_IN_ROOM);
+    }
     const data = this.safeData();
     const records = data.chess;
     const list = Array.isArray(records) ? records : Object.values(records || {});
     const reserve = Object.prototype.hasOwnProperty.call(data.backups?.units || {}, charId) && data.backups.units[charId];
-    if (charId && !list.some(c => c.charId === charId && !c.isDiy) && reserve?.charId !== charId) return fail(ERR.BAD_TARGET);
+    if (charId && !isSpecialNameCard(charId) && !list.some(c => c.charId === charId && !c.isDiy) && reserve?.charId !== charId) return fail(ERR.BAD_TARGET);
     const seat = room.seatOf(session.playerId);
     session.card = charId;
     const cardSkin = this.cardSkinFor(charId, session.skins, session.portraits);
@@ -1168,7 +1183,7 @@ export class Lobby {
 
   /** Only the selected name-card skin is public; the player's other selections stay private. */
   cardSkinFor(charId, skins, portraits = {}) {
-    if (!charId || !skins) return '';
+    if (!charId || isSpecialNameCard(charId) || !skins) return '';
     const data = this.safeData();
     const records = Array.isArray(data.chess) ? data.chess : Object.values(data.chess || {});
     const rec = records.find(c => c.charId === charId && !c.isGolden && !c.isDiy);
@@ -1402,6 +1417,13 @@ export class Lobby {
     const data = this.safeData();
     const checked = checkPresentation(value, (id) => lookup('chess', id, data), data?.assets, data?.backups?.units);
     if (checked.error) return fail(checked.error, checked.detail);
+    if (isSpecialNameCard(value.card) && this.players.getPresentation(session.aid)?.value?.card !== value.card) {
+      let allowed = false;
+      try { allowed = this.profiles ? await this.profiles.canSelectNameCard(session, value.card)
+        : canUseSpecialNameCard(this.ranked.summary(session.aid), value.card); }
+      catch { return fail(ERR.INTERNAL, '名片权限暂时无法验证，请重试'); }
+      if (!allowed) return fail(ERR.BAD_TARGET, '名片尚未永久解锁');
+    }
     const aid = session.aid;
     try { await (this.profiles || this.players).setPresentation(aid, { v: 1, value: checked.value,
       skinDefaultsInitialized: true, extraSkinDefaultsInitialized: true }, false, session); }
@@ -1552,12 +1574,28 @@ export class Lobby {
       if (seat.isBot) continue;
       const peer = this.registry.byId(seat.playerId);
       if (!peer || peer.aid !== seat.aid) continue;
-      if (peer.connected && peer.profileReady) this.sendRecoveredRank(peer);
-      // 房间已释放时仍让同一会话取得最终回执；重启后的新会话通过共享历史取得。
-      if (!live) {
-        peer.pendingResult ||= [];
-        peer.pendingResult.push(encode({ ...value.result, playerId: seat.playerId }));
-        if (peer.connected && peer.profileReady) this.sendPendingResult(peer);
+      if (!value.failed && peer.connected && peer.profileReady) {
+        try { this.sendRecoveredRank(peer); } catch (e) { this.log.error('[lobby] recovered rank notification failed', e); }
+      }
+    }
+    if (!live) this.updateFinishedResult(archived.match.matchId, { ...value.result, matchId: archived.match.matchId });
+  }
+
+  /** Only update an owed replay of this exact match; a late receipt must never reopen an old game. */
+  updateFinishedResult(matchId, result) {
+    for (const room of this.rooms.values()) {
+      const replay = room.replay;
+      if (!replay || replay.matchId !== matchId) continue;
+      const { t, ...summary } = result;
+      room.lastSummary = summary;
+      for (const playerId of replay.pending) {
+        const frame = encode({ ...result, matchId, playerId });
+        if (!frame || replay.frames.get(playerId) === frame) continue;
+        replay.frames.set(playerId, frame);
+        const seat = room.seatOf(playerId), peer = this.registry.byId(playerId);
+        if (!seat || seat.isBot || seat.left || !peer || peer.roomCode !== room.code || peer.aid !== seat.aid) continue;
+        if (peer.connected && peer.profileReady) try { sendSession(peer, { ...result, matchId, playerId }); }
+        catch (e) { this.log.error('[lobby] delayed result notification failed', e); }
       }
     }
   }
@@ -1576,7 +1614,8 @@ export class Lobby {
   }
 
   sendRecoveredRank(session) {
-    sendSession(session, { t: 'rank.me', ...this.ranked.summary(session.aid, session.name, session.debugAuthorized === true) });
+    sendSession(session, { t: 'rank.me', ...this.ranked.summary(session.aid, session.name, session.debugAuthorized === true),
+      profileId: this.players.profiles.get(session.aid)?.id || null });
     const room = this.roomOf(session);
     if (room && !room.match) this.broadcastState(room);
   }
@@ -1634,6 +1673,7 @@ export class Lobby {
         send: (playerId, msg) => (ctx.live ? this.matchSend(room, ctx, playerId, msg) : false),
         broadcast: (msg) => { if (ctx.live) this.matchBroadcast(room, ctx, msg); },
         onEnd: (summary) => this.onMatchEnd(room, ctx, summary),
+        onResultUpdate: (result) => this.updateFinishedResult(ctx.matchId, result),
         onCheckpoint: (m) => this.checkpoint(room.code, m),
         onCheckpointDoc: () => { if (ctx.live && room.matchCtx===ctx) this.checkpoint(room.code,ctx.match); },
       };
@@ -1665,25 +1705,26 @@ export class Lobby {
 
   /** onEnd callback: return the room to LOBBY and dispose the match on the next macrotask. */
   async onMatchEnd(room, ctx, summary) {
-    // 历史责任不依赖房间是否还存在；正式 Match 已在完整结算请求中保存。
-    if (!room.test && !ctx.match?.test && !ctx.match?.historyPersisted) {
-      await this.history.record({ matchId: ctx.matchId, at: this.now(), seats: ctx.seats, ranked: ctx.ranked, summary });
-      await this.history.flush?.();
-    }
+    // Capture archival work now, but never await it while the room still owns the ended match.
+    // Pending/incomplete completion has its own durable outbox; do not archive a preview as final history.
+    const recordHistory = !room.test && !ctx.match?.test && !ctx.match?.historyPersisted
+      && !summary?.settlementPending && !summary?.incomplete;
     if (ctx.ended || !ctx.live || room.matchCtx !== ctx || room.disposed) return;
     ctx.ended = true;
     if (ctx.ranked) {
       const aids = new Set(ctx.seats.filter((seat) => !seat.isBot).map((seat) => seat.aid));
       for (const peer of this.registry.all()) if (peer.connected && aids.has(peer.aid)) {
-        sendSession(peer, { t: 'rank.me', ...this.ranked.summary(peer.aid, peer.name, peer.debugAuthorized === true) });
+        try { sendSession(peer, { t: 'rank.me', ...this.ranked.summary(peer.aid, peer.name, peer.debugAuthorized === true),
+          profileId: this.players.profiles.get(peer.aid)?.id || null }); }
+        catch (e) { this.log.error('[lobby] ended match rank notification failed', e); }
       }
     }
     room.lastSummary = summary ?? null;
-    this.closeSpectators(room, 'ended');
     room.match = null;
     room.matchCtx = null;
     room.matchKey = null;
     room.replay = this.buildReplay(room, ctx);
+    try { this.closeSpectators(room, 'ended'); } catch (e) { this.log.error('[lobby] ended match spectator notice failed', e); }
     setImmediate(() => this.disposeMatchCtx(ctx));
     this.log.info(`[lobby] ${room.code} match #${room.matchCount} ended`);
     for (let i = 0; i < room.seats.length; i++) {
@@ -1698,6 +1739,10 @@ export class Lobby {
     if (room.activeHumans().length === 0) this.disposeRoom(room, 'empty');
     else { this.broadcastState(room); this.tellPluginsChanged(room); }
     this.checkpoint(room.code, null);
+    if (recordHistory) try {
+      await this.history.record({ matchId: ctx.matchId, at: this.now(), seats: ctx.seats, ranked: ctx.ranked, summary });
+      await this.history.flush?.();
+    } catch (e) { this.log.error('[lobby] ended match history retained outside room flow', e); }
   }
 
   /** Match unicast; m.result frames are also kept for the replay. */
@@ -1730,7 +1775,7 @@ export class Lobby {
       if (frame) frames.set(s.playerId, frame);
     }
     if (frames.size === 0) return null;
-    return { publicFrame: ctx.lastPublic, frames, pending: new Set(frames.keys()) };
+    return { matchId: ctx.matchId, publicFrame: ctx.lastPublic, frames, pending: new Set(frames.keys()) };
   }
 
   /** The replay frames still owed to a player (null when they moved on). @returns {string[] | null} */
@@ -2050,9 +2095,13 @@ export class Lobby {
   *memberSessions(room) {
     for (const s of room.seats) {
       if (!s || s.isBot || s.left) continue;
-      const session = this.registry.byId(s.playerId);
-      if (session && session.connected && session.profileReady !== false && session.roomCode === room.code
-        && (!this.profiles || this.profiles.validSession(session))) yield session;
+      try {
+        const session = this.registry.byId(s.playerId);
+        if (session && session.connected && session.profileReady !== false && session.roomCode === room.code
+          && (!this.profiles || this.profiles.validSession(session))) yield session;
+      } catch (error) {
+        this.log.error(`[lobby] ${room.code} member session ${s.playerId} unavailable`, error);
+      }
     }
   }
 
@@ -2077,9 +2126,13 @@ export class Lobby {
     for (const session of this.memberSessions(room)) sendRaw(session.ws, data, options);
     if (['m.public', 'm.ticker', 'm.emote', 'b.pool', 'b.speed', 'b.pause'].includes(msg.t)) {
       for (const pid of room.spectators) {
-        const peer = this.registry.byId(pid);
-        if (peer?.connected && peer.profileReady !== false && peer.spectatorMatchId === room.matchCtx?.matchId
-          && (!this.profiles || this.profiles.validSession(peer))) sendRaw(peer.ws, data, options);
+        try {
+          const peer = this.registry.byId(pid);
+          if (peer?.connected && peer.profileReady !== false && peer.spectatorMatchId === room.matchCtx?.matchId
+            && (!this.profiles || this.profiles.validSession(peer))) sendRaw(peer.ws, data, options);
+        } catch (error) {
+          this.log.error(`[lobby] ${room.code} spectator session ${pid} unavailable`, error);
+        }
       }
     }
     return data;

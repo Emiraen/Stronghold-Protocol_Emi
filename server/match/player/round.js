@@ -46,8 +46,8 @@ export class PlayerRound {
     for (const uid of [...this._tempDue.keys()]) if (!this.temp.some((p) => p && p.uid === uid)) this._tempDue.delete(uid);
     this.offers = [];
     this.clearUnfrozenShop();
-    // 独眼巨人冲锋：资金保留并下回合生息；普通模式沿用原清零规则
-    if (!this.m.isCyclops && !this.m.isEndless && !this.gd.leftoverKeptBands.includes(this.bandId)) this.funds = 0;
+    // 无尽沿用普通模式的策略保留规则；独眼巨人冲锋保留资金并在下回合生息。
+    if (!this.m.isCyclops && !this.gd.leftoverKeptBands.includes(this.bandId)) this.funds = 0;
     this.ready = true;
     this.dirty();
   }

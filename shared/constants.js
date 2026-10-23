@@ -195,6 +195,13 @@ export const ANIM = Object.freeze({ IDLE: 0, MOVE: 1, ATTACK: 2, SKILL: 3, DIE: 
 export const ERR = Object.freeze({
   BAD_MSG: 'BAD_MSG',             // malformed / unknown message
   RATE: 'RATE',                   // rate limited
+  AUTH_REQUIRED: 'AUTH_REQUIRED',
+  AUTH_INVALID: 'AUTH_INVALID',
+  AUTH_RESET_REQUIRED: 'AUTH_RESET_REQUIRED',
+  AUTH_PASSWORD_INVALID: 'AUTH_PASSWORD_INVALID',
+  AUTH_PASSWORD_MISMATCH: 'AUTH_PASSWORD_MISMATCH',
+  AUTH_NAME_TAKEN: 'AUTH_NAME_TAKEN',
+  AUTH_RATE_LIMITED: 'AUTH_RATE_LIMITED',
   NOT_IN_ROOM: 'NOT_IN_ROOM',
   ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
   ROOM_FULL: 'ROOM_FULL',
@@ -235,6 +242,10 @@ export const ERR = Object.freeze({
 });
 
 export const ERR_TEXT = {
+  AUTH_REQUIRED: '请输入账户和密码', AUTH_INVALID: '账户或密码错误',
+  AUTH_RESET_REQUIRED: '首次登录请修改默认密码', AUTH_PASSWORD_INVALID: '密码须为6至128个字符，新密码不能使用默认密码',
+  AUTH_PASSWORD_MISMATCH: '两次输入的新密码不一致', AUTH_NAME_TAKEN: '名称已被占用',
+  AUTH_RATE_LIMITED: '尝试次数过多，请稍后再试',
   TEST_CONFIRM: '这是测试房间，不计入任何记录。确认加入？', TEST_DISABLED: '测试模式未开启', TEST_FORBIDDEN: '这不是测试房间',
   BAD_MSG: '无效的请求', RATE: '操作过于频繁', NOT_IN_ROOM: '你不在房间中', ROOM_NOT_FOUND: '未找到该同盟密钥对应的房间',
   ROOM_FULL: '房间已满', ROOM_STARTED: '模拟已开始', NOT_HOST: '只有房主可以操作', NOT_READY: '仍有玩家未就绪',

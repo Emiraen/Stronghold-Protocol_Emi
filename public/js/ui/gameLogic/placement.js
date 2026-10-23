@@ -284,7 +284,8 @@ export function equipMerges(ctx, uid, itemMergeCount = 2, targetPiece = null) {
   if (!isObj(piece) || piece.kind !== 'item') return false;
   const rec = ctx.getItem?.(piece.id);
   if (!rec || rec.itemType !== 'EQUIP') return false;
-  if (typeof rec.kind === 'string' && rec.kind.startsWith('consume_on_equip')) return false;
+  if (typeof rec.kind === 'string' && rec.kind.startsWith('consume_on_equip')
+    && !(rec.kind === 'consume_on_equip_or_delayed' && !rec.isGolden)) return false;
   const recipe = itemMergeRecipe(piece.id, ctx.getItem, itemMergeCount);
   if (!recipe) return false;
   if (recipe.count === 2 && targetPiece?.kind === 'chess' && targetPiece.items?.some((x) => x.id === piece.id)) return true;

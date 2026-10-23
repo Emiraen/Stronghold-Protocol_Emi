@@ -1,4 +1,12 @@
 /* Room presentation from PR 643 UI; East networking, chat and ranked systems stay authoritative. */
+@font-face {
+  font-family: 'ValorantRankDigits';
+  src: url('/fonts/valorant/Tungsten-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+0023, U+0030-0039;
+}
 .rs { background: #0a0b0b; color: #eef0ef; }
 .rs__bg { position: absolute; inset: 0; pointer-events: none; background: #0b0e0e;
   background:
@@ -176,6 +184,12 @@
 .east-room .rseat__signal .icon { width: 85%; height: 85%; }
 .east-room .rseat__art > .avatar { --av: min(1.6rem, 9vw); margin-bottom: .3rem; position: relative; z-index: 1; }
 .east-room .rseat__rank { flex: none; display: flex; align-items: center; justify-content: center; min-height: max(.3rem, 20px); padding-top: 4px; color: #9aa19e; font-size: max(.12rem, 9px); }
+.east-room .rseat__pyramid {
+  position: absolute; top: -3px; left: -3px; z-index: 4; width: 94.5px; max-width: 49%; padding: 0; pointer-events: none;
+  background: none; border: 0; border-radius: 0;
+}
+.rank-pyramid-graphic { display: block; width: 100%; height: auto; overflow: visible; pointer-events: none; }
+.rank-pyramid-graphic__label { font-synthesis: none; }
 .east-room .rseat__wait { padding: .1rem; text-align: center; }
 .east-room .rseat__wait b { font-size: max(.21rem, 12px); }
 .east-room .rseat__cancel { flex: none; margin-top: 4px; padding: 4px; border: 1px solid #4b504e; background: #202625; color: #d6dad8; font: inherit; font-size: max(.14rem, 11px); cursor: pointer; }
@@ -252,6 +266,7 @@
   .east-room .rseat__plate .avatar { --av:24px; }
   .east-room .rseat__name { font-size:11px; }
   .east-room .rseat__rank { min-height:16px; }
+  .east-room .rseat__pyramid { top: -2px; left: -2px; width: 73.5px; }
   .east-room .rseat__botadd { min-height:24px; font-size:10px; padding:2px; }
   .east-room .rseat__plus { width:30px; height:30px; }
   .east-room .rseat__wait b { font-size:10px; }
@@ -268,3 +283,14 @@
   .east-room .entertainment-options select { min-height:26px; }
 }
 @media (prefers-reduced-motion:reduce) { .east-room .rseat { animation:none; } }
+
+/* The complete animated name card stays inside its own art panel. */
+.rseat__art.rseat__art--special img { object-fit: contain; object-position: center; }
+.cardpick__special { display: flex; flex-direction: column; min-width: 0; gap: .05rem; }
+.cardpick__special > .cardpick__op { width: 100%; }
+.cardpick__special .cardpick__art-name { white-space: normal; line-height: 1.35; }
+.cardpick__img--special img { object-fit: contain; object-position: center; }
+.cardpick__op.is-locked .cardpick__img--special { position: relative; }
+.cardpick__locked { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(95, 101, 99, .62); color: #fff; font-size: max(calc(.14 * var(--t)), 11px); text-shadow: 0 1px 2px #222; pointer-events: none; }
+.cardpick__download { display: flex; align-items: center; justify-content: center; gap: .04rem; width: 100%; min-height: 28px; padding: .06rem .03rem; border: 1px solid var(--mint-400, #4ed8af); background: #1d2120; color: var(--mint-400, #4ed8af); font: inherit; font-size: max(calc(.13 * var(--t)), 10px); line-height: 1.35; cursor: pointer; }
+.cardpick__download:disabled { opacity: .6; cursor: default; }

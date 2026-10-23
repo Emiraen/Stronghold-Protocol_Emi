@@ -446,8 +446,11 @@ export function buildParticleTrails(ps, cam, fd, tint) {
     // ribbon: one strip through the particles by age (oldest last = tail)
     const n = ps.count;
     if (n >= 2) {
-      const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => ps.age[a] - ps.age[b]);
-      const rp = new Float32Array(n * 3);
+      const order = _trailOrder;
+      order.length = n;
+      for (let i = 0; i < n; i++) order[i] = i;
+      order.sort((a, b) => ps.age[a] - ps.age[b]);
+      const rp = trailPoints(n);
       for (let k = 0; k < n; k++) { ps.worldPos(order[k], _w); rp[k * 3] = _w[0]; rp[k * 3 + 1] = _w[1]; rp[k * 3 + 2] = _w[2]; }
       buildRibbon(rp, n, (k, u) => {
         const i = order[k]; const t = ps.age[i] / ps.life[i];
@@ -492,7 +495,7 @@ export function buildParticleTrails(ps, cam, fd, tint) {
     for (const ob of ps.orphans) {
       const n = ob.n;
       if (n < 2) continue;
-      const tp = new Float32Array(n * 3);
+      const tp = trailPoints(n);
       for (let k = 0; k < n; k++) {
         const o = (n - 1 - k) * 4; // newest first
         if (tr.world || def.space === 1) { tp[k * 3] = ob.pts[o]; tp[k * 3 + 1] = ob.pts[o + 1]; tp[k * 3 + 2] = ob.pts[o + 2]; }
@@ -510,6 +513,13 @@ export function buildParticleTrails(ps, cam, fd, tint) {
   return count > 0 ? { first: i0, count } : null;
 }
 let _trailPts = new Float32Array(75);
+// buildRibbon consumes points synchronously; keep its scratch space across effects and frames.
+const _trailOrder = [];
+let _trailRibbonPts = new Float32Array(256 * 3);
+function trailPoints(n) {
+  if (_trailRibbonPts.length < n * 3) _trailRibbonPts = new Float32Array(Math.max(n * 3, _trailRibbonPts.length * 2));
+  return _trailRibbonPts;
+}
 
 /**
  * The bone influences per vertex of a skinned mesh file (§33.9 writes four; an extraction made before the fix of

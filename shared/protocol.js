@@ -1,4 +1,5 @@
 import { isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT, cultivatedStats } from './potential.js';
+import { isSpecialNameCard } from './nameCards.js';
 // Normative message catalogue (DESIGN §8). Used by server (validation) and client (building requests).
 // Every client→server message is `{ t, rid?, ...fields }`. Unknown `t` or invalid fields ⇒ ERR.BAD_MSG.
 
@@ -117,7 +118,7 @@ export function checkPresentation(value, getChess, assets, units = null) {
       return { error: 'BAD_TARGET', detail: `portrait not available for ${id}` };
     }
   }
-  if (value.card && !assets?.chars?.[value.card] && !Object.hasOwn(units || {}, value.card)) {
+  if (value.card && !isSpecialNameCard(value.card) && !assets?.chars?.[value.card] && !Object.hasOwn(units || {}, value.card)) {
     return { error: 'BAD_TARGET', detail: 'avatar operator not available' };
   }
   return { ok: true, value: structuredClone(value) };
@@ -421,10 +422,22 @@ const target = (v) => {
   return false;
 };
 
+export const isAccountAuth = (v) => {
+  if (!isPlain(v)) return false;
+  const fields = { login: ['action', 'password', 'ticket'], register: ['action', 'password'],
+    reset: ['action', 'password', 'newPassword', 'confirmPassword'] };
+  if (!Object.hasOwn(fields, v.action) || Object.keys(v).some((k) => !fields[v.action].includes(k))) return false;
+  const password = (s) => typeof s === 'string' && s.length <= 128;
+  if (v.action === 'login') return (password(v.password) && v.ticket === undefined)
+    || (v.password === undefined && typeof v.ticket === 'string' && v.ticket.length <= 512);
+  if (!password(v.password)) return false;
+  return v.action === 'register' || (password(v.newPassword) && password(v.confirmPassword));
+};
+
 /** @type {Record<string, Record<string, (v:any)=>boolean> & { $optional?: string[] }>} */
 export const C2S = {
   // session & lobby
-  hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6), aid: (v) => v == null || /^[0-9a-f]{8,64}$/.test(v), deviceId: (v) => v == null || (typeof v === 'string' && /^[0-9a-f]{32}$/.test(v)), $optional: ['token', 'version', 'aid', 'deviceId'] },
+  hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6), aid: (v) => v == null || /^[0-9a-f]{8,64}$/.test(v), deviceId: (v) => v == null || (typeof v === 'string' && /^[0-9a-f]{32}$/.test(v)), auth: (v) => v == null || isAccountAuth(v), $optional: ['token', 'version', 'aid', 'deviceId', 'auth'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
   'session.probeAck': { nonce: (v) => typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) },
   'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), ranked: isBool,

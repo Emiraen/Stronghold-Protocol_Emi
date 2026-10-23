@@ -41,7 +41,7 @@
 
 import {
   num, buffsOf, bandRecord, isOp, onField, isElite, tierOf, unitBonds, activeBondIds, playerOps, passiveBuff, fxOn,
-  matchBands, gainLayers, alliesAround, N4, baseChessId, isGroundOp, directMods,
+  matchBands, gainLayers, alliesAround, N4, baseChessId, isGroundOp, directMods, isolateContentCallback,
 } from '../support/index.js';
 import { weaknessRetype, addShieldLayer, PRIO_RESPAWN, reviveNow } from '../items/battle.js';
 import { spawnMapChar } from '../tokens.js';
@@ -69,7 +69,7 @@ const BY_KEY = {
     }
     if (!(atk > 0 || hp > 0)) return;
     const mods = directMods({ atk, hp });
-    for (const u of playerOps(battle, ps.playerId)) passiveBuff(battle, u, keyOf(bandId), mods);
+    for (const u of playerOps(battle, ps.playerId)) isolateContentCallback(battle, () => passiveBuff(battle, u, keyOf(bandId), mods), 'band:passive', u);
   },
 
   // 埃芒加德 命结之秘
@@ -159,12 +159,12 @@ const BY_KEY = {
     battle.on('death', (c) => {
       const d = c.unit;
       if (c.reason !== 'killed' || !isOp(d) || d.ownerId !== ps.playerId) return;
-      for (const a of battle.allies(ps.playerId)) {
-        if (a === d) continue;
+      for (const a of battle.allies(ps.playerId)) isolateContentCallback(battle, () => {
+        if (a === d) return;
         const cur = a.findBuff(key);
         const n = Math.min(cap, (cur && cur.data ? cur.data.n : 0) + 1);
         battle.addBuff(a, { key, mods: directMods({ atk: step * n }), refresh: 'replace', data: { n }, visible: true });
-      }
+      }, 'band:death:recipient', a);
     });
   },
 
@@ -183,14 +183,14 @@ const BY_KEY = {
     if (!atk) return;
     battle.on('battleStart', () => {
       const groups = new Map();
-      for (const u of deployedOps(battle, ps.playerId)) {
+      for (const u of deployedOps(battle, ps.playerId)) isolateContentCallback(battle, () => {
         const b = baseChessId(u);
         if (!groups.has(b)) groups.set(b, []);
         groups.get(b).push(u);
-      }
+      }, 'band:duplicate:group', u);
       for (const list of groups.values()) {
         if (list.length < 2) continue;
-        for (const u of list) passiveBuff(battle, u, keyOf(bandId), directMods({ atk }));
+        for (const u of list) isolateContentCallback(battle, () => passiveBuff(battle, u, keyOf(bandId), directMods({ atk })), 'band:duplicate:buff', u);
       }
     });
   },
@@ -204,7 +204,7 @@ const BY_KEY = {
       const n = elites.length;
       if (!n) return;
       const mods = directMods({ atk: a * n, hp: h * n });
-      for (const u of elites) passiveBuff(battle, u, keyOf(bandId), mods);
+      for (const u of elites) isolateContentCallback(battle, () => passiveBuff(battle, u, keyOf(bandId), mods), 'band:elite:buff', u);
     });
   },
 };
@@ -236,21 +236,24 @@ export function amedicCharsFor(elites, variants = amedicVariants()) {
 function installMapChars(battle) {
   const variants = amedicVariants();
   if (!variants.length) return;
-  const holders = battle.players.filter((ps) => matchBands(battle, ps.playerId).includes(AMEDIC_BAND));
+  const holders = [];
+  for (const ps of battle.players) isolateContentCallback(battle, () => {
+    if (matchBands(battle, ps.playerId).includes(AMEDIC_BAND)) holders.push(ps);
+  }, 'band:map:holder');
   if (!holders.length) return;
   battle.on('battleStart', () => {
     const chars = [];
-    for (const ps of holders) {
+    for (const ps of holders) isolateContentCallback(battle, () => {
       const elites = deployedOps(battle, ps.playerId).filter(isElite).length;
       for (const id of amedicCharsFor(elites, bandRecord(ps.bandId)?.effectRef === AMEDIC_BAND ? amedicVariants(ps.bandId) : variants)) chars.push({ playerId: ps.playerId, id });
-    }
-    for (const [i, { playerId, id }] of chars.entries()) {
+    }, 'band:map:plan');
+    for (const [i, { playerId, id }] of chars.entries()) isolateContentCallback(battle, () => {
       // The reserve medic occupies this stage slot in preparation; Touch replaces it at battle start. [ASSUMED]
       // Replacement preserves the slot's priority before ordinary deployments. Shared-field ordering between
       // prepared characters follows player order, as for other initial placements (lifecycle.js).
       const u = spawnMapChar(battle, playerId, id, { preBattleAggroSeq: i - chars.length });
       if (u) fxOn(battle, 'summon', u, keyOf(AMEDIC_BAND), AMEDIC_BAND);
-    }
+    }, 'band:map:spawn');
   });
 }
 
@@ -265,14 +268,13 @@ export function hasBattlePart(bandId) {
 }
 
 export function install(battle) {
-  for (const ps of battle.players) {
+  for (const ps of battle.players) isolateContentCallback(battle, () => {
     const band = ps.bandId ? bandRecord(ps.bandId) : null;
-    if (!band) continue;
-    for (const b of buffsOf(band)) {
+    if (!band) return;
+    for (const b of buffsOf(band)) isolateContentCallback(battle, () => {
       const f = b.bbKey ? BY_KEY[b.bbKey] : null;
-      if (!f) continue;
-      try { f(battle, ps, b.p, ps.bandId); } catch (e) { battle._handlerError?.(`band:${ps.bandId}`, null, e); }
-    }
-  }
-  installMapChars(battle);
+      if (f) f(battle, ps, b.p, ps.bandId);
+    }, `band:${ps.bandId}`);
+  }, 'band:player');
+  isolateContentCallback(battle, () => installMapChars(battle), 'band:map:install');
 }

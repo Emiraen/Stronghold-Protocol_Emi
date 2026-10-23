@@ -57,10 +57,13 @@ export class PlayerPrep {
   }
 
   resolveTemp() {
+    const unlimitedItems = !this.m.ranked && (this.m.variant === 'entertainment_multi' ||
+      this.m.variant === 'entertainment_cyclops' ||
+      this.m.variant === 'entertainment_endless');
     let changed = false;
     for (let i = 0; i < this.temp.length; i++) {
       const p = this.temp[i];
-      if (!p || p.kind === 'item' || this.tempDue(p) > this.prepsEnded) continue;
+      if (!p || (unlimitedItems && p.kind === 'item') || this.tempDue(p) > this.prepsEnded) continue;
       this.temp[i] = null;
       this._tempDue.delete(p.uid);
       changed = true;

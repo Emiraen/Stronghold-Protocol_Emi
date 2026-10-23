@@ -4,6 +4,7 @@ import { PHASE } from "../../../shared/constants.js";
 
 import { DeadBattle, syntheticResult, RESULT_GRACE_MS, HARD_CAP_SECONDS, HeadlessJob } from "../fields.js";
 import { buildBattleSpec, createBattleFromSpec } from "../../sim/spec.js";
+import { queueLocalSimulation } from "../localSimulationQueue.js";
 
 export class MatchClientCombat {
   _stopClientCombat() {
@@ -21,6 +22,8 @@ export class MatchClientCombat {
   _clearFieldTimers(f) {
     if (!f || !f.cc) return;
     for (const k of ['deadlineTimer', 'doneTimer', 'waitTimer', 'sliceTimer', 'verifyTimer']) if (f[k]) { this.cancel(f[k]); f[k] = null; }
+    f.localTask?.cancel();
+    f.localTask = null;
     f.workerTask?.cancel();
     f.workerTask = null;
     f.verifying = false;
@@ -188,9 +191,8 @@ export class MatchClientCombat {
     if (!Number.isFinite(this.headlessSliceMs)) {
       job.run(Infinity);
       complete();
-    } else {
-      // a real host: wall-clock-bounded slices in callbacks of their own (3 bot fields at combat start would otherwise
-      // block the event loop for ~0.2–0.5 s here, seconds on a low-power mini PC)
+    } else if (this.sched.virtual) {
+      // Virtual-time tools keep their injected clock and timers instead of using the process-wide real-time queue.
       const slice = () => {
         f.sliceTimer = null;
         if (f.job !== job || f.done) return;
@@ -198,6 +200,24 @@ export class MatchClientCombat {
         else f.sliceTimer = this.later(0, slice);
       };
       f.sliceTimer = this.later(0, slice);
+    } else {
+      f.localTask = queueLocalSimulation(this, (budgetMs) => {
+        const done = job.run(Math.min(budgetMs, this.headlessSliceMs));
+        if (done) { f.localTask = null; complete(); }
+        return done;
+      }, {
+        valid: () => f.job === job && !f.done,
+        onError: (error) => {
+          this.reportError(`field ${f.fieldId} local simulation`, error);
+          if (f.job !== job || f.done) return;
+          f.localTask = null;
+          f.job = null;
+          f.result = syntheticResult(f.players, { time: Number(job.battle.time) || 0 });
+          f.resultSource = 'server';
+          f.endGt = f.result.time;
+          this._armRelease(f);
+        },
+      });
     }
     this._armProgressTicker();
   }

@@ -20,7 +20,6 @@ import { compileEffect } from './effect.js';
 import { FX_LIST_URL, loadFxList } from './available.js';
 import { setIndexVersion } from './mounts.js';
 const MAX_PARALLEL = 8;
-const DISABLED_PREFAB = /^(?:indigo_|projectile_chr_indigo(?:$|[_#@]))/i;
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -149,7 +148,6 @@ export class FxLibrary {
 
   /** URL of a file-list entry. */
   url(group, key) {
-    if (group === 'fx/prefabs' && DISABLED_PREFAB.test(String(key || ''))) return null;
     const e = this.groups?.[group]?.[key];
     return isObj(e) && typeof e.path === 'string' ? e.path : null;
   }

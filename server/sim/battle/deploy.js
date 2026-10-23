@@ -56,7 +56,9 @@ export class BattleDeploy {
     this._occ[k] = u;
     this._refreshRange(u); // also rebuilds baseRangeKeys (initial range incl. permanent rangeExtend)
     if (!u.skill) this._setupUnit(u);
-    u.skill.reset(restoreLater ? null : cs);
+    // A skill initialization fault must not strand a living unit between the die and deploy events.
+    // Reset establishes its baseline before content effects; isolate the failure and finish the basic deployment.
+    this._safe(() => u.skill.reset(restoreLater ? null : cs), 'deploy:skill.reset', u);
     const sk = u.skill;
     // "自动操作具有3s冷却，在完成一次操作或作战开始时部署的单位将进入冷却" (PRTS 卫戍协议/帮助; skills.js)
     if (initial) sk.opReadyAt = this.time + this.flags.startOpCooldown;
@@ -216,7 +218,7 @@ export class BattleDeploy {
     const ps = this.getPlayer(unit.ownerId);
     const cost = unit.base.cost;
     let paid = 0;
-    if (!free) {
+    if (!free && !unit.mem?.indomFreeDeploy) {
       if (!ps || ps.dp + 1e-9 < cost) return false;
       paid = Math.min(ps.dp, cost);
       ps.dp = Math.max(0, ps.dp - cost); // paid before `deploy` fires (handlers see the new DP)
@@ -236,17 +238,18 @@ export class BattleDeploy {
   _checkRedeploys() {
     for (const u of this.allyUnits) {
       if (u.alive || u.removed || u.kind !== 'op') continue;
-      if (this.time + 1e-9 < u.respawnAt) continue;
+      const free = !!u.mem?.indomFreeDeploy;
+      if (!free && this.time + 1e-9 < u.respawnAt) continue;
       // the DP first: an operator past its timer mostly waits for DP, and the tile checks scan every ally
       const ps = this.getPlayer(u.ownerId);
       const cost = u.base.cost;
-      if (!ps || ps.dp + 1e-9 < cost) continue;
+      if (!free && (!ps || ps.dp + 1e-9 < cost)) continue;
       const [r, c] = this.restTile(u);
       const occ = this._occ[r * COLS + c];
       if (occ && occ.alive && occ !== u) continue;
       if (this.downOn(r, c, u)) continue;
-      ps.dp = Math.max(0, ps.dp - cost);
-      this._deploy(u, { initial: false, tile: r === u.homeR && c === u.homeC ? null : [r, c] });
+      // Use the same payment path as explicit redeploys: a blocked attempt keeps its free entitlement (and DP).
+      this.redeploy(u, { free, tile: r === u.homeR && c === u.homeC ? null : [r, c] });
     }
   }
 

@@ -28,7 +28,7 @@
 //     "本回合每刷新过1次" (SERVER_ADD_REFRESH_CNT_MULTIPLIER_BOND_LAYER, 阿罗玛 / 安洁莉娜 / 售出时)
 //     fires on another event and reads the player's refreshes of the round (roundStats), like 本回合每获得过 / 每花费.
 
-import { metaBonds, frontPiece, behindPiece, distinctTiers } from '../support/meta.js';
+import { metaBonds, frontPiece, behindPiece, distinctTiers, forEachMeta } from '../support/meta.js';
 
 const ids = (s) => String(s ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(+v) ? +v : d);
@@ -66,7 +66,9 @@ const chessOnBoard = (ctx) => ctx.board().filter((p) => p && p.kind === 'chess')
 function addAll(ctx, bonds, n, requireActive) {
   let total = 0;
   if (!(n > 0)) return 0;
-  for (const b of bonds) if (b) total += ctx.addLayers(b, n, { requireActive });
+  forEachMeta(ctx, 'garrison:bond', bonds, (b) => {
+    if (b) total += ctx.addLayers(b, n, { requireActive });
+  });
   return total;
 }
 
@@ -127,7 +129,9 @@ H.SERVER_ADD_BOND_METHOD = {
       case 'hand_count': addAll(ctx, bonds, ctx.hand().filter((p) => p && p.kind === 'chess').length * multi, ra); break;
       case 'same_row': addAll(ctx, bonds, sameRowCount(ctx, me) * multi, ra); break;
       case 'same_bond_diff_lv':
-        for (const b of bonds) addAll(ctx, [b], distinctTiers(ctx, (p) => metaBonds(ctx, p).includes(b)).size * multi, ra);
+        forEachMeta(ctx, 'garrison:distinctTiers', bonds, b => {
+          addAll(ctx, [b], distinctTiers(ctx, (p) => metaBonds(ctx, p).includes(b)).size * multi, ra);
+        });
         break;
       default: break;
     }
@@ -162,10 +166,12 @@ H.SERVER_ADD_ACT_BOND_DIFF_LV_MOST_LAYER = {
 H.SERVER_ADD_BOND_IN_HAND = {
   run(ctx) {
     const n = num(ctx.source.bb.count);
-    for (const p of ctx.hand()) {
-      if (!p || p.kind !== 'chess') continue;
-      for (const b of metaBonds(ctx, p)) if (ctx.bondActive(b)) ctx.addLayers(b, n, { requireActive: true });
-    }
+    forEachMeta(ctx, 'garrison:hand', ctx.hand(), (p) => {
+      if (!p || p.kind !== 'chess') return;
+      forEachMeta(ctx, 'garrison:hand:bond', metaBonds(ctx, p), (b) => {
+        if (ctx.bondActive(b)) ctx.addLayers(b, n, { requireActive: true });
+      });
+    });
   },
 };
 
@@ -180,7 +186,11 @@ H.SERVER_ADD_BOND_POSITION = {
     const other = bbStr.dir === 'behind' ? behindPiece(ctx, me) : frontPiece(ctx, me);
     const targets = [me];
     if (other && other.kind === 'chess' && other.uid !== me.uid) targets.push(other);
-    for (const t of targets) for (const b of metaBonds(ctx, t)) if (ctx.bondActive(b)) ctx.addLayers(b, num(bb.count), { requireActive: true });
+    forEachMeta(ctx, 'garrison:target', targets, (t) => {
+      forEachMeta(ctx, 'garrison:target:bond', metaBonds(ctx, t), (b) => {
+        if (ctx.bondActive(b)) ctx.addLayers(b, num(bb.count), { requireActive: true });
+      });
+    });
   },
 };
 

@@ -5,8 +5,10 @@
 //   detects dead sockets (a ping left unanswered — no inbound frame at all — for DEAD_AFTER_MS ⇒
 //   close ⇒ reconnect). Measured from the oldest unanswered ping, not from the last inbound frame,
 //   so a background tab whose timers the browser throttles to ~1/min is not mistaken for dead.
-// - On every (re)connect, once a player name is known, sends `hello {name, token, version}`;
+// - On every (re)connect, once a player name is known, sends `hello {name, token, version, auth}`;
 //   the session is "online" after `welcome`.
+// - login(name, auth) submits a password once. Reconnects use the account ticket issued by welcome;
+//   a rejected hello stops reconnecting until the user submits again.
 // - `request(t, fields)` adds a `rid` and resolves on the matching `ok` (or any reply carrying the
 //   rid), rejects with a NetError on `error` or after REQUEST_TIMEOUT_MS. Requests made while
 //   reconnecting are queued and flushed after `welcome` (still bound by their timeout).
@@ -25,11 +27,12 @@
 // recent tokens in localStorage (resume after closing/reopening the tab). `identity.init()` asks
 // the other live tabs over a BroadcastChannel which tokens they hold, so a second or duplicated tab
 // of the same browser becomes a separate player instead of hijacking another tab's session.
+// Account authentication tickets are held in sessionStorage only and work across both game servers.
 //
 // Shared modules are imported relatively: in the browser '../../shared/x.js' from /js/ resolves
 // to /shared/x.js (URL resolution clamps at the root); under Node it resolves to <repo>/shared.
 
-import { PROTOCOL_VERSION, ERR_TEXT } from '../../shared/constants.js';
+import { PROTOCOL_VERSION, ERR_TEXT, NAME_MAX_LEN } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
 import { PrioritySender, CongestionTrend } from '../../shared/sendFlow.js';
 
@@ -60,9 +63,10 @@ const MAX_FRAME_BYTES = 64 * 1024;
 const utf8 = new TextEncoder();
 export const PING_INTERVAL_MS = 4000;
 export const BACKGROUND_PING_INTERVAL_MS = 30000;
-export const DEAD_AFTER_MS = 15000;
+export const DEAD_AFTER_MS = 15500;
 export const BACKGROUND_DEAD_AFTER_MS = 5 * 60_000;
 export const RESUME_PROBE_MS = 3000;
+const RTT_SAMPLE_MAX_AGE_MS = 15000;
 export const BACKOFF = Object.freeze({ base: 500, factor: 2, max: 10000, jitter: 0.2 });
 const STABLE_CONNECTION_MS = 15000;
 const QUEUE_BATCH_SIZE = 8;
@@ -108,7 +112,8 @@ export class NetError extends Error {
   constructor(code, msg, detail) {
     const versionMismatch = typeof detail === 'string' && /version/i.test(detail);
     const loginConflict = typeof detail === 'string' && detail.startsWith('该账户已在其他连接登录');
-    super(versionMismatch ? CLIENT_ERR_TEXT.VERSION : loginConflict ? detail : errorText(code, msg));
+    const authDetail = typeof code === 'string' && code.startsWith('AUTH_') && typeof detail === 'string' && detail;
+    super(versionMismatch ? CLIENT_ERR_TEXT.VERSION : loginConflict ? detail : authDetail || errorText(code, msg));
     this.name = 'NetError';
     this.code = String(code || 'INTERNAL');
     this.serverMsg = msg ?? null;
@@ -178,6 +183,8 @@ export class Net {
    * @param {any} [opts.WebSocket] WebSocket constructor (default: globalThis.WebSocket)
    * @param {string} [opts.userAgent] browser identification (default: navigator.userAgent)
    * @param {() => (string|null)} [opts.getToken] reconnect-token provider for `hello`
+   * @param {(name: string) => (object|null)} [opts.getAuth] account-ticket provider for reconnects
+   * @param {(name: string, ticket: string) => void} [opts.onAuth] persist a welcome's account ticket
    * @param {() => number} [opts.now]
    * @param {() => number} [opts.random]
    * @param {{setTimeout: Function, clearTimeout: Function, setInterval: Function, clearInterval: Function}} [opts.timers]
@@ -187,6 +194,8 @@ export class Net {
     this.WS = opts.WebSocket || null;
     this.connectTimeoutMs = connectTimeoutMs(opts.userAgent);
     this.getToken = typeof opts.getToken === 'function' ? opts.getToken : () => null;
+    this.getAuth = typeof opts.getAuth === 'function' ? opts.getAuth : () => null;
+    this.onAuth = typeof opts.onAuth === 'function' ? opts.onAuth : () => {};
     this.getAid = typeof opts.getAid === 'function' ? opts.getAid : () => null;
     this.getDeviceId = typeof opts.getDeviceId === 'function' ? opts.getDeviceId : () => null;
     this.now = opts.now || (() => Date.now());
@@ -239,10 +248,12 @@ export class Net {
     this._queueHeavyAt = 0;
     this._helloRid = null;
     this._helloSentName = null;
+    this._loginAuth = null;    // credentials for one explicit hello; never replayed on reconnect
+    this._loginAttempt = null;
     this._lastRx = 0;
     this._unansweredSince = null; // time of the oldest ping sent since the last inbound frame
     this._clockSamples = [];   // [{ offset, rtt }]
-    this.trend = new CongestionTrend({ expiryMs: DEAD_AFTER_MS, now: this.monotonicNow });
+    this.trend = new CongestionTrend({ expiryMs: RTT_SAMPLE_MAX_AGE_MS, now: this.monotonicNow });
     this._flow = null;
     this._stateBases = new Map();
     this._stateEpoch = null;
@@ -339,6 +350,7 @@ export class Net {
     this._teardownSocket();
     try { ws?.close(1000, 'client close'); } catch { /* ignore */ }
     this._failPending('CLOSED', true);
+    this._settleLogin(new NetError('CLOSED'));
     this._setStatus('closed');
   }
 
@@ -366,6 +378,7 @@ export class Net {
 
   /** Explicit retry replaces even an OPEN/CONNECTING socket and resumes after a manual stop. */
   reconnectNow() {
+    if (this._loginAttempt?.oneShot) { this._stopHandshake(new NetError('DISCONNECTED')); return; }
     this._manualClose = false;
     const ws = this.ws;
     this._teardownSocket();
@@ -394,6 +407,49 @@ export class Net {
     if (this.status === 'handshaking' && !changed && this._helloSentName === n) return;
     // The server accepts a repeated hello on a live socket (it renames the session and resyncs).
     this._sendHello();
+  }
+
+  /** Only a welcome resolves. Password submissions are never replayed; tickets can reconnect. */
+  login(name, auth = null) {
+    const n = typeof name === 'string' ? name.trim() : '';
+    if (!n) return Promise.reject(new NetError('BAD_MSG', '请输入账户名称'));
+    if (this._loginAttempt || this.status === 'handshaking') return Promise.reject(new NetError('BUSY'));
+    return new Promise((resolve, reject) => {
+      const oneShot = !!auth && (auth.action !== 'login' || typeof auth.password === 'string');
+      this._loginAttempt = { resolve, reject, oneShot };
+      this._loginAuth = auth && typeof auth === 'object' ? { ...auth } : null;
+      this._manualClose = false;
+      this._clearTimer('_reconnectTimer', 'clearTimeout');
+      this.retryAt = 0;
+      this.lastError = null;
+      this.name = n;
+      if (this.ws?.readyState === WS_OPEN) this._sendHello();
+      else this.connect();
+    });
+  }
+
+  _settleLogin(error, welcome) {
+    this._loginAuth = null;
+    const attempt = this._loginAttempt;
+    this._loginAttempt = null;
+    if (error) attempt?.reject(error);
+    else attempt?.resolve(welcome);
+  }
+
+  _stopHandshake(error) {
+    error.accountName = this._helloSentName || this.name;
+    this._manualClose = true;
+    this._clearTimer('_reconnectTimer', 'clearTimeout');
+    this.retryAt = 0;
+    const ws = this.ws;
+    this._teardownSocket();
+    try { ws?.close(1000, 'login stopped'); } catch { /* ignore */ }
+    this.name = this.helloName = this.serverName = this.playerId = this.serverId = null;
+    this.lastError = error;
+    this._failPending('OFFLINE', true);
+    this._settleLogin(error);
+    this._setStatus('closed');
+    this._emit('helloError', error);
   }
 
   _onOpen() {
@@ -466,7 +522,8 @@ export class Net {
       this._manualClose = true;
       this._failPending(kicked ? 'ADMIN_KICK' : 'REPLACED', true);
       this.lastError = new NetError(kicked ? 'ADMIN_KICK' : 'REPLACED');
-      this._setStatus('closed');
+      if (this._loginAttempt) this._stopHandshake(this.lastError);
+      else this._setStatus('closed');
       this._emit(kicked ? 'kicked' : 'replaced', this.lastError);
       return;
     }
@@ -482,6 +539,10 @@ export class Net {
 
   _scheduleReconnect() {
     if (this._manualClose) return;
+    if (this._loginAttempt?.oneShot) {
+      this._stopHandshake(this.lastError || new NetError('DISCONNECTED'));
+      return;
+    }
     const delay = backoffDelay(this.attempt, this.random);
     this.attempt += 1;
     this.retryAt = this.now() + delay;
@@ -553,6 +614,11 @@ export class Net {
     this._clearTimer('_queueTimer', 'clearTimeout');
     const rid = this._nextRid();
     const msg = { t: 'hello', rid, name: this.name, version: PROTOCOL_VERSION, stateDelta: 1, resumeProbe: 1 };
+    let auth = this._loginAuth;
+    if (!auth) {
+      try { auth = this.getAuth(this.name); } catch { auth = null; }
+    }
+    if (auth && typeof auth === 'object') msg.auth = { ...auth };
     const deviceId = this.getDeviceId();
     if (deviceId) msg.deviceId = deviceId;
     let token = null;
@@ -568,10 +634,13 @@ export class Net {
       if (this.ws?.readyState === WS_OPEN) this._disconnectForRetry('hello send failed');
       return;
     }
+    // The sender owns this one frame now. Reconnects may only use the issued ticket.
+    this._loginAuth = null;
     this._clearTimer('_helloTimer', 'clearTimeout');
     this._helloTimer = this.timers.setTimeout(() => {
       this._helloTimer = null;
       if (this.status !== 'handshaking') return;
+      if (this._loginAttempt?.oneShot) { this._stopHandshake(new NetError('TIMEOUT')); return; }
       console.warn('[net] hello timed out; reconnecting');
       const ws = this.ws;
       this._teardownSocket();
@@ -591,6 +660,9 @@ export class Net {
     // Compare future setName() calls against what we sent (the server may normalise the name).
     this.helloName = this._helloSentName;
     this.serverName = typeof msg.name === 'string' && msg.name ? msg.name : this._helloSentName;
+    // Install the rotated ticket before status listeners or queued requests can reconnect.
+    this.onAuth(this.serverName, msg.authTicket);
+    this._settleLogin(null, msg);
     this.playerId = msg.playerId ?? null;
     this.serverId = ['main', 'secondary'].includes(msg.serverId) ? msg.serverId : null;
     this._resetBackoffWhenStable();
@@ -602,17 +674,7 @@ export class Net {
   }
 
   _onHelloError(msg) {
-    if (!this.playerId && typeof msg.detail === 'string' && msg.detail.startsWith('该账户已在其他连接登录')) {
-      // 新连接被拒绝即停止自动重试，避免反复登录；原玩家保持在线。
-      this._manualClose = true;
-    }
-    this._clearTimer('_helloTimer', 'clearTimeout');
-    this._helloRid = null;
-    this.lastError = new NetError(msg.code, msg.msg, msg.detail);
-    this._setStatus('connected');
-    // Queued requests can't be sent without a session.
-    this._failPending('OFFLINE', true);
-    this._emit('helloError', this.lastError);
+    this._stopHandshake(new NetError(msg.code, msg.msg, msg.detail));
   }
 
   // ---- requests --------------------------------------------------------------------------------
@@ -953,7 +1015,7 @@ export class Net {
   }
 
   progressRtt() {
-    return this._pingAt != null && this.monotonicNow() - this._pingAt <= DEAD_AFTER_MS ? this.ping : null;
+    return this._pingAt != null && this.monotonicNow() - this._pingAt <= RTT_SAMPLE_MAX_AGE_MS ? this.ping : null;
   }
 
   _onPong(msg) {
@@ -1065,6 +1127,9 @@ export class Net {
 // its own token (never another tab's), so it can't steal a live session either.
 
 const K_NAME = 'sp.name';
+const K_REMEMBERED_LOGIN = 'sp.remembered.login';
+const K_AUTH_PREFIX = 'sp.auth.ticket.'; // sessionStorage only; shared by both game servers
+const AUTH_TICKET_MAX_LEN = 512;
 // origin 自身隔离存储；显式命名空间使旧单服键只迁移到当前 origin。
 const SESSION_SCOPE = encodeURIComponent(globalThis.location?.origin || 'local');
 const K_SERVER = 'sp.game.server';
@@ -1141,6 +1206,13 @@ export function createIdentity(deps = {}) {
     sset(local, 'sp.deviceId', deviceId);
   }
   let accountName = (sget(local, K_NAME) || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+  const authTickets = new Map();
+  const authName = (name) => String(name || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+  const authKey = (name) => K_AUTH_PREFIX + encodeURIComponent(authName(name));
+  const validTicket = (ticket) => typeof ticket === 'string' && ticket.length > 0 && ticket.length <= AUTH_TICKET_MAX_LEN;
+  const validRememberedLogin = (value) => value && typeof value === 'object'
+    && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= NAME_MAX_LEN
+    && typeof value.password === 'string' && value.password.length >= 6 && value.password.length <= 128;
   const accountKey = () => `sp.device.${deviceId}.${serverId}.${encodeURIComponent(accountName)}.token`;
   const accountToken = () => {
     const token = sget(local, accountKey());
@@ -1233,6 +1305,36 @@ export function createIdentity(deps = {}) {
   return {
     tabId,
     getDeviceId: () => deviceId,
+    /** Explicit opt-in for the title form; this never marks a new tab as logged in. */
+    loadRememberedLogin() {
+      try {
+        const saved = JSON.parse(sget(local, K_REMEMBERED_LOGIN) || 'null');
+        return validRememberedLogin(saved) ? { name: saved.name, password: saved.password } : null;
+      } catch { return null; }
+    },
+    saveRememberedLogin(name, password) {
+      const saved = { name: authName(name), password };
+      if (validRememberedLogin(saved)) sset(local, K_REMEMBERED_LOGIN, JSON.stringify(saved));
+    },
+    clearRememberedLogin() { sdel(local, K_REMEMBERED_LOGIN); },
+    /** Account authentication is independent of the per-server seat token. */
+    getAuth(name = accountName) {
+      const normalized = authName(name);
+      if (!normalized) return null;
+      const ticket = authTickets.get(normalized) || sget(session, authKey(normalized));
+      return validTicket(ticket) ? { action: 'login', ticket } : null;
+    },
+    saveAuthTicket(name, ticket) {
+      const normalized = authName(name);
+      if (!normalized || !validTicket(ticket)) return;
+      authTickets.set(normalized, ticket);
+      sset(session, authKey(normalized), ticket);
+    },
+    clearAuth(name = accountName) {
+      const normalized = authName(name);
+      authTickets.delete(normalized);
+      sdel(session, authKey(normalized));
+    },
     getServer: () => serverId,
     selectServer(id) {
       if (!['main', 'secondary'].includes(id)) throw new Error('无效服务器');
@@ -1259,7 +1361,7 @@ export function createIdentity(deps = {}) {
           sdel(session, 'sp.token');
           sdel(local, 'sp.tokens');
           current = null;
-          if (handoff.name) sset(local, K_NAME, handoff.name);
+          if (handoff.name) { accountName = handoff.name; sset(local, K_NAME, handoff.name); }
           if (handoff.name && handoff.entered) sset(session, K_ENTERED, '1');
           else sdel(session, K_ENTERED);
         }
@@ -1353,4 +1455,5 @@ export const identity = createIdentity();
 
 /** Browser connection singleton (created lazily-safe: nothing touches the network until connect()). */
 export const net = new Net({ getToken: () => identity.getToken(), getAid: (name) => identity.getAid(name),
-  getDeviceId: () => identity.getDeviceId() });
+  getDeviceId: () => identity.getDeviceId(), getAuth: (name) => identity.getAuth(name),
+  onAuth: (name, ticket) => identity.saveAuthTicket(name, ticket) });

@@ -3,13 +3,12 @@
 
   const $ = (id) => document.getElementById(id);
   const bootView = $('bootView');
-  const loginView = $('loginView');
   const dashboardView = $('dashboardView');
   const dialog = $('matchDialog');
   let snapshot = null;
   let activeTab = 'matches';
   let playerFilter = 'all';
-  let authenticated = false;
+  let ready = false;
   let failures = 0;
   let timer = null;
   let controller = null;
@@ -33,13 +32,12 @@
   async function operation(url, body) {
     const response = await fetch(url, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
       ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
-    if (response.status === 401) { clearSession(); throw new Error('登录已过期，请重新登录。'); }
     const result = await response.json();
     if (!response.ok || result.error) throw new Error(result.error || `请求失败（${response.status}）`);
     return result;
   }
   async function loadAnnouncement() {
-    if (announcementBusy || !authenticated) return;
+    if (announcementBusy || !ready) return;
     announcementBusy = true;
     const version = sessionVersion;
     $('announcementReload').disabled = $('announcementPublish').disabled = true;
@@ -129,7 +127,6 @@
 
   function display(view) {
     bootView.hidden = view !== 'boot';
-    loginView.hidden = view !== 'login';
     dashboardView.hidden = view !== 'dashboard';
   }
 
@@ -149,9 +146,9 @@
     controller = null;
   }
 
-  function clearSession() {
+  function resetState() {
     stopPolling();
-    authenticated = false;
+    ready = false;
     failures = 0;
     snapshot = null;
     selectedRoom = null;
@@ -169,9 +166,7 @@
     $('summaryStatus').textContent = '等待首次同步';
     $('serverDetails').hidden = true;
     $('updatedAt').textContent = '等待首次同步';
-    $('password').value = '';
-    $('loginError').hidden = true;
-    display('login');
+    showBoot('正在重新连接…', false);
   }
 
   function empty(target, message) {
@@ -367,18 +362,14 @@
     if (controller) controller.abort();
     const current = new AbortController();
     controller = current;
-    if (authenticated) connection('sync', '正在同步');
+    if (ready) connection('sync', '正在同步');
     try {
       const response = await fetch('/api/state', { credentials: 'same-origin', cache: 'no-store', signal: current.signal });
-      if (response.status === 401) {
-        clearSession();
-        return;
-      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (current.signal.aborted) return;
       snapshot = data;
-      authenticated = true;
+      ready = true;
       failures = 0;
       render();
       display('dashboard');
@@ -386,12 +377,12 @@
     } catch (error) {
       if (current.signal.aborted) return;
       failures += 1;
-      if (authenticated) connection('error', '连接中断 · 自动重试');
+      if (ready) connection('error', '连接中断 · 自动重试');
       else showBoot('暂时无法连接服务器，正在自动重试。', true);
     } finally {
       if (controller === current) {
         controller = null;
-        if (!document.hidden && (authenticated || !bootView.hidden)) {
+        if (!document.hidden && (ready || !bootView.hidden)) {
           const delay = failures ? Math.min(3000 * (2 ** Math.min(failures, 4)), 30000) : 10000;
           timer = setTimeout(loadState, delay);
         }
@@ -399,60 +390,12 @@
     }
   }
 
-  $('loginForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const submit = $('loginButton');
-    submit.disabled = true;
-    $('loginError').hidden = true;
-    try {
-      const response = await fetch('/api/login', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: $('password').value })
-      });
-      if (!response.ok) {
-        $('loginError').textContent = response.status === 401 ? '密码不正确，请重试。' : '登录暂不可用，请稍后重试。';
-        $('loginError').hidden = false;
-        return;
-      }
-      const result = await response.json();
-      if (!result.ok) throw new Error('Login was not accepted');
-      $('password').value = '';
-      failures = 0;
-      showBoot('正在加载实时数据…', false);
-      await loadState();
-    } catch {
-      $('loginError').textContent = '无法连接服务器，请稍后重试。';
-      $('loginError').hidden = false;
-      display('login');
-    } finally {
-      submit.disabled = false;
-    }
-  });
-
-  $('logoutButton').addEventListener('click', async () => {
-    const button = $('logoutButton');
-    button.disabled = true;
-    stopPolling();
-    try {
-      const response = await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      clearSession();
-      $('password').focus();
-    } catch {
-      connection('error', '退出失败，请重试');
-      if (!document.hidden) loadState();
-    } finally {
-      button.disabled = false;
-    }
-  });
-
   $('announcementReload').addEventListener('click', loadAnnouncement);
   $('announcementTitle').addEventListener('input', previewAnnouncement);
   $('announcementContent').addEventListener('input', previewAnnouncement);
   $('announcementForm').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (announcementBusy || !authenticated) return;
+    if (announcementBusy || !ready) return;
     const title = $('announcementTitle').value.trim(), content = $('announcementContent').value.trim();
     if (!title || !content || title.length > 80 || content.length > 3000) {
       feedback('announcementStatus', '请填写标题和正文；标题最多80字，正文最多3000字。', true); return;
@@ -475,7 +418,7 @@
   kickDialog.addEventListener('cancel', (event) => { if (kickBusy) event.preventDefault(); });
   kickDialog.addEventListener('close', () => { selectedPlayer = null; });
   $('kickConfirm').addEventListener('click', async () => {
-    if (!selectedPlayer?.targetId || kickBusy || !authenticated) return;
+    if (!selectedPlayer?.targetId || kickBusy || !ready) return;
     const player = selectedPlayer, version = sessionVersion;
     kickBusy = true;
     $('kickConfirm').disabled = $('kickCancel').disabled = true;
@@ -500,7 +443,7 @@
   });
 
   $('refreshButton').addEventListener('click', () => loadState());
-  $('bootRetry').addEventListener('click', () => { showBoot('正在重新连接…', false); loadState(); });
+  $('bootRetry').addEventListener('click', () => { resetState(); loadState(); });
   document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => {
       activeTab = button.dataset.tab;
@@ -532,7 +475,7 @@
   dialog.addEventListener('close', () => { selectedRoom = null; });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) stopPolling();
-    else if (authenticated || !bootView.hidden) {
+    else if (ready || !bootView.hidden) {
       clearTimer();
       timer = setTimeout(loadState, Math.floor(Math.random() * 501));
     }
