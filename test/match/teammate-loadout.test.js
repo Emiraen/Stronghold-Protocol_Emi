@@ -145,7 +145,7 @@ test('gameLogic unitLoadout: the unit\'s own skill / module keyed by the base ch
 });
 
 test('game.js: a teammate unit\'s detail card uses the unit\'s own loadout (never the viewer\'s, never forced defaults)', () => {
-  const src = readFileSync(new URL('../../public/js/screens/game.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../../public/js/screens/game/match.js', import.meta.url), 'utf8');
   const i = src.indexOf('const detailLoadout = (() => {');
   assert.ok(i > 0, 'detailLoadout present');
   const block = src.slice(i, src.indexOf('})();', i));

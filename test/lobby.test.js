@@ -383,6 +383,8 @@ describe('static http server', () => {
     assert.equal(health.status, 200);
     const h = JSON.parse(health.body.toString());
     assert.equal(h.ok, true);
+    assert.equal(h.app, '0.3.1');
+    assert.equal(h.version, 1);
     assert.equal(typeof h.rooms, 'number');
     assert.equal(health.headers['cache-control'], 'no-store');
   });

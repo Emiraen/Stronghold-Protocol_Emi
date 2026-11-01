@@ -60,7 +60,7 @@ test('m.private shape in PREP matches DESIGN §8.3 (pieces, slots, bonds, effect
   h.flushAll();
   const p2 = h.lastTo('p_0', 'm.private');
   const piece = p2.hand.find(Boolean);
-  assert.deepEqual(Object.keys(piece).sort(), ['count', 'golden', 'id', 'items', 'kind', 'ownerUid', 'tier', 'uid']);
+  assert.deepEqual(Object.keys(piece).sort(), ['count', 'golden', 'id', 'items', 'kind', 'ownerUid', 'skin', 'tier', 'uid']);
   assert.equal(p2.funds, ps.funds);
   h.m.dispose();
 });
@@ -127,7 +127,7 @@ test('g.autoplay lets the bot play a human seat (buys, places, readies); turning
   m.dispose();
 });
 
-test('onLeave: quitting counts as elimination (copies back to the pool at once, status left); last human leaving ends the match once', () => {
+test('onLeave: quitting counts as elimination (copies back to the pool at once, status left); last human leaving ends the match once', async () => {
   const h = makeMatch({ mode: 'coop', humans: 2, seed: 65, fake: true }).start();
   const m = h.m;
   h.toPrep(1);
@@ -151,6 +151,7 @@ test('onLeave: quitting counts as elimination (copies back to the pool at once, 
   h.run(() => m.phase === PHASE.PREP && m.round === 2);
   assert.equal(m.round, 2);
   m.onLeave('p_0');
+  await h.waitForEnd();
   assert.equal(h.endedCount, 1);
   assert.equal(h.ended.reason, 'abandoned');
   assert.equal(h.ended.players.find((p) => p.playerId === 'p_1').roundsPassed, 0);
@@ -164,7 +165,7 @@ test('onLeave: quitting counts as elimination (copies back to the pool at once, 
   assert.equal(h.sched.pending(), 0, 'dispose cancels every timer');
 });
 
-test('onLeave: a quitter has no place in the Final Assault pairing or the boss pool; its draft turns pass on', () => {
+test('onLeave: a quitter has no place in the Final Assault pairing or the boss pool; its draft turns pass on', async () => {
   // band draft: the player on turn leaves → its pick is the default band and the turn moves on
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 3, seed: 5, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 1e9 } : {}) }).start();
   const m = h.m;
@@ -183,8 +184,8 @@ test('onLeave: a quitter has no place in the Final Assault pairing or the boss p
   h.drive(() => m.phase === PHASE.FINAL_ASSAULT);
   assert.deepEqual(m.fields.map((f) => f.players), [alive], 'one boss field for the two players left');
   assert.equal(m.bossPool.maxHp, bossPoolHp(m.gd, m.bossId, 2), 'the co-op boss pool of two alive players');
-  assert.equal(m.bossPool.maxHp, m.gd.boss(m.bossId).bloodPoint[m.gd.difficulty], 'bloodPoint, no alive-player factor (DESIGN §20.10)');
-  const end = h.runToEnd();
+  assert.equal(m.bossPool.maxHp, m.gd.boss(m.bossId).bloodPoint[m.gd.difficulty] * alive.length, 'one bloodPoint share for each alive co-op seat');
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   assert.equal(end.players.find((p) => p.playerId === first).roundsPassed, 0);
   m.dispose();
@@ -223,6 +224,7 @@ test('onLeave: a quitter has no place in the Final Assault pairing or the boss p
   h3.toPrep(2);
   h3.ps('p_1').eliminate(2);
   h3.m.onLeave('p_0');
+  await h3.waitForEnd();
   assert.equal(h3.endedCount, 1);
   assert.equal(h3.ended.reason, 'eliminated');
   assert.ok(h3.lastTo('p_1', 'm.result'), 'the spectator gets the result');
@@ -279,7 +281,7 @@ test('unknown / wrong-phase intents are rejected without throwing', () => {
   m.dispose();
 });
 
-test('degraded data: a match without a chess pool ends immediately with an error summary (no throw)', () => {
+test('degraded data: a match without a chess pool ends immediately with an error summary (no throw)', async () => {
   const out = { ended: null, bc: [] };
   const m = new Match({
     roomCode: 'X', mode: 'coop', difficulty: 'HARD', modeId: 'mode_multi_hard', seed: 1,
@@ -288,6 +290,7 @@ test('degraded data: a match without a chess pool ends immediately with an error
     send: () => true, broadcast: (x) => out.bc.push(x), onEnd: (s) => { out.ended = s; },
   });
   m.start();
+  await m.finishPromise;
   assert.ok(out.ended);
   assert.equal(out.ended.reason, 'error');
   m.dispose();

@@ -325,7 +325,7 @@ test('HeadlessPacer: a takeover fast-forward is spread over the pacing intervals
 
 // ---- boss pool ---------------------------------------------------------------------------------------------------
 
-test('Final Assault: b.pool carries exact numbers; a client that emptied the pool as it saw it clears the fight (float dust on the server)', () => {
+test('Final Assault: b.pool carries exact numbers; a client that emptied the pool as it saw it clears the fight (float dust on the server)', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 4, seed: 9331, fake: true, clientCombat: true, instant: false,
     script: (b) => (b.kind === 'boss' ? { bossDps: 1234.567 } : { duration: 2 }) }).start();
   const m = h.m;
@@ -347,7 +347,7 @@ test('Final Assault: b.pool carries exact numbers; a client that emptied the poo
   for (const pid of b1.players) res.perPlayer[pid] = perPlayer({ total: 0 });
   assert.deepEqual(m.handle(b1.authority, { t: 'b.result', battleId: b1.battleId, result: res }), { ok: true });
   assert.equal(m.bossPool.hp, 0, 'the boss is down');
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   m.dispose();
 });

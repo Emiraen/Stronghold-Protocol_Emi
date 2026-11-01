@@ -10,6 +10,10 @@ public/fonts/
 # tools/local-extract/extract.py → public/assets/local/** and this per-machine manifest
 # (optional: the client and the tests work without it)
 data/local-assets.json
+data/resource-preload.local.json
+data/resource-preload.local.json.gz
+data/resource-preload.json.gz
+*.sprpack
 # download caches, upstream tables, ledgers, reports, setup state
 .cache/
 .static-compressed/
@@ -25,12 +29,20 @@ profile-pending-*.json
 runtime-state*.json
 server-state*.json
 sessions*.json
+docs/online-history-*/
+.tmp-mod-analysis*/
+Detex.dll
 
 # --- Python (optional local-client extraction) ----------------------------------------------------
 .venv*/
 venv/
 __pycache__/
 *.py[cod]
+*.apk
+*.jks
+*.keystore
+*.p12
+*.pfx
 
 # --- tests & logs ----------------------------------------------------------------------------------
 test/e2e/out/

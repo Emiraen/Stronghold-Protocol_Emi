@@ -104,7 +104,7 @@ test('the game screen hands the card the live entry it already reads (battle run
   // (the stats block moved into the shared chessStatsBlock — also the 干员调配 screen's 局内数值, GitHub issue #64)
   assert.match(src, /grid=\$\{cardRangeGrid\(live, rec, chess\)\}/);
   assert.match(src, /blocks\.stats = chessStatsBlock\(\{ rec: fr, chess: c, live \}\)/, 'the card draws it through the shared block');
-  const game = readFileSync(path.join(ROOT, 'public/js/screens/game.js'), 'utf8');
+  const game = readFileSync(path.join(ROOT, 'public/js/screens/game/match.js'), 'utf8');
   assert.match(game, /battleRunner\.unitStats\(uid, fid\)/);
 });
 

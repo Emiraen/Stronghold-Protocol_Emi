@@ -156,6 +156,7 @@ const SIM_LOGGER = Object.freeze({
 /**
  * @param {{ net: any, store: any, loadSim?: () => Promise<{ spec: any, ds: any }>, now?: () => number,
  *   raf?: (fn: (t: number) => void) => any, caf?: (h: any) => void, setInterval?: Function, clearInterval?: Function,
+ *   setTimeout?: Function, clearTimeout?: Function,
  *   doc?: { hidden?: boolean, addEventListener?: Function } | null, logger?: object,
  *   combatMetrics?: boolean, createHost?: Function }} deps
  * `combatMetrics` true/false pins the 作战统计 meter for a test. Omit it and call setCombatMetrics (the settings
@@ -169,6 +170,8 @@ export function createBattleRunner(deps) {
   const caf = deps.caf || ((h) => globalThis.cancelAnimationFrame(h));
   const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
   const clearIv = deps.clearInterval || ((h) => globalThis.clearInterval(h));
+  const setTo = deps.setTimeout || ((fn, ms) => globalThis.setTimeout(fn, ms));
+  const clearTo = deps.clearTimeout || ((h) => globalThis.clearTimeout(h));
   const doc = deps.doc !== undefined ? deps.doc : (typeof document !== 'undefined' ? document : null);
   // `content` (DESIGN §32.6): `{ cs, data }` of a room's content set → the sim on it; null → the original content
   const loadSim = deps.loadSim || ((content) => (content ? loadBrowserSim({ data: content.data, cs: content.cs, bounds: content.bounds ?? null, scripts:content.scripts || [], hashInput:content.hashInput, nativeVerified:content.nativeVerified }) : loadBrowserSim()));
@@ -222,6 +225,7 @@ export function createBattleRunner(deps) {
   }
   /** @type {Map<string, any>} battleId → entry of a b.start still being prepared (prepare(); `battle` null until built) */
   const pending = new Map();
+  let failedStart = null;
   let cur = null;              // entry on screen
   let simP = null;
   /** the content set simP was loaded for (null: the original content) */
@@ -583,8 +587,8 @@ export function createBattleRunner(deps) {
     } else {
       const d = Math.max(0, now() - pausedAt);
       pausedAt = null;
-      // a pending battle not built yet takes its clock when it is built
       for (const e of [...entries.values(), ...pending.values()]) if (e.t0 != null) { e.t0 += d; e.lastProgressAt += d; }
+      if (failedStart) failedStart.t0 += d;
     }
     publishState();
     schedule();
@@ -742,6 +746,7 @@ function damageRows(e) {
 
   async function onStart(msg) {
     if (!msg || typeof msg !== 'object' || !msg.spec || typeof msg.battleId !== 'string') return;
+    failedStart = null;
     const speed = Number(msg.speed) > 0 ? Number(msg.speed) : 2;
     const seq = ++startSeq;
     const prep = pending.get(msg.battleId);
@@ -751,11 +756,14 @@ function damageRows(e) {
       const was = existing.authoritative;
       existing.authoritative = !!msg.authoritative && !existing.failed && !existing.resultSent && csAccepted(existing.spec.cs, { loading: !existing.battle });
       existing.watch = !!msg.watch;
+      existing.own = !msg.watch;
       // the server still waits for this finished battle's result (lost with the socket, or its answer was): again
       if (msg.authoritative && existing.resultSent) deliver(existing);
-      if (!existing.battle) {
+      if (prep) {
         // still loading: it starts from the latest field clock
+        existing.message = msg;
         existing.elapsed = Number(msg.elapsed) || 0;
+        existing.t0 = clock() - (existing.elapsed / existing.speed) * 1000;
       } else if (existing.authoritative && !was) {
         // handover (the partner left): continue from the field's clock and report from now on
         existing.t0 = clock() - ((Number(msg.elapsed) || 0) / speed) * 1000;
@@ -780,10 +788,11 @@ function damageRows(e) {
       // built by prepare(); `seq` = its latest b.start, `elapsed` = the field clock to start from, `endReason` = the first
       // forced / timeout b.end (applied once the Battle exists), `ready` = the preparation (a promise)
       sim: null, battle: null, meter: null, seq, elapsed: Number(msg.elapsed) || 0, endReason: null, ready: null,
+      cancelRetry: null, message: msg,
       // (a spec of another content than the page's: a display replica only — see the header)
       authoritative: !!msg.authoritative && csAccepted(msg.spec.cs, { loading: true }), watch: !!msg.watch, own: !msg.watch, speed,
       members: (msg.spec.players || []).map((p) => p && p.playerId).filter(Boolean),
-      t0: null, lastProgressAt: -Infinity, done: false, resultSent: false,
+      t0: clock() - ((Number(msg.elapsed) || 0) / speed) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
       result: null, delivery: null,
       // local-only combat accounting (battle/metrics.js), attached once the Battle exists; the 作战统计 panel reads
       // it on demand — never sent to the server
@@ -805,6 +814,14 @@ function damageRows(e) {
     return e.ready;
   }
 
+  function retryPreparation(e, delay) {
+    return new Promise((resolve) => {
+      const finish = () => { clearTo(timer); e.cancelRetry = null; resolve(); };
+      const timer = setTo(finish, delay);
+      e.cancelRetry = finish;
+    });
+  }
+
   /**
    * Build a pending entry's Battle once the sim is loaded, apply the b.end that came meanwhile, catch it up silently to
    * the field's clock and register it (shown when it is still the view asked for). It is dropped when clear() removed it
@@ -815,10 +832,19 @@ function damageRows(e) {
     const wanted = () => pending.get(e.battleId) === e && (e.seq === startSeq || e.authoritative || !!e.endReason);
     try {
       let sim;
-      try { sim = await ensureSim(e.spec.cs); } catch (err) {
-        console.warn('[runner] simulation unavailable', err);
-        recordError('runner', err, 'simulation unavailable');
-        return;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try { sim = await ensureSim(e.spec.cs); break; } catch (err) {
+          recordError('runner', err, 'simulation unavailable');
+          if (!wanted()) return;
+          if (attempt === 2) {
+            console.warn('[runner] simulation unavailable after bounded retries', err);
+            // Do not revive a terminal wave; a takeover must keep its downgraded authority on recovery.
+            if (e.seq === startSeq && !e.endReason) failedStart = { message: { ...e.message, authoritative: e.authoritative, watch: e.watch }, t0: e.t0 };
+            return;
+          }
+          await retryPreparation(e, (attempt + 1) * 1000);
+          if (!wanted()) return;
+        }
       }
       if (!wanted()) return;
       // the content the simulation holds must still be the spec's (the room could have changed it meanwhile)
@@ -847,7 +873,6 @@ function damageRows(e) {
       // The Worker page holds wire state only (time, ids): no `damaged` hook and no `heal`, so trackCombat cannot
       // run there. An in-page Battle gets the meter only when 作战统计 is on (default off; a test may pin it).
       if (metricsEnabled() && !e.host.remote) e.combatMetrics = trackCombat(battle);
-      e.t0 = clock() - (e.elapsed / e.speed) * 1000;
       if (lastPool) await e.host.syncPool(lastPool.hp, lastPool.acked ? lastPool.acked[e.fieldId] : undefined);
       if (e.endReason) await endBattle(e);
       // silent catch-up to the field's clock before it is shown (a reconnect / observing a running field) — for the view
@@ -890,6 +915,8 @@ function damageRows(e) {
   }
 
   function onEnd(msg) {
+    // An exhausted start has no entry: only a real server resend may revive it after an end/takeover.
+    if (msg && failedStart?.message.battleId === msg.battleId) failedStart = null;
     const e = msg && (entries.get(msg.battleId) || pending.get(msg.battleId));
     if (!e || e.failed) return;
     if (msg.reason === 'takeover') {
@@ -927,6 +954,8 @@ function damageRows(e) {
    */
   function clear({ keepMetrics = false } = {}) {
     ++startSeq;
+    failedStart = null;
+    for (const e of pending.values()) e.cancelRetry?.();
     loading = null;
     for (const e of entries.values()) {
       // never drop an unreported authoritative result (the round already moved on: the server has its own).
@@ -955,7 +984,15 @@ function damageRows(e) {
     offs.push(net.on('b.pool', onPool));
     offs.push(net.on('b.end', onEnd));
     // the session is back (reconnect / resume): results lost with the old socket go out again
-    offs.push(net.on('status', (st) => { if (st && st.status === 'online') redeliver(); }));
+    offs.push(net.on('status', (st) => {
+      if (!st || st.status !== 'online') return;
+      redeliver();
+      if (failedStart && !loading && !entries.has(failedStart.message.battleId)) {
+        const failed = failedStart;
+        onStart({ ...failed.message, elapsed: Math.max(0, clock() - failed.t0) / 1000 * (Number(failed.message.speed) || 2) })
+          .catch((err) => recordError('runner', err, 'battle resume failed'));
+      }
+    }));
   }
   // phase changes: combat fields live until the next prep; leaving the match drops everything
   let lastPhase = null;
@@ -975,7 +1012,7 @@ function damageRows(e) {
       if (phase === lastPhase && !resetMetrics) return;
       lastPhase = phase;
       if (!phase || ['PREP', 'ROUND_START', 'SP_DRAFT', 'RESULT', 'LOBBY', 'INFO_CHECK', 'BAND_DRAFT', 'BATTLE_CHECK'].includes(phase)) {
-        if (entries.size || pending.size) clear({ keepMetrics: !resetMetrics });
+        if (entries.size || pending.size || failedStart) clear({ keepMetrics: !resetMetrics });
       }
       // warm the simulation up as soon as a match runs (the first b.start then starts at once) — on the room's content set
       // when it plays one (DESIGN §32.6)

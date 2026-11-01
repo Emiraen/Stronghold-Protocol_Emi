@@ -105,7 +105,12 @@ export class MatchMessaging {
     if (sent) ps._lastPriv = json;
     // A failed online send must not turn into a successful de-duplication on
     // the next flush. Offline players receive a forced full view on reconnect.
-    else if (ps.connected && !ps.isBot && !ps.left) this._privDirty.add(ps);
+    else if (ps.connected && !ps.isBot && !ps.left) {
+      // false can also mean queued: a newer view must replace that pending
+      // frame even when it equals the last immediately sent view (A -> B -> A).
+      ps._lastPriv = null;
+      this._privDirty.add(ps);
+    }
   }
 
   _maybeSendPublic(force) {

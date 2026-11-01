@@ -368,7 +368,7 @@ test('3_05 斯卡蒂 S1 迅捷打击·γ型 ATK/ASPD; S2 跃浪击 ATK + for `du
     const g = makeBattle({ timeLimit: 60, units: [U(id, 'skchr_skadi_2', 10, 4)] });
     const v = g.unit(id);
     g.step();
-    assert.equal(v.skill.kind, 'passive');
+    assert.equal(v.skill.kind, 'duration');
     approx(v.s.atk, v.base.atk * (1 + b2.atk + own));
     g.run(b2.duration - 0.5);
     approx(v.s.atk, v.base.atk * (1 + b2.atk + own));
@@ -435,17 +435,16 @@ test('3_06 菲莱 S1 灵河护佑 (TAKE_DAMAGE): HP +, clears her element gauges
 test('3_08 薄绿 S1 风语 (阵法术师 技能1: "初始攻击范围内出现敌人后自动释放"): wider range, attacks at attack@atk_scale; guard/taunt rules kept', () => {
   for (const id of BOTH('chess_char_3_08_a')) {
     const b = SB(id, 'skchr_mint_1'), t0 = TB(id, 0);
-    assert.equal(LD(id, 'skchr_mint_1').skill.trigger?.rule, 'SEARCH', 'data: the phalanx S1 row');
-    const h = makeBattle({ defs: { enemies: { enemy_d: dummy('enemy_d'), enemy_in: dummy('enemy_in') } }, timeLimit: 60, hooks: ['damaged'], captureNoisy: true,
+    assert.equal(LD(id, 'skchr_mint_1').skill.trigger?.rule, 'ACTIVE_RANGE', 'data: casts for enemies inside its active range');
+    const h = makeBattle({ defs: { enemies: { enemy_d: dummy('enemy_d'), enemy_in: dummy('enemy_in') } }, timeLimit: 60, hooks: ['damaged', 'skillStart'], captureNoisy: true,
       units: [U(id, 'skchr_mint_1', 10, 4)], enemies: [{ key: 'enemy_d', pos: [11, 6] }] }); // [1,2]: x-2 only
     const u = h.unit(id);
     h.run(1);
     assert.equal(atkHits(h, u).length, 0, 'phalanx: no attack while the skill is off');
     fill(u);
     h.run(2);
-    assert.equal(u.skill.activations, 0, 'an enemy outside her INITIAL range does not open it (not a whole-field search)');
-    h.spawn('enemy_in', { pos: [10, 6] }); // [0,2]: initial range
-    assert.ok(h.runUntil(() => u.skill.active, 1), 'an enemy inside her initial range opens it at once (she never attacks before)');
+    assert.ok(u.skill.active, 'the existing enemy lies inside her expanded running range');
+    assert.equal(h.hooksOf('skillStart').find(c => c.unit === u).reason, 'ACTIVE_RANGE');
     assert.ok(u.findBuff('talent:mint_taunt'));
     approx(u.s.taunt, (u.base.tauntLevel ?? 0) + t0.taunt_level);
     h.run(3);
@@ -588,9 +587,11 @@ test('3_12 瑕光 S2 慑敌辉光: ATK +, ground enemies on her tile sleep for t
     const onSleeper = h.hooksOf('damaged').slice(n0).filter((c) => c.source === u && c.target === e && c.dmg?.isAttack);
     assert.ok(onSleeper.length >= 1, '仁慈: she hits the sleeper');
     approx(onSleeper[0].amount, u.s.atk * t1.atk_scale, 1e-6, '×仁慈');
-    const regen = h.hooksOf('heal').filter((c) => c.source === u && c.target === ally);
-    assert.equal(regen.length, 2, 'once per second');
-    approx(regen[0].amount, u.s.atk * b['attack@atk_to_hp_recovery_ratio']);
+    const rate = u.s.atk * b['attack@atk_to_hp_recovery_ratio'];
+    approx(ally.s.hpRegen, rate, 1e-6, 'continuous HP recovery attribute');
+    const regen = h.hooksOf('heal').filter(c => c.target === ally && c.opts?.regen);
+    assert.ok(regen.length > 2, 'recovery advances each simulation tick');
+    for (const c of regen) approx(c.amount, rate * h.b.dt);
     done(h);
   }
 });
@@ -752,7 +753,7 @@ test('3_19 伺夜 S1 领袖的呼唤 (ALWAYS): +DP and one more “狼影” (�
     const b = SB(id, 'skchr_vigil_1');
     const h = makeBattle({ defs: { chess: noGarrison(id) }, timeLimit: 60, flags: { dpPerSec: 0 }, units: [U(id, 'skchr_vigil_1', 10, 3)] });
     const u = h.unit(id), p = h.b.getPlayer('p1');
-    assert.equal(u.skill.rule, 'SP_FULL');
+    assert.equal(u.skill.rule, 'NEVER', 'the pack-gated tick hook, not the generic strategy, casts it');
     h.step();
     const w = u.trait.reinforcement;
     assert.equal(w.mem.wolves, 2);

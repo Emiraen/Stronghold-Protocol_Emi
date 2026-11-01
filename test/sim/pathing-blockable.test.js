@@ -71,25 +71,30 @@ function nbCrossed(g, s, e) {
  * Fewest non-blockable tiles (start and goal excluded) over all 4-connected crate-free routes s → e of length ≤ the
  * shortest + `slack`; { best, min } (min = the minimum over those lengths).
  */
-function fewestNb(g, s, e, slack = 2) {
+function fewestNb(g, s, e, slack = 2, maxWet = Infinity) {
   const f = g.flowField(e[0], e[1]);
   const best = f.dist[s[0] * COLS + s[1]];
   if (best < 0 || best >= 1000) return null;
   const ek = e[0] * COLS + e[1];
   const cost = (k) => (k === ek ? 0 : g.unblockable[k]);
-  let cur = new Map([[s[0] * COLS + s[1], 0]]);
+  const width = Number.isFinite(maxWet) ? maxWet + 1 : 1;
+  let cur = new Map([[(s[0] * COLS + s[1]) * width, 0]]);
   let min = Infinity;
   for (let L = 0; L <= best + slack; L++) {
-    if (cur.has(ek)) min = Math.min(min, cur.get(ek));
+    for (let wet = 0; wet < width; wet++) if (cur.has(ek * width + wet)) min = Math.min(min, cur.get(ek * width + wet));
     const nx = new Map();
-    for (const [k, p] of cur) {
+    for (const [state, p] of cur) {
+      const k = Math.floor(state / width), wet = state % width;
       if (k === ek) continue;
       const r = (k / COLS) | 0, c = k % COLS;
       for (const [dr, dc] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
         const nr = r + dr, nc = c + dc;
         if (!g.walkable(nr, nc) || g.isCrate(nr, nc)) continue;
         const nk = nr * COLS + nc, np = p + cost(nk);
-        if (!nx.has(nk) || nx.get(nk) > np) nx.set(nk, np);
+        const nw = wet + (Number.isFinite(maxWet) && nk !== ek ? g.deepWater[nk] : 0);
+        if (nw >= width) continue;
+        const ns = nk * width + nw;
+        if (!nx.has(ns) || nx.get(ns) > np) nx.set(ns, np);
       }
     }
     cur = nx;
@@ -293,12 +298,32 @@ test('audit: every WALK leg of every wave template (normal / 联防 / boss / hid
       if (!grids.has(key)) grids.set(key, stageGrid(sid, rect));
       const g = grids.get(key);
       if (!g.walkable(from[0], from[1]) || !g.walkable(to[0], to[1])) continue;
-      const eq = fewestNb(g, from, to, 0);
+      // GitHub #375: a preferred route may not cross more 深水区 than the official smoothed route.
+      // An unconstrained all-shortest oracle can otherwise demand a forbidden double-water shortcut.
+      const f = g.flowField(to[0], to[1]);
+      const official = [from];
+      let k = from[0] * COLS + from[1], guard = 19 * COLS;
+      while (k !== f.dest && k >= 0 && guard-- > 0) {
+        k = f.official[k];
+        if (k >= 0) official.push([Math.floor(k / COLS), k % COLS]);
+      }
+      assert.equal(k, f.dest, `${sid} ${id}: official route reaches the goal`);
+      const water = (pts) => crossed(pts).slice(1, -1).filter(([r, c]) => g.deepWater[r * COLS + c]).length;
+      const maxWet = water(official);
+      const eq = fewestNb(g, from, to, 0, maxWet);
       if (!eq) continue;
       const got = nbCrossed(g, from, to);
+      assert.ok(water(g.waypoints(...from, ...to)) <= maxWet, `${sid} ${id}: no extra deep-water crossing`);
       const what = `${sid} ${id} (${from}) → (${to}) crosses ${got.join(' ')}`;
-      assert.ok(got.length <= eq.min, `${what}, an equal-length route only ${eq.min}`);
-      const near = fewestNb(g, from, to, 2);
+      if (Number.isFinite(eq.min)) assert.ok(got.length <= eq.min, `${what}, a water-safe equal-length route only ${eq.min}`);
+      else {
+        // The smoothed official path can cross one water tile where every 4-connected shortest path needs two.
+        // In that case the raw-chain oracle has no admissible candidate; keep the official route guarantee.
+        assert.ok(Number.isFinite(fewestNb(g, from, to, 0).min), `${what}: raw shortest paths exist`);
+        const officialNb = new Set(crossed(official).slice(1, -1).filter(([r, c]) => !g.blockable(r, c)).map((t) => t.join()));
+        assert.ok(maxWet > 0 && got.length <= officialNb.size, `${what}: constrained fallback must not worsen the official route`);
+      }
+      const near = fewestNb(g, from, to, 2, maxWet);
       if (near.min < got.length) {
         assert.ok(rect === GEO.BOSS_RECT && got.every(arena), `${what}: a route of length ≤ ${near.best}+2 crosses only ${near.min}`);
         accepted.push(what);

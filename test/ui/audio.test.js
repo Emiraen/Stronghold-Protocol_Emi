@@ -2,11 +2,22 @@
 // never-throw behaviour with a fake Web Audio implementation.
 
 import { test, describe } from 'node:test';
+import { registerHooks } from 'node:module';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bgmKeyFor, resolveBgm, SfxLimiter, AudioManager, normalAttackSfx } from '../../public/js/audio.js';
+// Exercise AudioManager against a controlled preloaded-cache boundary, not implicit network downloads.
+const cacheBoundary = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (context.parentURL?.endsWith('/public/js/audio.js') && specifier === './resourceCache.js') {
+      return { url: 'data:text/javascript,export const cachedFetch = (...args) => globalThis.fetch(...args); export const resourceCache = { isCached: () => false, subscribe: () => () => {} };', shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
+const { bgmKeyFor, resolveBgm, SfxLimiter, AudioManager, normalAttackSfx } = await import('../../public/js/audio.js');
+cacheBoundary.deregister();
 import { mediaUrl } from '../../public/js/media.js';
 import { PHASE } from '../../shared/constants.js';
 
@@ -122,7 +133,7 @@ describe('AudioManager', () => {
     assert.equal(a.unit('char_x', 'attack', 1), false);
     a.handleBattleEvents([['atk', 1, 2, 'arrow'], 'junk', null]);
     a.setVolumes({ bgm: 5, sfx: -1, muted: true });
-    assert.deepEqual(a.volumes, { bgm: 1, sfx: 0, muted: true });
+    assert.deepEqual(a.volumes, { bgm: 1, sfx: 0, muted: true, voiceOverrides: {} });
     assert.equal(a.unlocked, false);
   });
   test('unlocks on the first gesture, then plays BGM and SFX from the manifest', async () => {

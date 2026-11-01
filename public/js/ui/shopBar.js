@@ -282,7 +282,7 @@ export function RewardCards({ offer, priv, editable, onPick, onDetail, onLater, 
  *   the bonds this mode never activates (gameLogic modeOffBonds), struck through on the operator cards
  */
 export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onCollapse, onBuy, onLevel, onRefresh, onFreeze, onDetail, onDetailClose, onRefuse, barRef,
-  reward = null, onReward, onRewardLater, onArm = null, offBonds = null, onRisk = null, inventoryPager = null }) {
+  reward = null, onReward, onRewardLater, onArm = null, offBonds = null, onRisk = null, inventoryPager = null, extraActions = null }) {
   const shop = priv?.shop || {};
   const slots = Array.isArray(shop.slots) ? shop.slots : [];
   const layout = shop.layout && Number.isInteger(shop.layout.chess) && Number.isInteger(shop.layout.item) ? shop.layout : null;
@@ -341,7 +341,7 @@ export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onColl
 
   const hk = { refresh: hotkeyLabelOf('refresh'), freeze: hotkeyLabelOf('freeze') }; // the player's keys (设置 → 快捷键)
   return html`<section class=${cx('shopbar', frozen && 'is-frozen', !editable && 'is-locked', showReward && 'has-reward', armed && 'has-armed')} ref=${barRef} aria-label=${t('调度中心')}>
-    <div class="shopbar__tools">
+    <div class="shopbar__tools">${extraActions}
       ${risk && onRisk ? html`<span class="shopbar__risk" style="display:flex;gap:6px;align-items:center;pointer-events:auto;grid-column:1 / -1">
         ${risk.quality === 'gold' ? html`<select aria-label="献祭干员" value=${riskUid} onChange=${e => setRiskUid(e.target.value)} style="max-width:140px;background:#182327;color:white"><option value="">选择献祭干员</option>${sacrifice.map(p => html`<option value=${p.uid}>${data.lookup('chess', p.id)?.name || p.id}</option>`)}</select>` : null}
         <button type="button" class="toolbtn toolbtn--amber" disabled=${!editable || (risk.quality === 'gold' && !riskUid)} title=${risk.quality === 'gold' ? '本回合献祭一次，基础招募价的2倍、最多8金币' : '消耗当前生命值的10%（向上取整，至少4点），整局最多3次，须能存活'} onClick=${() => onRisk(risk.quality === 'gold' ? Number(riskUid) : null)}>${risk.quality === 'gold' ? '献祭' : '消耗生命换12金币'}</button>

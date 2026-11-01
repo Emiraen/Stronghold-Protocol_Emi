@@ -11,6 +11,10 @@ export function renderInfo(u) {
     id: u.id, uid: u.uid ?? null, kind: u.kind || 'enemy', side: u.side === 'ally' ? 'ally' : 'enemy', ownerId: u.ownerId ?? null,
     defId: u.defId ?? null, name: u.name ?? '', tier: u.tier ?? 1, golden: !!u.golden, spine: u.spine ?? u.defId ?? null,
     skin: u.skin ?? null,
+    ...(u.ownerUnitId != null ? { ownerUnitId: u.ownerUnitId } : {}),
+    ...(u.sourceUnitId != null ? { sourceUnitId: u.sourceUnitId } : {}),
+    ...(u.ownerUid != null ? { ownerUid: u.ownerUid } : {}),
+    ...(u.sourceUid != null ? { sourceUid: u.sourceUid } : {}),
     avatar: u.avatar ?? u.defId ?? null, x: Number(u.x) || 0, y: Number(u.y) || 0, facing: u.facing === -1 ? -1 : 1,
     maxHp: Number(u.maxHp) || 1, boss: !!u.boss, motion: u.motion,
     // deploy direction of allies (UnitInfo.dir, DESIGN §3): the model (Back for UP, mirrored for LEFT) and the

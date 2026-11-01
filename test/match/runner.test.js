@@ -12,6 +12,7 @@ import { DataSource } from '../../server/sim/simdata.js';
 import { validateC2S } from '../../shared/protocol.js';
 import { validateClientResult, runHeadless } from '../../server/match/fields.js';
 import { PHASE } from '../../shared/constants.js';
+import { cultivatedStats } from '../../shared/potential.js';
 import { DATA, makeMatch } from './harness.js';
 
 const DS = new DataSource(DATA, null);
@@ -28,7 +29,7 @@ function fakeNet() {
   return n;
 }
 
-function rig({ hidden = false, spec = specMod } = {}) {
+function rig({ hidden = false, spec = specMod, ds = DS } = {}) {
   let t = 1000;
   const frames = [];
   const intervals = [];
@@ -42,7 +43,7 @@ function rig({ hidden = false, spec = specMod } = {}) {
     caf: () => {},
     setInterval: (fn) => { intervals.push(fn); return intervals.length; },
     clearInterval: () => {},
-    loadSim: async () => ({ spec, ds: DS }),
+    loadSim: async () => ({ spec, ds }),
     logger: { error() {}, warn() {}, info() {}, debug() {} },
   });
   const feed = { snaps: [], evs: [], fields: [] };
@@ -485,9 +486,10 @@ test('live unit stats (user playtest #4 item 7): unitStats(id) reads the battle 
   assert.equal(got.def, Math.round(s.def));
   assert.equal(got.interval, Math.round(s.interval * 100) / 100);
   assert.equal(got.blockCnt, s.blockCnt);
-  assert.equal(got.hp, Math.round(ally.hp));
-  assert.equal(got.base.atk, Math.round(ally.base.atk));
-  assert.equal(got.base.maxHp, Math.round(ally.base.maxHp));
+  assert.equal(got.hp, Math.min(got.maxHp, Math.max(1, Math.ceil(ally.hp))));
+  const base = ally.cultMul ? cultivatedStats(ally.base, ally.cultMul) : ally.base;
+  assert.equal(got.base.atk, Math.round(base.atk));
+  assert.equal(got.base.maxHp, Math.round(base.maxHp));
   assert.equal(r.runner.unitStats(ally.id, start.fieldId)?.id, ally.id, 'on the named field');
   assert.equal(r.runner.unitStats(ally.id, 'n:someone_else'), null, 'another field: nothing');
   assert.equal(r.runner.unitStats(999999), null, 'unknown unit');
@@ -520,4 +522,49 @@ test('live unit stats (user playtest #4 item 7): unitStats(id) reads the battle 
   assert.equal(r.runner.unitStats(ally.id), null, 'nothing on screen after the battles were dropped');
   assert.equal(r.runner.unitIdOf(ally.uid, ally.ownerId), null);
   r.runner.dispose();
+});
+
+
+test('炸惊 15 Hz simulator runs at real 2×, including elapsed recovery, hidden pumping and pause', async () => {
+  const { Match, getZhajingData } = await import('../../server/modes/zhajing/Match.js');
+  const { VirtualScheduler } = await import('../../server/modes/zhajing/engine/server/match/scheduler.js');
+  const spec = await import('../../server/modes/zhajing/engine/server/sim/spec.js');
+  const { DataSource } = await import('../../server/modes/zhajing/engine/server/sim/simdata.js');
+  const scheduler = new VirtualScheduler({ instantCombat: false }), frames = [];
+  const m = new Match({ mode: 'solo', matchId: 'pace', seed: 18345, scheduler, clientCombat: true,
+    seats: [{ playerId: 'p0', seat: 0, name: '博士', connected: true, isBot: false }],
+    send: (id, msg) => { frames.push({ id, msg }); return true; }, broadcast() {}, onEnd() {} });
+  try {
+    m.start(); m.handle('p0', { t: 'g.infoReady' });
+    scheduler.runUntil(() => m.phase === 'BAND_DRAFT', { maxSteps: 100 });
+    m.handle('p0', { t: 'g.band', bandId: m.defaultBand(m.order[0]) });
+    scheduler.runUntil(() => m.phase === 'SP_DRAFT', { maxSteps: 100 });
+    m.handle('p0', { t: 'g.choice', idx: 0 });
+    scheduler.runUntil(() => m.phase === 'PREP', { maxSteps: 100 });
+    m.startCombat();
+    const start = frames.findLast(x => x.msg.t === 'b.start').msg;
+    assert.equal(start.speed, 2);
+    const r = rig({ spec, ds: new DataSource(getZhajingData(), null) });
+    try {
+      r.net.emit('b.start', start); await r.settle();
+      const e = r.runner._entries.get(start.battleId);
+      assert.equal(e.battle.dt, 1 / 15);
+      r.advance(1000); assert.equal(e.battle.tickCount, 30);
+      assert.ok(Math.abs(e.battle.time - 2) < 1e-6);
+      r.doc.hidden = true; r.advance(1000, 250);
+      assert.equal(e.battle.tickCount, 60);
+      r.store.patch('match', { public: { phase: 'COMBAT', paused: true } }); r.advance(1000, 250);
+      assert.equal(e.battle.tickCount, 60);
+      r.store.patch('match', { public: { phase: 'COMBAT', paused: false } }); r.advance(1000, 250);
+      assert.equal(e.battle.tickCount, 90);
+    } finally { r.runner.dispose(); }
+    const recovered = rig({ spec, ds: new DataSource(getZhajingData(), null) });
+    try {
+      recovered.net.emit('b.start', { ...start, elapsed: 8 }); await recovered.settle();
+      const e = recovered.runner._entries.get(start.battleId);
+      assert.equal(e.battle.tickCount, 120);
+      assert.ok(Math.abs(e.battle.time - 8) < 1e-6);
+      recovered.advance(1000); assert.equal(e.battle.tickCount, 150);
+    } finally { recovered.runner.dispose(); }
+  } finally { m.dispose(); }
 });

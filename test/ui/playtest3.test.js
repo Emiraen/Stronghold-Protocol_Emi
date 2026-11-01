@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { PHASE, GEO } from '../../shared/constants.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
+const read = (p) => readFileSync(path.join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
 
 // the browser data store reads the real data files from disk (ChessDetail / ChoiceOverlay renders below)
 globalThis.fetch = async (url) => {
@@ -78,7 +78,7 @@ describe('2: the own LP drops live while the battle runs', () => {
     assert.equal(ownLeaks(4, undefined), 4);
     for (const [a, b] of [[undefined, undefined], [NaN, null], [-2, 'x']]) assert.equal(ownLeaks(a, b), 0);
     // the game screen feeds liveLp with it
-    assert.match(read('public/js/screens/game.js'), /leaks: ownLeaks\(localLeaks, meP\?\.pendingLp\)/);
+    assert.match(read('public/js/screens/game/match.js'), /leaks: ownLeaks\(localLeaks, meP\?\.pendingLp\)/);
   });
 
   /** Feed liveLp a sequence of states, keeping its base like the game screen (lpBaseRef). */
@@ -240,25 +240,25 @@ describe('3: the temp overflow row (临时整备区)', () => {
   });
 
   test('the row\'s label matches the server\'s due rule (PlayerState tempDue): destroyed at this prep\'s end unless ready — then kept through the next prep', () => {
-    assert.match(tempRowRule(false), /才能准备；休整期结束时仍在此处的将被销毁$/);
+    assert.match(tempRowRule(false), /需移出、使用或销毁；休整期结束时仍在此处的将被销毁$/);
     // Ready is refused while the row holds pieces: what lies there while ready arrived after it (due at the next prep)
     assert.match(tempRowRule(true), /保留到下个休整期/);
-    assert.match(tempRowRule(true), /取消准备则在本休整期结束时销毁/);
+    assert.match(tempRowRule(true), /届时仍在此处的将被销毁$/);
   });
 
   test('the game screen frames the row only on the own prep board while it holds pieces (source contract)', () => {
-    const game = read('public/js/screens/game.js');
-    assert.match(game, /const tempNotice = temp\.count > 0 && !!view && viewKind !== 'loading' && showPrep && alive && !pen && !sp;/);
-    assert.match(game, /<\$\{TempRowNotice\} view=\$\{view\} count=\$\{temp\.count\} items=\$\{temp\.items\} label=\$\{!drag && !facing\}\s+ready=\$\{phase === PHASE\.PREP && !!priv\?\.ready\} \/>/);
-    assert.match(game, /toast\(tempReadyReason\(L\.priv\) \|\| refused, 'warn'\)/, 'Space says why');
+    const game = read('public/js/screens/game/match.js');
+    assert.match(game, /const tempNotice = temp\.count > 0 && !!view && viewKind !== 'loading' && showPrep && \(readOnlyPrep \|\| alive\) && !pen && !sp;/);
+    assert.match(game, /<\$\{TempRowNotice\} view=\$\{view\} count=\$\{temp\.count\} items=\$\{temp\.items\} label=\$\{!drag && !facing\} unlimitedItems=\$\{unlimitedItems\}\s+ready=\$\{phase === PHASE\.PREP && \(spectator \? !!players\.find\(\(p\) => p\.playerId === prepOwnerId\)\?\.ready : !!priv\?\.ready\)\} \/>/);
+    assert.match(game, /toast\(tempReadyReason\(L\.priv, unlimitedItemStorage\(L\.pub\?\.variant, L\.pub\?\.ranked\)\) \|\| refused, 'warn'\)/, 'Space says why');
     const css = read('public/css/screens/game-panels.css');
     assert.match(css, /\.tempnote \{ position: fixed; inset: 0; z-index: 2; pointer-events: none; \}/, 'over the field, under the HUD, never takes the pointer');
   });
 
   test('while the ready button shows its reason the effects column moves down a line (on phones the ready count ran into it)', () => {
-    const game = read('public/js/screens/game.js');
+    const game = read('public/js/screens/game/match.js');
     // the same condition as ReadyToggle's reason: PREP, alive, not ready, pieces in the row
-    assert.match(game, /const readyWhy = phase === PHASE\.PREP && alive && !priv\?\.ready && temp\.count > 0;/);
+    assert.match(game, /const readyWhy = phase === PHASE\.PREP && alive && !readOnlyPrep && !priv\?\.ready && temp\.count > 0;/);
     assert.match(game, /readyWhy && 'has-readywhy'/);
     const css = read('public/css/screens/game.css');
     assert.match(css, /\.gm__effects \{ position: absolute; right: \.3rem; top: 2\.4rem; \}/);
@@ -324,7 +324,7 @@ describe('8: 特质 right under the detail card\'s header', () => {
     const css = read('public/css/screens/game-panels.css');
     assert.match(css, /\.dgarrison \{[^}]*border-left: 3px solid var\(--gold-2\)/);
     assert.match(css, /\.dstats \{[^}]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
-    assert.match(read('public/css/devices.css'), /@media \(max-height: 460px\) \{\n {2}\.dhead__art \{ height: 1\.66rem; \}\n {2}\.dhead__en \{ display: none; \}/);
+    assert.match(read('public/css/devices.css').replace(/\r\n/g, '\n'), /@media \(max-height: 460px\) \{\n {2}\.dhead__art \{ height: 1\.66rem; \}\n {2}\.dhead__en \{ display: none; \}/);
   });
 });
 
@@ -339,7 +339,12 @@ describe('9: busy indicators and data loading', () => {
   };
 
   test('no wait / progress cursor anywhere (the OS shows a spinning wheel next to the pointer — over the detail card beside an underframe button, the 交流 button …)', () => {
-    for (const f of cssFiles()) assert.doesNotMatch(read(f), /cursor:\s*(wait|progress)/, f);
+    for (const f of cssFiles()) {
+      // Background-download controls legitimately expose progress; this regression covers in-match cards and controls.
+      let css = f === 'public/css/east-media.css' ? read(f).replace(/\.bgset__theme:disabled\s*\{[^}]*\}/g, '') : read(f);
+      if (f === 'public/css/screens/title.css') css = css.replace(/\.title-server select:disabled\s*\{[^}]*\}/g, '');
+      assert.doesNotMatch(css, /cursor:\s*(wait|progress)/, f);
+    }
   });
 
   test('a busy button keeps its icon and gets a delayed sweeping bar — no spinning ring', () => {

@@ -347,8 +347,8 @@ describe('§20.15 the strip and the popup say whose bonds they show', () => {
 });
 
 test('§20.15 wiring: the game screen feeds the strip, the popup and the detail card from screenStrip (no viewer data for a teammate)', () => {
-  const src = read('public/js/screens/game.js');
-  assert.match(src, /const strip = screenStrip\(\{[^}]*field, layers, layer, who: watchWho, bondLayers:/, 'the field on screen, the ‹ › layers, the picked teammate');
+  const src = read('public/js/screens/game/match.js');
+  assert.match(src, /const strip = screenStrip\(\{[\s\S]*?field, layers, layer,[\s\S]*?who: spectator && bench \? \{ fieldId: bench\.fieldId, playerId: bench\.playerId \} : watchWho,[\s\S]*?bondLayers:/, 'the field on screen, the ‹ › layers, the picked teammate');
   assert.match(src, /<\$\{BondStrip\} bonds=\$\{stripBonds\}[^>]*owner=\$\{strip\.name\}/);
   // the popup carries the player it was opened for: the strip's owner from the strip, the unit owner from a card's chip
   assert.match(src, /const bondPop = popupView\(\{ open: bondOpen, pub, priv, myId, field, units: popOps, live: liveLayers \}\)/);
@@ -357,7 +357,7 @@ test('§20.15 wiring: the game screen feeds the strip, the popup and the detail 
   assert.match(src, /onOpen=\$\{\(id\) => openBond\(id, strip\.ownerId, 'strip'\)\}/, 'the strip opens its owner\'s bond');
   assert.match(src, /const detailOwner = detailBondOwner\(detailTarget, \{ pub, myId, stripOwnerId: strip\.ownerId \}\)/);
   assert.match(src, /onBond=\$\{\(id\) => openBond\(id, detailOwner, 'detail'\)\}/, 'a card\'s chip opens the same owner\'s bond as its chips show');
-  assert.match(src, /onMember=\$\{\(id, items\) => setDetail\(\{ kind: 'chess', id, owner: bondPop\.ownerId, items: items \|\| null \}\)\}/,
+  assert.match(src, /onMember=\$\{\(id, items, standInFor, diy\) => setDetail\(\{ kind: 'chess', id, owner: bondPop\.ownerId, items: items \|\| null, standInFor, diy \}\)\}/,
     'a member card keeps the popup\'s player (and a 变形同构体 row\'s items)');
   assert.match(src, /openId=\$\{bondPop && bondPop\.ownerId === strip\.ownerId \? bondPop\.bondId : null\}/, 'the strip marks only its own owner\'s popup');
   assert.match(src, /setBondOpen\(\(b\) => \(b && b\.from === 'strip' \? null : b\)\)/, 'a strip popup closes when the strip changes hands');

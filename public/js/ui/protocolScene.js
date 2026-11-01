@@ -4,6 +4,10 @@
 // --d-color). The harder the difficulty, the more defenders and spikes. Pure SVG, no picture.
 import { html } from './components.js';
 
+export function StampRing() {
+  return html`<svg class="pcard__ring" viewBox="0 0 120 100" aria-hidden="true"><path pathLength="1" d="M18 62C6 34 34 8 70 10c34 2 48 30 38 54-10 24-46 32-72 22C20 80 10 66 16 50" /><path pathLength="1" d="M30 20c22-14 62-12 78 10 12 18 4 44-16 54" /></svg>`;
+}
+
 const S = 15;            // one unit in px of the 1000 × 640 view box
 const OX = 230, OY = 400; // where the origin lands
 /** X runs up-right, Y down-right, Z up. */
@@ -40,8 +44,8 @@ const PADS = [
   { from: [3, -13], to: [19, -3.5] },
   { from: [12, 12], to: [30, 20.5] },
 ];
-const COUNT = { FUNNY: 10, NORMAL: 18, HARD: 26, ABYSS: 34 };
-const SPIKES = { FUNNY: 1, NORMAL: 3, HARD: 5, ABYSS: 7 };
+const COUNT = { FUNNY: 10, NORMAL: 18, HARD: 26, ABYSS: 34, ANNIHILATION: 46 };
+const SPIKES = { FUNNY: 1, NORMAL: 3, HARD: 5, ABYSS: 7, ANNIHILATION: 7 };
 
 /** Defender positions: rows on the two squares, filled alternately up to `n`. */
 function defenders(n) {

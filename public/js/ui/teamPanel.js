@@ -172,7 +172,7 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
           ${multi && p.poolGroupId ? html`<small class="team__pool-id">卡池 ${p.poolGroupId}</small>` : null}
           <div class="team__line">
             <${LpTower} value=${lp.lp} size="sm" tone=${Number.isFinite(lp.lp) && lp.lp - lp.pending <= 5 ? 'danger' : null} pending=${lp.pending}
-              tip=${rowLpTip(lp, cap)} />
+              tip=${p.lpTip ?? rowLpTip(lp, cap)} />
             ${lp.left != null ? html`<${MissTag} n=${lp.left} name=${self ? null : p.name || trA("博士")} />` : null}
             <${Tooltip} text=${offline ? trA("连接已断开") : trA(meta.text)} placement="right">
               <span class=${cx('team__status', `is-${meta.tone}`, offline && 'is-offline', (offline || STATUS_SPRITE[status]) && localAsset('ui/battle', offline ? 'icon_lost_connect' : STATUS_SPRITE[status]) && 'has-sprite')} aria-label=${trA(meta.text)}>

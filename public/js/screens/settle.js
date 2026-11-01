@@ -18,6 +18,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../ven
 import { html, Icon, DifficultyTag, Spinner } from '../ui/components.js';
 import { useGameData, Img, Sprite, PlayerAvatar, BondGlyph, BandIcon } from '../ui/gameComponents.js';
 import { normalizeResult, diyRecordFor, cardStandIn, standInForText } from '../ui/gameLogic.js';
+import { isZhajing } from '../../../shared/zhajing-constants.js';
 import { data } from '../data.js';
 import { chessPortraitUrl, chessAvatarUrl, itemIconUrl, enemyIconUrl, titleIconUrl } from '../ui/assetUrls.js';
 import { store, useStore, emptyMatch } from '../store.js';
@@ -45,6 +46,7 @@ export function resultBonds(bonds, bondRec = () => null) {
     .sort((a, b) => activeCore(b) - activeCore(a) || shown(b) - shown(a));
 }
 
+const getDefaultData = () => data;
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 const pad2 = (n) => String(Math.max(0, Math.trunc(n) || 0)).padStart(2, '0');
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
@@ -155,8 +157,16 @@ function useStageFit(ref) {
     if (!el) return undefined;
     const fit = () => {
       const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 100;
-      const k = Math.min(el.clientWidth / (19.2 * rem), el.clientHeight / (10.8 * rem));
-      el.style.setProperty('--k', String(Math.max(0.3, Math.min(1, k || 1))));
+      const style = getComputedStyle(el);
+      const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
+      const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
+      const width = Math.max(0, el.clientWidth - left - right);
+      const height = Math.max(0, el.clientHeight - top - bottom);
+      if (!width || !height) return;
+      const k = Math.min(1, width / (19.2 * rem), height / (10.8 * rem));
+      el.style.setProperty('--k', String(k));
+      el.style.setProperty('--settle-center-x', `${left + width / 2}px`);
+      el.style.setProperty('--settle-center-y', `${top + height / 2}px`);
     };
     fit();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
@@ -296,6 +306,7 @@ function SettleIntro({ players, myId, lose, onDone }) {
 
 /** One unit of a lineup as the cards draw it (自选 pick / 补位 stand-in resolved as on the report's thumbnails). */
 function unitView(u, gd) {
+  const data = gd.source || getDefaultData();
   const m = gd.m;
   const chess = u.kind === 'token' ? null : gd.chess(u.id);
   const dr = u.diy && chess ? diyRecordFor(chess, u.diy, { chess: data.get('chess'), backups: data.get('backups') }) : null;
@@ -351,7 +362,7 @@ function BondBar({ bonds, gd }) {
     <span class="sbonds__mark" aria-hidden="true"><svg viewBox="0 0 64 40"><path d="M23 7h-7a13 13 0 0 0 0 26h7v-6h-7a7 7 0 0 1 0-14h7zM41 7h7a13 13 0 0 1 0 26h-7v-6h7a7 7 0 0 0 0-14h-7zM21 17h22v6H21z" /></svg><small>BONDS</small></span>
     <div class="sbonds__list" ref=${ref}>
       ${list.length ? list.map((b, i) => html`<span key=${b.bondId} class=${cx('sbond', b.active && 'is-on')} style=${`--i:${i}`} title=${gd.bond(b.bondId)?.name || b.bondId}>
-        <span class="sbond__disc"><${BondGlyph} bondId=${b.bondId} /></span>${b.hideLayers ? html`<b class="num">—</b>` : html`<b class="num">${b.layers ?? 0}</b>`}</span>`)
+        <span class="sbond__disc"><${BondGlyph} source=${gd.source} bondId=${b.bondId} /></span>${b.hideLayers ? html`<b class="num">—</b>` : html`<b class="num">${b.layers ?? 0}</b>`}</span>`)
         : html`<span class="sbonds__none">NO INFO</span>`}
     </div>
     ${more ? html`<button type="button" class="sbonds__more" aria-label=${t('更多')} onClick=${() => ref.current?.scrollBy({ left: 300, behavior: 'smooth' })}><${Icon} name="chevronRight" /></button>` : null}
@@ -410,7 +421,7 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
       <${SettleMap} lose=${!cleared} seed=${seed} />
       <div class="smap__fx" aria-hidden="true"></div>
       <${Logo} />
-      <div class="sself__band">${self.bandId ? html`<${BandIcon} bandId=${self.bandId} size="lg" />` : html`<${PlayerAvatar} player=${self} self=${true} />`}<i aria-hidden="true"></i></div>
+      <div class="sself__band">${self.bandId ? html`<${BandIcon} source=${gd.source} bandId=${self.bandId} size="lg" />` : html`<${PlayerAvatar} source=${gd.source} player=${self} self=${true} />`}<i aria-hidden="true"></i></div>
       <div class="sself__mode"><${ModePill} r=${r} /></div>
       <h1 class="sself__title">${cleared ? t('模拟完成') : t('模拟中断')}</h1>
       <div class="sself__rounds"><span>${t('通过回合')}</span><b class="num"><${CountUp} to=${self.roundsPassed} ms=${700} delay=${350} /></b></div>
@@ -419,7 +430,7 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
         <${Img} src=${enemyIconUrl(gd.m, m.rec.enemyKey)} fallback=${html`<${Icon} name="crown" class="smedal__glyph" />`} />
         <i class="smedal__check"><${Icon} name=${m.done ? 'check' : 'close'} /></i></span>`)}</div>` : null}
       <div class="splate">
-        <${PlayerAvatar} player=${self} self=${true} class="splate__ava" />
+        <${PlayerAvatar} source=${gd.source} player=${self} self=${true} class="splate__ava" />
         <div class="splate__info">
 
           <b class="splate__name">${self.name}</b>
@@ -444,6 +455,7 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
 // ---- 同盟 --------------------------------------------------------------------------------------------------------------
 
 function titleView(p, gd) {
+  const data = gd.source || getDefaultData();
   if (!p.title) return null;
   const titles = Array.isArray(gd.config?.titles) ? gd.config.titles : [];
   const rec = titles.find((x) => x.id === p.title.id) || null;
@@ -489,10 +501,10 @@ function TeamCard({ p, i, gd, self, victory, raw, social }) {
     <div class="tcard__plate">
 
       ${self ? html`<i class="tcard__me" aria-hidden="true"><${Icon} name="user" /></i>` : null}
-      <${PlayerAvatar} player=${p} self=${self} class="tcard__ava" />
+      <${PlayerAvatar} source=${gd.source} player=${p} self=${self} class="tcard__ava" />
       <span class="tcard__who">
         <b class="tcard__name">${p.rank ? html`<img class="tcard__rank" src=${rankIconUrl(p.rank.iconAfter || "unranked")} alt=${rankLabel(p.rank.tierAfter)} />` : null}<span>${p.name}</span>${p.isBot ? html`<span class="tcard__ai">AI</span>` : null}</b>
-        ${band ? html`<span class="tcard__band"><${BandIcon} bandId=${band.bandId} size="xs" /><span>${band.name}</span></span>` : null}
+        ${band ? html`<span class="tcard__band"><${BandIcon} source=${gd.source} bandId=${band.bandId} size="xs" /><span>${band.name}</span></span>` : null}
       </span>
     </div>
     <div class=${cx('tcard__chips', acts && 'tcard__chips--acts')}>
@@ -541,11 +553,12 @@ function TeamPage({ r, res, gd, myId, at, rid, backLabel, onBack, onDetail }) {
  * @param {{ res: any, pub?: any, myId?: string|null, backLabel: string, onBack: () => void }} props
  */
 export function SettleFlow({ res, pub = null, myId = null, backLabel, onBack }) {
-  const gd = useGameData();
+  const gd = useGameData(isZhajing(res) || isZhajing(pub) ? 'zhajing' : 'vanilla');
   const r = useMemo(() => ({ ...normalizeResult(res, pub), variant: res?.variant || pub?.variant || null }), [res, pub]);
   const self = r.players.find((p) => p.playerId === myId) || null;
   const rawSelf = self && Array.isArray(res?.players) ? res.players.find((x) => x && x.playerId === myId) || null : null;
-  const [page, setPage] = useState(() => (!self ? 'team' : reducedMotion() ? 'self' : 'intro'));
+  // The receipt is already complete: show it immediately, without another cosmetic radar wait.
+  const [page, setPage] = useState(() => (!self ? 'team' : 'self'));
   const [detail, setDetail] = useState(false);
   const [rankOpen, setRankOpen] = useState(!!self?.rank);
   const ctx = useMemo(() => {
@@ -557,7 +570,7 @@ export function SettleFlow({ res, pub = null, myId = null, backLabel, onBack }) 
     // rid even when the record is not listed yet (m.result is recorded as it arrives, the account list syncs after):
     // ensureUploaded waits for it — a null here left 点赞 / 加好友 greyed for the whole page (the owner, 2026-10-14)
     return { at, rid: self ? id : null, prog: self ? levelProgress(records, { id, exp: self.reward, trophies: self.trophies, at }) : null };
-  }, []);
+  }, [res, myId]);
   const rootRef = useRef(null);
   useStageFit(rootRef);
   const lose = self ? !rowCleared(rawSelf, self, r.victory) : !r.victory;

@@ -244,6 +244,13 @@ test('E2 audit: healers on the lane tiles of every boss / hidden field deal no d
     const h = makeBattle({ kind: tpl.kind, stageId, waveTemplate: tpl, sharedBoss: pool(5e6), seed: 4, players, autoFinish: false,
       captureNoisy: true, hooks: ['damaged', 'attack', 'blocked'], setup(b) { b.enemyOverrides = tpl.overrides; } });
     const healers = h.b.allyUnits.filter((u) => u.def?.dmgType === 'heal');
+    h.b.start();
+    // This is a targeting audit, not a ten-medics survival challenge. The solo gun can kill the sparse front line
+    // before its shieldless springs reach it. Keep real attacks/routes, but provide test-only HP and injured patients.
+    for (const u of healers) {
+      h.b.addBuff(u, { key: 'test:healerAuditHp', persist: true, mods: { hpFlat: 1e6 } });
+      u.hp = u.s.maxHp * 0.5;
+    }
     const lead = (e) => e.isBoss || e.tag === 'boss' || e.tag === 'part' || LUCIEN.test(e.defId);
     let healsOnLead = 0;
     h.b.on('heal', (c) => { if (healers.includes(c.source) && c.amount > 0 && c.source.blocking.some(lead)) healsOnLead++; });

@@ -512,10 +512,15 @@ export function compileRoute(route, rect = null) {
   const cr = (r) => (rect ? Math.max(rect.r0, Math.min(rect.r1, r)) : r);
   const cc = (c) => (rect ? Math.max(rect.c0, Math.min(rect.c1, c)) : c);
   for (const cp of route.checkpoints || []) {
-    if (cp.type === 'MOVE') legs.push({ t: 'move', r: cr(cp.pos[0]), c: cc(cp.pos[1]) });
+    if (cp.type === 'MOVE') {
+      const r = cr(cp.pos[0]), c = cc(cp.pos[1]);
+      legs.push(cp.offset ? { t: 'move', tileR: r, tileC: c,
+        r: r + (Number(cp.offset[0]) || 0), c: c + (Number(cp.offset[1]) || 0) } : { t: 'move', r, c });
+    }
     else if (cp.type === 'WAIT') legs.push({ t: 'wait', time: Number.isFinite(cp.time) ? Math.max(0, cp.time) : 0 });
     else if (cp.type === 'DISAPPEAR') legs.push({ t: 'disappear' });
-    else if (cp.type === 'APPEAR') legs.push({ t: 'appear', r: cr(cp.pos[0]), c: cc(cp.pos[1]) });
+    else if (cp.type === 'APPEAR') legs.push({ t: 'appear', r: cr(cp.pos[0]) + (Number(cp.offset?.[0]) || 0),
+      c: cc(cp.pos[1]) + (Number(cp.offset?.[1]) || 0) });
   }
   if (route.end) legs.push({ t: 'move', r: cr(route.end[0]), c: cc(route.end[1]), final: true });
   return legs;
@@ -550,7 +555,7 @@ function planLeg(b, e, leg) {
     pts = [{ x: leg.c, y: leg.r }];
   } else {
     const k = tileKey(b, e);
-    const f = legField(b, leg.r, leg.c, k);
+    const f = legField(b, leg.tileR ?? leg.r, leg.tileC ?? leg.c, k);
     pts = [];
     if (f) {
       let x = k;
@@ -561,6 +566,7 @@ function planLeg(b, e, leg) {
         pts.push({ x: x % COLS, y: (x / COLS) | 0 });
       }
     }
+    if (leg.tileR != null && pts.length) pts[pts.length - 1] = { x: leg.c, y: leg.r };
     const last = pts[pts.length - 1];
     if (!last || last.x !== leg.c || last.y !== leg.r) pts.push({ x: leg.c, y: leg.r });
     // The smoothed chain is line-of-sight clear from the tile CENTRE only. An enemy re-planning off-centre (pushed,
@@ -598,9 +604,10 @@ function tailLength(b, e, idx) {
       if (L.t === 'move') {
         const [sr, sc] = starts[i];
         len = hypot(L.r - sr, L.c - sc);
-        if (e.motion !== 'FLY' && b.grid.inBounds(sr, sc)) {
-          const f = legField(b, L.r, L.c, sr * COLS + sc);
-          const fl = f ? b.grid.fieldLength(f, sr * COLS + sc) : Infinity;
+        if (e.motion !== 'FLY' && b.grid.inBounds(Math.round(sr), Math.round(sc))) {
+          const key = Math.round(sr) * COLS + Math.round(sc);
+          const f = legField(b, L.tileR ?? L.r, L.tileC ?? L.c, key);
+          const fl = f ? b.grid.fieldLength(f, key) : Infinity;
           if (Number.isFinite(fl)) len = fl;
         }
       }
@@ -964,7 +971,7 @@ function enemyAttack(b, e, prevCd) {
     return canTargetAlly(e, t, radius > 0);
   };
   targets = locked.filter(still);
-  if (targets.length > 1) sortAllyTargets(e, targets);
+  if (targets.length > 1) sortAllyTargets(e, targets, b);
   // `enemyAttackStart` { enemy, targets }: the enemy starts a normal attack, before 麻痹 may interrupt it (the client's
   // ON_BEFORE_ABILITY_SPELL_ON of an attack that 麻痹 can interrupt — 酒神 堕梦 "攻击范围内的敌人普通攻击时受到70点神经损伤",
   // PRTS 备注 "于敌人成功普通攻击前之前触发（意味着触发的元素爆发可打断当次普攻…）": a burst it causes interrupts this attack)

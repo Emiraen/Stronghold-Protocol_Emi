@@ -1,3 +1,5 @@
+import { MIZUKI_VARIANT } from '../../shared/mizuki-constants.js';
+import { mergeMizukiSnapshot, mergeMizukiField, mergeMizukiEvents } from './mizukiSnapshots.js';
 // Client entry: boot (fonts, identity, socket), net → store wiring, router, global overlays.
 //
 // Router (derived from the store, no URL routes):
@@ -42,6 +44,8 @@ import { assets, collectMatchResourceUrls } from './assets.js';
 import { ResourcePreloadHost } from './ui/resourcePreload.js';
 import { LobbyScreen, rememberRoom, parseRoomParam } from './screens/lobby.js';
 import { RoomScreen } from './screens/room.js';
+import { installFriendsSync } from './friends.js';
+import { FriendInvitationHost } from './ui/friends.js';
 import { GameScreen } from './screens/game.js';
 import { installAudio, audio } from './audio.js';
 import { installContent, installContentSet } from './content.js';
@@ -52,7 +56,8 @@ import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { StatsHost } from './screens/stats.js';
 import { recordResult, installStatsRecorder } from './ui/stats.js';
-import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
+import { zhajingEditorData } from './data.js';
+import { installLoadoutSync, zhajingLoadoutStore, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
 import { installSkinsSync } from './ui/skins.js';
 import { AnnouncementBanner, acceptAnnouncement } from './ui/announcement.js';
 import { startBuildGuard } from './ui/buildGuard.js';
@@ -273,7 +278,15 @@ function wireNet() {
     if (!msg || typeof msg.id !== 'string' || !['text', 'invite'].includes(msg.kind)) return;
     const key = msg.channel === 'match' ? 'matchChat' : 'chat';
     if (key === 'matchChat' && store.get().matchChat.matchId !== msg.matchId) return;
-    store.set((s) => ({ [key]: { ...s[key], items: [...(s[key]?.items || []).filter((item) => item.id !== msg.id).slice(-49), msg] } }));
+    store.set((s) => {
+      const items = s[key]?.items || [];
+      const previous = items.find((item) => item.id === msg.id);
+      // Live match text only: history and duplicate deliveries never replay the scrolling message.
+      const item = key === 'matchChat' && msg.kind === 'text'
+        ? { ...msg, danmakuAt: previous ? previous.danmakuAt : Date.now(), danmakuSeq: previous ? previous.danmakuSeq : ++seq }
+        : msg;
+      return { [key]: { ...s[key], items: [...items.filter((item) => item.id !== msg.id).slice(-49), item] } };
+    });
   });
   net.on('rank.me', (msg) => {
     const profile = payload(msg);
@@ -293,10 +306,24 @@ function wireNet() {
     if (matchDismissed || !store.get().room?.inMatch) return;
     store.patch('match', { private: payload(msg) });
   });
+  net.on('b.snap', (msg) => {
+    const s = store.get();
+    if (matchDismissed || (!s.room?.inMatch && !s.spectator)) return;
+    const current = s.match.public;
+    const next = mergeMizukiSnapshot(current, msg);
+    if (next !== current) store.patch('match', { public: next });
+  });
   net.on('m.field', (msg) => {
     const s = store.get();
     if (matchDismissed || (!s.room?.inMatch && !s.spectator)) return;
-    store.patch('match', { field: payload(msg) });
+    const current = s.match.public, next = mergeMizukiField(current, msg);
+    store.patch('match', { field: payload(msg), ...(next !== current ? { public: next } : {}) });
+  });
+  net.on('b.ev', (msg) => {
+    const s = store.get();
+    if (matchDismissed || (!s.room?.inMatch && !s.spectator)) return;
+    const current = s.match.public, next = mergeMizukiEvents(current, msg);
+    if (next !== current) store.patch('match', { public: next });
   });
   net.on('m.result', (msg) => {
     const result = payload(msg);
@@ -353,18 +380,26 @@ function wireNet() {
  * data store shares each file's promise).
  */
 function warmGameData() {
-  const go = () => { const s = store.get(); if ((s.room?.content ?? s.spectator?.content)?.vanilla === false) return; data.loadAll(GAME_FILES).then(scheduleMatchPrefetch).catch(() => {}); };
+  const go = () => {
+    const s = store.get();
+    if ((s.room?.content ?? s.spectator?.content)?.vanilla === false) return;
+    const mode = (s.room?.variant || s.spectator?.variant || s.match.public?.variant) === MIZUKI_VARIANT;
+    const runtime = mode ? import('./mizukiRuntime.js').then(module => module.loadMizukiRuntime()) : null;
+    Promise.all([data.loadAll(GAME_FILES), runtime]).then(scheduleMatchPrefetch).catch(() => {});
+  };
   if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(go, { timeout: 2500 });
   else setTimeout(go, 600);
 }
 
 let matchPrefetchPending = false;
 let matchResourceKey = '';
+let mizukiPrefetchKey = '';
 function scheduleMatchPrefetch() {
   if (matchPrefetchPending) return;
   const current = store.get();
   if (!current.room && !current.match.private && !current.match.watchBench && !current.match.field && !current.match.public) {
     matchResourceKey = '';
+    mizukiPrefetchKey = '';
     return;
   }
   matchPrefetchPending = true;
@@ -374,15 +409,31 @@ function scheduleMatchPrefetch() {
       await data.loadAll(GAME_FILES);
       const s = store.get();
       assets.seed(data.getRaw('assets'));
+      if (data.modeKey(s) === 'zhajing') assets.extend(data.getRaw('assets'));
       assets.seedLocal(data.get('local'));
-      const urls = collectMatchResourceUrls(assets, data, s.match, { prepareBoard: !!s.room }).sort();
+      let urls;
+      if ((s.room?.variant || s.spectator?.variant || s.match.public?.variant) === MIZUKI_VARIANT) {
+        const [{ loadMizukiRuntime, prepareMizukiStage }, { mizukiResourceKey, collectMizukiResourceUrls }] = await Promise.all([import('./mizukiRuntime.js'), import('./mizukiPrefetch.js')]);
+        const resourceKey = mizukiResourceKey(s.match);
+        if (resourceKey === mizukiPrefetchKey) return;
+        const runtime = await loadMizukiRuntime();
+        const priv = s.match.private?.mizuki, field = s.match.public?.mizuki?.fields?.find(value => value.fieldId === priv?.fieldId);
+        if ((priv?.phase || s.match.public?.phase) === 'PREP' && field) {
+          void prepareMizukiStage(runtime, field.stage?.id || field.meta?.stageId).catch(() => { mizukiPrefetchKey = ''; });
+        }
+        urls = collectMizukiResourceUrls(assets, data, s.match, runtime).sort();
+        mizukiPrefetchKey = resourceKey;
+      } else {
+        mizukiPrefetchKey = '';
+        urls = collectMatchResourceUrls(assets, data, s.match, { prepareBoard: !!s.room }).sort();
+      }
       const key = JSON.stringify(urls);
       if (key === matchResourceKey) return;
       matchResourceKey = key;
       // 不占住调度器等待网络：新商店或新战场可立即加入预取队列。
       void resourceCache.prefetchRequired(urls, { priority: 1 }).then((ok) => {
-        if (!ok && matchResourceKey === key) matchResourceKey = '';
-      }).catch(() => { if (matchResourceKey === key) matchResourceKey = ''; });
+        if (!ok && matchResourceKey === key) { matchResourceKey = ''; mizukiPrefetchKey = ''; }
+      }).catch(() => { if (matchResourceKey === key) { matchResourceKey = ''; mizukiPrefetchKey = ''; } });
     } catch { /* 数据稍后由 warmGameData 或下一次状态更新重试。 */ }
     finally { matchPrefetchPending = false; }
   }, 0);
@@ -421,6 +472,7 @@ function App() {
     <${LoadoutHost} />
     <${StatsHost} />
     <${ResourcePreloadHost} />
+    <${FriendInvitationHost} />
   </div>`;
 }
 
@@ -457,6 +509,7 @@ function installGlobalErrorHandlers() {
 }
 
 async function boot() {
+  installFriendsSync();
   const handoff = consumeServerHandoff(sanitizeName);
   installGlobalErrorHandlers();
   // touch / hover / fullscreen classes, zoom-gesture blocking, rotation re-layout (ui/device.js, css/devices.css)
@@ -485,6 +538,7 @@ async function boot() {
   wireNet();
   installStatsRecorder(store);
   installLoadoutSync({ net });
+  installLoadoutSync({ net, scope: 'zhajing', target: zhajingLoadoutStore, dataSource: zhajingEditorData });
   installOwnershipSync({ net });
   installDiySync({ net });
   installSkinsSync({ net });

@@ -1,3 +1,5 @@
+import { store } from '../store.js';
+import { isZhajing } from '../../../shared/zhajing-constants.js';
 // In-match intents (`g.*`, DESIGN §8.2) with uniform error handling: every request goes through
 // `act()`, which plays a UI sound on success, shows the ERR_TEXT toast on failure and never throws.
 // The UI never mutates state optimistically — it waits for the next m.private / m.public push.
@@ -31,7 +33,9 @@ export async function act(t, fields = {}, opts = {}) {
   inflight += 1;
   emitBusy();
   try {
-    await net.request(t, fields);
+    const state = store.get();
+    const zhajing = isZhajing(state.room || state.match?.public);
+    await net.request(zhajing && t.startsWith('g.') && t !== 'g.leave' ? 'g.zhajing' : t, zhajing && t.startsWith('g.') && t !== 'g.leave' ? { intent: { t, ...fields } } : fields);
     const s = opts.sfx === undefined ? SUCCESS_SFX[t] : opts.sfx;
     if (s) audio.sfx(s);
     return true;

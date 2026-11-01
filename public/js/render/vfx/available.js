@@ -3,26 +3,28 @@
 // when effects were extracted). The served view answers `{ groups: {} }` on an install without effects; a server
 // without the view (an older one, a static host) may answer 404 — both mean "none".
 
+import { zhajingActive } from '../../zhajingMode.js';
 import { fetchResourceData } from '../../resourceCache.js';
 
 export const FX_LIST_URL = '/data/local-fx.json';
 
-let listPromise = null;
+const listPromises = new Map();
 
 /** The file list (null when absent or unreadable). */
 export function loadFxList(fetchFn = fetchResourceData) {
-  if (!listPromise) {
-    listPromise = (async () => {
+  const url = zhajingActive() ? '/data/zhajing/local-fx.json' : FX_LIST_URL;
+  if (!listPromises.has(url)) {
+    listPromises.set(url, (async () => {
       if (typeof fetchFn !== 'function') return null;
       try {
-        const res = await fetchFn(FX_LIST_URL);
+        const res = await fetchFn(url);
         if (!res || !res.ok) return null;
         const j = await res.json();
         return j && typeof j === 'object' ? j : null;
       } catch { return null; }
-    })();
+    })());
   }
-  return listPromise;
+  return listPromises.get(url);
 }
 
 /** True when the file list names effect prefabs. */
@@ -41,4 +43,4 @@ export async function fxAvailable(assets) {
 }
 
 /** Forget the cached list (tests, a re-extraction while the page is open). */
-export function resetFxList() { listPromise = null; }
+export function resetFxList() { listPromises.clear(); }

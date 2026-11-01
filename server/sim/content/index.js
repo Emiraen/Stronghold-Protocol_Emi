@@ -1,3 +1,6 @@
+import * as annihilationDevices from './annihilationDevices.js';
+import * as annihilationHazard from './hazard.js';
+import * as annihilationRelics from './relics.js';
 // server/sim/content/index.js — installs all content into a Battle (DESIGN §7).
 //
 // installContent(battle, { mode }) — applies the per-battle loadout data view (simdata withUnitLoadouts; DESIGN §16),
@@ -336,7 +339,12 @@ export function installContent(battle, { mode = 'full', extra = null } = {}) {
     installExtensions(battle);
     for (const [name, mod] of MODULES) {
       if (typeof mod.install !== 'function') continue;
-      try { mod.install(battle); } catch (e) { battle._handlerError(`content:${name}`, null, e); }
+      try { (name === 'devices' && /^mode_(single|multi)_annihilation$/.test(battle.modeId || '') ? annihilationDevices : mod).install(battle); } catch (e) { battle._handlerError(`content:${name}`, null, e); }
+    }
+  }
+  if (mode === 'full' && /^mode_(single|multi)_annihilation$/.test(battle.modeId || '')) {
+    for (const mod of [annihilationHazard, annihilationRelics]) {
+      try { mod.install(battle); } catch (e) { battle._handlerError('content:annihilation', null, e); }
     }
   }
   for (const m of extra || []) {

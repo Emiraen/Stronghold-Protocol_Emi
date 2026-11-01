@@ -1,12 +1,13 @@
 import { t as trA } from '../../../shared/i18n.js';
 // 从 A 原正文按职责拆分；保持原有行为。
-import { html, Spinner } from '../ui/components.js';
+import { h, html, Spinner } from '../ui/components.js';
 import { useGameData } from '../ui/gameComponents.js';
 import { AwayOverlay, awayStore } from '../ui/matchChrome.js';
 import { phaseMode } from '../ui/gameLogic.js';
 import { BriefingScreen } from './briefing.js';
 import { BandDraftScreen } from './bandDraft.js';
 import { ResultScreen } from './settle.js';
+import { settlementReady } from './result.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { PHASE } from '../../../shared/constants.js';
 import { ProtocolBoot } from '../ui/matchIntro.js';
@@ -19,8 +20,39 @@ import { MatchEnded } from './game/overlays.js';
 import { MatchScreen } from './game/match.js';
 import { UiPluginSlot } from '../ui/pluginSlots.js';
 import { UnofficialMark } from '../ui/pluginTag.js';
+import { MizukiScreen, isMizukiMatch } from './mizuki.js';
+import { MizukiExitControls } from './mizukiExit.js';
+import { MizukiBattleOutcome } from './mizukiOutcome.js';
+import { PersistentMizukiBattleHost } from './mizukiBattle.js';
+import { mizukiBattlePresentation } from '../mizukiBattlePresentation.js';
+import { useMizukiModeAudio } from '../mizukiAudio.js';
 
 export function GameScreen() {
+  const pub = useStore((s) => s.match.public);
+  const room = useStore((s) => s.room);
+  return isMizukiMatch(pub, room) ? h(MizukiGameScreen) : h(LegacyGameScreen);
+}
+
+function MizukiGameAudio() { useMizukiModeAudio(); return null; }
+
+function MizukiGameChat({ battlefield }) {
+  const spectator = useStore(s => s.spectator);
+  const result = useStore(s => s.match.result || s.match.public?.phase === 'RESULT');
+  const online = useStore(s => s.connection.status === 'online');
+  const me = useStore(s => s.me);
+  const chatId = useStore(s => s.match.public?.matchId || s.matchChat.matchId);
+  return !spectator && !result ? h(ChatPanel, { key: chatId || 'mizuki-match', channel: 'match', online, me,
+    dockSelector: battlefield ? null : '[data-mz-chat-slot]' }) : null;
+}
+
+function MizukiGameScreen() {
+  const battlefield = useStore(state => !!state.props, Object.is, mizukiBattlePresentation);
+  return html`<${MizukiGameAudio} />
+    <div data-mz-exploration-host style=${battlefield ? { visibility: 'hidden' } : undefined} inert=${battlefield || undefined} aria-hidden=${battlefield ? 'true' : undefined}><${MizukiScreen} /></div>
+    <${PersistentMizukiBattleHost} /><${MizukiGameChat} battlefield=${battlefield} /><${MizukiExitControls} /><${MizukiBattleOutcome} />`;
+}
+
+function LegacyGameScreen() {
   useEffect(() => {
     document.body.classList.add('east-match-legacy');
     return () => document.body.classList.remove('east-match-legacy');
@@ -33,6 +65,7 @@ export function GameScreen() {
   const inMatch = useStore((s) => !!s.room?.inMatch);
   const chatId = useStore((s) => s.matchChat.matchId);
   const hasResult = useStore((s) => !!s.match.result);
+  const resultReady = useStore((s) => settlementReady(s.match.result));
   const ended = useStore((s) => !!s.room && !s.room.inMatch && !!s.match.public);
   const away = useStore((s) => s.away, Object.is, awayStore);
   const autoplay = useStore((s) => !!(Array.isArray(s.match.public?.players) && s.match.public.players.find((p) => p && p.playerId === s.me.playerId)?.autoplay));
@@ -45,14 +78,15 @@ export function GameScreen() {
   if (!over && ["prep", "combat", "settle"].includes(mode)) sawPlay.current = true;
   const [endStage, setEndStage] = useState(null);
   useEffect(() => {
-    if (!over) { setEndStage(null); return undefined; }
+    if (!over || resultReady) { setEndStage(null); return undefined; }
     if (!sawPlay.current || spectator) return undefined;
     sawPlay.current = false; setEndStage("on");
     const a = setTimeout(() => setEndStage("leaving"), END_PLATE_MS - 320);
     const b = setTimeout(() => setEndStage("done"), END_PLATE_MS);
     return () => { clearTimeout(a); clearTimeout(b); };
-  }, [over]);
-  const endOn = !spectator && over && (endStage === "on" || endStage === "leaving" || (endStage == null && sawPlay.current));
+  }, [over, resultReady]);
+  // Never mask a completed receipt behind the fixed end-plate timer.
+  const endOn = !resultReady && !spectator && over && (endStage === "on" || endStage === "leaving" || (endStage == null && sawPlay.current));
   if (!pub || !gd.ready) {
     return html`<div class="screen gload">
       <${Spinner} size="lg" label=${pub ? 'LOADING DATA' : 'ENTERING SIMULATION'} />

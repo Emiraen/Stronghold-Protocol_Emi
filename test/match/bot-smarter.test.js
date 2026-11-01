@@ -157,8 +157,8 @@ test('bounty Arts (教鞭): kept after a battle with leaks, used after a perfect
       assert.ok(owns(ps, WHIP), 'a human\'s 教鞭 is never destroyed by AI 托管');
       assert.equal(ps.allChess().length, chessBefore - 1, 'a bench chess was sold instead');
     } else {
-      assert.ok(!owns(ps, WHIP), 'the bot drops its kept 教鞭 for the slot');
-      assert.equal(ps.allChess().length, chessBefore, 'no chess sold');
+      assert.ok(owns(ps, WHIP), 'ordinary-mode bots preserve the kept 教鞭 too');
+      assert.equal(ps.allChess().length, chessBefore - 1, 'a bench chess frees the slot');
     }
     m.dispose();
   }

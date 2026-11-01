@@ -98,11 +98,11 @@ export class MatchIntents {
     const units = [];
     // the flags of the battle it previews: a normal round gains IN_BATTLE layers from its start (a <战斗开始时> layer gain
     // raises bond stats at t = 0 there too); the Final Assault / Hidden Core fight without (previewed as a normal field)
-    const bossRound = this.isBossRound(this.round) || this.round === this.gd.hiddenRound;
+    const bossRound = this.isBossRound(this.round) || (this.isAnnihilation ? this.gd.isHiddenRound(this.round) : this.round === this.gd.hiddenRound);
     const b = this.newBattle({
       seed: deriveSeed(this.seed, `preview:${this.round}:${ps.seat}`), kind: 'normal', modeId: this.modeId, round: this.round,
       stageId: this.stageId, rect: { ...GEO.NORMAL_RECT }, timeLimit: 60, players, spawns: [], routes: this.wave ? this.wave.routes : [],
-      sharedBoss: null, flags: { layerGainsEnabled: !bossRound, uncappedBondLayers: this.isEndless, uncappedNumericValues: this.isEndless, ...this.gd.dp }, fieldId: `n:${ps.playerId}`, recordEvents: false,
+      sharedBoss: null, flags: { layerGainsEnabled: !bossRound, uncappedBondLayers: this.isEndless, uncappedNumericValues: this.isEndless, ...this.gd.dp, ...(this.isAnnihilation ? this.gd.annihilationFlags(bossRound ? 'boss' : 'normal', this.round) : {}) }, fieldId: `n:${ps.playerId}`, recordEvents: false,
     });
     try {
       if (typeof b.start === 'function') b.start();

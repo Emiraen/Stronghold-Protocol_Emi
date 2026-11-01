@@ -15,6 +15,19 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
   before(async () => { harness = await resourceBrowserHarness(); });
   after(async () => { await harness?.close(); });
 
+  test('session entry remains nonblocking while consumers explicitly await the shared manifest', async () => {
+    const result = await harness.run(fixture([item('/assets/delayed.bin')]), async () => {
+      const f = resourceFixture; let release;
+      f.onManifestFetch = () => new Promise(resolve => { release = () => resolve(Response.json(f.config.manifest)); });
+      const entered = await f.resourceCache.ensureSessionReady();
+      const before = f.resourceCache.isManaged('/assets/delayed.bin');
+      let complete = false; const pending = f.resourceCache.ensureManifestReady().then(value => { complete = true; return value; });
+      await new Promise(resolve => setTimeout(resolve, 20)); const waited = !complete; release();
+      return { entered, before, waited, ready: await pending, after: f.resourceCache.isManaged('/assets/delayed.bin'), requests: f.manifestRequests.length };
+    });
+    assert.deepEqual(result, { entered: true, before: false, waited: true, ready: true, after: true, requests: 1 });
+  });
+
   test('large manifests yield before publishing and concurrent callers share one complete index', async () => {
     const items = largeItems('index');
     const result = await harness.run(fixture(items), async () => {
@@ -36,7 +49,7 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
           }
         };
       });
-      const pending = Array.from({ length: 6 }, () => f.resourceCache.ensureSessionReady().then(value => { resolved++; return value; }));
+      const pending = Array.from({ length: 6 }, () => f.resourceCache.ensureManifestReady().then(value => { resolved++; return value; }));
       try {
         const results = await Promise.all(pending);
         await probe;
@@ -64,7 +77,7 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
     config.manifest.groups.voice = [audio, audio];
     const result = await harness.run(config, async () => {
       const f = globalThis.resourceFixture;
-      const ready = await f.resourceCache.ensureSessionReady();
+      const ready = await f.resourceCache.ensureManifestReady();
       const states = [
         '/assets/audio/bgm/theme.mp3?edition=1#anything',
         '/media/bgm/theme?edition=1#anything',
@@ -77,11 +90,11 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
         retired: f.resourceCache.isManaged('/assets/char/portrait-hd/retired.png') };
     });
     assert.equal(result.ready, true);
-    assert.deepEqual(result.states, Array(4).fill({ managed: true, optional: false }));
+    assert.deepEqual(result.states, Array(4).fill({ managed: true, optional: true }));
     assert.deepEqual(result.migrated, Array(2).fill({ managed: true, optional: true }));
-    assert.equal(result.state.required.total, 1);
+    assert.equal(result.state.required.total, 0);
     assert.equal(result.state.optional.total, 3);
-    assert.equal(result.state.voice.total, 1);
+    assert.equal(result.state.voice.total, 0);
     assert.equal(result.state.hdPortraits.total, 0);
     assert.equal(result.retired, false);
   });
@@ -92,7 +105,7 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
       const f = globalThis.resourceFixture;
       f.config.manifest.groups.required.push({ url: `${location.origin}/assets/same.bin?rev=2#first`,
         version: 'a'.repeat(64), bytes: 7, type: 'text/plain' });
-      await f.resourceCache.ensureSessionReady();
+      await f.resourceCache.ensureManifestReady();
       return { remote: [
         'http://resources.example/assets/remote.bin?rev=1#second',
         '//resources.example/assets/remote.bin?rev=1',
@@ -106,7 +119,7 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
     assert.deepEqual(result.local, [true, true, false]);
   });
 
-  test('a required item moved to optional still downloads from its original indexed pack group', async () => {
+  test('a local optional item uses the installed server instead of a remote pack', async () => {
     const body = 'dynamic-card';
     const resource = item('/assets/local/playercards/trickster-outbreak/card.gif', {
       version: createHash('sha256').update(body).digest('hex'), bytes: body.length, type: 'image/gif',
@@ -116,14 +129,12 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
     config.bodies[resource.url] = body;
     const result = await harness.run(config, async () => {
       const f = globalThis.resourceFixture;
-      await f.resourceCache.ensureSessionReady();
+      await f.resourceCache.ensureManifestReady();
       const downloaded = await f.resourceCache.download('optional', { urls: [f.config.manifest.groups.required[0].url] });
       return { downloaded, requests: f.requests, state: f.resourceCache.getState() };
     });
     assert.equal(result.downloaded, true);
-    assert.deepEqual(result.requests.map(request => request.path), [
-      '/assets/resource-required-lossless.sprpack', resource.url,
-    ]);
+    assert.deepEqual(result.requests.map(request => request.path), [resource.url]);
     assert.equal(result.state.required.total, 0);
     assert.equal(result.state.optional.total, 1);
     assert.equal(result.state.optional.done, 1);
@@ -149,13 +160,13 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
           }
         };
         let first;
-        try { first = await Promise.all([f.resourceCache.ensureSessionReady(), f.resourceCache.ensureSessionReady()]); }
+        try { first = await Promise.all([f.resourceCache.ensureManifestReady(), f.resourceCache.ensureManifestReady()]); }
         finally { globalThis.URL = NativeURL; }
         const rejectedState = f.resourceCache.getState();
         const before = { first: f.resourceCache.isManaged('/assets/discard-0.bin'),
           last: f.resourceCache.isManaged('/assets/discard-4096.bin'), audio: f.resourceCache.isManaged('/media/bgm/discard') };
         f.config.manifest = { schema: 1, groups: { required: [{ url: '/assets/repaired.bin', version: 'c'.repeat(64), bytes: 3, type: 'text/plain' }], optional: [], voice: [] } };
-        const retried = await f.resourceCache.ensureSessionReady();
+        const retried = await f.resourceCache.ensureManifestReady();
         return { first, before, rejectedState, retried, yielded, requests: f.manifestRequests.length,
           state: f.resourceCache.getState(), repaired: f.resourceCache.isManaged('/assets/repaired.bin'),
           leftovers: ['/assets/discard-0.bin', '/assets/discard-4096.bin', '/assets/audio/bgm/discard.mp3',
@@ -181,7 +192,7 @@ describe('resource manifest indexing in the browser', { skip: resourceTestChrome
     const manifest = JSON.parse(gunzipSync(await readFile(new URL('../data/resource-preload.runtime.json.gz', import.meta.url))));
     const result = await harness.run({ manifest, bodies: {} }, async () => {
       const f = globalThis.resourceFixture;
-      const loaded = await f.resourceCache.ensureSessionReady();
+      const loaded = await f.resourceCache.ensureManifestReady();
       const state = f.resourceCache.getState();
       return { loaded, error: state.error, counts: { required: state.required.total, optional: state.optional.total, voice: state.voice.total },
         requests: f.requests, manifestRequests: f.manifestRequests.length,

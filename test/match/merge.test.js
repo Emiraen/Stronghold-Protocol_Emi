@@ -310,10 +310,10 @@ test('item merge with a full hand AND a full temp: the golden item takes the equ
   for (let i = 0; ps.temp.some((p) => p == null); i++) give(m, ps, fill2[i], 'temp');
   ps.recompute();
   const got = ps.acquireItem('chess_item_1_02_e_a', { source: 'grant' });
-  assert.ok(got && got.id === 'chess_item_1_02_e_b', 'the merge produced the golden item');
-  assert.deepEqual(carrier.items.map((x) => x.id), ['chess_item_1_01_e_a', 'chess_item_1_02_e_b'], 'golden item equipped in the twin\'s slot');
-  assert.ok(!ps.find(twin.uid), 'the twin was consumed');
-  assert.equal(ps.stats.itemMerges, 1);
+  assert.equal(got, null, 'finite hand and temp cannot store a new loose copy');
+  assert.deepEqual(carrier.items.map(x => x.id), ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'equipped copies are not stripped to satisfy a grant');
+  assert.ok(ps.find(twin.uid), 'equipped twin preserved');
+  assert.equal(ps.stats.itemMerges, 0);
   checkInvariants(m);
   m.dispose();
 });

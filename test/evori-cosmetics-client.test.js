@@ -66,8 +66,8 @@ test('all five rank cards serve static previews directly and use only their own 
         assert.equal(seatAvatar(seat, ctx), `${root}/avatar.png`);
         assert.equal(seatPortrait(seat, ctx), `${root}/card.png`);
       }
-      assert.equal(hFresh('img', { src: `${root}/avatar.png` }).type, 'img');
-      assert.equal(hFresh('img', { src: `${root}/card.png` }).type, 'img');
+      assert.equal(hFresh('img', { src: `${root}/avatar.png` }).type, 'img', 'same-origin avatar bypasses bulk cache');
+      assert.equal(hFresh('img', { src: `${root}/card.png` }).type, CachedImage);
       assert.equal(hFresh('img', { src: `${root}/card.gif` }).type, CachedImage);
       assert.equal(isSpecialCardPortrait(`${root}/card.png`), true);
       resourceCache.isCached = url => url === `${root}/card.gif`;

@@ -2,7 +2,7 @@
 // coins.
 // Installed on Battle.prototype by server/sim/Battle.js (a method container: never instantiated; `this` is the battle).
 
-import { layerGainRoom } from '../../../shared/constants.js';
+import { layerGainRoom, canStackBond } from '../../../shared/constants.js';
 
 export class BattleEconomy {
   addDp(playerId, n) {
@@ -21,6 +21,7 @@ export class BattleEconomy {
    */
   addLayers(playerId, bondId, n, reason = '', opts = {}) {
     if (opts.receipt) opts.receipt.added = 0;
+    if (!canStackBond(bondId)) return 0;
     if (!this.flags.layerGainsEnabled || !(n > 0) || !Number.isFinite(n) || playerId == null) return 0;
     const pp = this._pp(playerId);
     if (!pp) return 0;

@@ -41,6 +41,7 @@ export class BattlePlayers {
       input: p,
     };
     if (this.opts.morphPairing === 'plus') ps.morphPairing = 'plus';
+    if (ps.bonds.soloShip) ps.bonds.soloShip.layers = 0;
     this.players.push(ps);
     this._perPlayer[ps.playerId] = {
       // `killed` / `total` / `leaked` / `perfect` keep the official `counted` reading (DESIGN §5.1); `killedInTotal` /

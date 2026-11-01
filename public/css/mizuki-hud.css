@@ -1,0 +1,91 @@
+/* Mizuki native-style 1920x1080 stage, shared top bar and bottom bar.
+   Loaded by screens/mizuki.js together with mizuki.css and removed on unmount.
+   Coordinates are stage pixels measured from the reference screenshots. */
+.mzh-screen{position:absolute;overflow:hidden;background:#07090e;color:#f1f1f2;font-family:var(--font-cjk);padding:0!important;animation:none}
+.mzh-screen.mzh-screen--dark{background:#06080d}
+.mzh-screen.mzh-screen--light{background:#cfd1d3}
+.mzh-screen *{box-sizing:border-box}
+.mzh-screen button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+.mzh-screen button:disabled{cursor:not-allowed}
+.mzh-stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:50% 50%;overflow:hidden}
+/* Reserved header space, entirely above the map and clear of resource controls. */
+.mzh-chat-slot{position:absolute;left:674px;top:3px;width:122px;height:104px;pointer-events:none}
+.mzh-screen--light .mzh-chat-slot{left:1080px}
+
+/* backdrops */
+.mzh-backdrop{position:absolute;inset:0;background:#0a0d14 center/cover no-repeat}
+.mzh-backdrop--init{background-image:url(/assets/mizuki/native-ui/init/background.png)}
+.mzh-backdrop--init:after{content:"";position:absolute;inset:0;background:linear-gradient(#0000 0,#0000 60%,#0006 100%)}
+.mzh-backdrop--snow{background:#c9cbcd linear-gradient(180deg,#d6d8da,#c3c5c7)}
+.mzh-backdrop--snow:after{content:"";position:absolute;inset:0;opacity:.35;background:repeating-linear-gradient(115deg,#ffffff00 0 6px,#ffffff55 6px 7px)}
+.mzh-backdrop--map{background-color:#14161a;filter:grayscale(1) brightness(.62)}
+
+/* top bar */
+.mzh-top{position:absolute;left:0;top:0;width:1920px;height:110px;z-index:20;pointer-events:none}
+.mzh-top>*{pointer-events:auto}
+.mzh-exit{position:absolute;left:25px;top:13px;width:70px;height:69px;background:url(/assets/mizuki/native-ui-hud/cmn1-img_btn_close.png) center/100% 100% no-repeat!important}
+.mzh-life,.mzh-command{position:absolute;background-repeat:no-repeat;background-size:100% 100%;height:70px;top:12px}
+.mzh-life{left:215px;width:195px;height:70px;background-image:none}
+.mzh-life{background:linear-gradient(90deg,#1f9be0 0,#1f9be0 100%);top:13px;height:30px;width:195px}
+.mzh-life:before{content:"";position:absolute;left:0;top:30px;width:195px;height:38px;background:linear-gradient(90deg,#33516a99,#33516a00)}
+.mzh-life:after{content:"";position:absolute;left:3px;top:-3px;width:34px;height:70px;background:url(/assets/mizuki/native-ui-hud/topic-hpmax.png) center/contain no-repeat}
+.mzh-life__label{position:absolute;left:40px;top:0;font-size:22px;line-height:30px;color:#fff}
+.mzh-life__value{position:absolute;left:42px;top:31px;font:italic 400 32px/38px var(--font-num,"Bender",sans-serif);color:#2ab0ff}
+.mzh-life__value i{font-style:italic;font-size:20px;color:#9fb6c6}
+.mzh-command{left:488px;width:170px;background:linear-gradient(180deg,#9aa0a8 0,#9aa0a8 36px,#4a5560 36px,#4a5560 100%);height:70px;top:12px}
+.mzh-command__label{position:absolute;left:14px;top:2px;font-size:22px;line-height:32px;color:#fff}
+.mzh-command__value{position:absolute;left:14px;top:36px;font:400 26px/32px "Bender",sans-serif;color:#e0e4ea}
+.mzh-command__value b{color:#ffb92e;font-weight:400}
+.mzh-command__chevron{position:absolute;right:8px;top:36px;width:26px;height:24px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24'%3E%3Cpath d='M3 12 L13 3 L23 12 M3 21 L13 12 L23 21' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E") center/contain no-repeat}
+.mzh-level{position:absolute;left:423px;top:18px;width:66px;height:66px;border-radius:50%;background:#0a0c10;border:2px solid #e8edf2;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2}
+.mzh-level small{font-size:11px;line-height:11px;color:#cfd6dd}
+.mzh-level b{font:400 34px/34px "Bender",sans-serif;color:#fff}
+.mzh-title{position:absolute;left:810px;width:400px;top:22px;text-align:center}
+.mzh-title h1{margin:0;font-size:30px;line-height:50px;font-weight:400;letter-spacing:.04em;color:#f3f4f6}
+.mzh-steps{position:absolute;left:830px;top:83px;width:342px;height:8px}
+.mzh-steps:before{content:"";position:absolute;left:0;right:0;top:3px;height:2px;background:#ffffff33}
+.mzh-steps__fill{position:absolute;left:0;top:3px;height:2px;background:#fff}
+.mzh-steps__node{position:absolute;top:0;width:10px;height:10px;margin-left:-5px;background:#6b7280;transform:rotate(45deg)}
+.mzh-steps__node.is-done{background:#fff}
+.mzh-resources{position:absolute;right:22px;top:12px;height:70px;width:640px}
+.mzh-res{position:absolute;top:16px;height:36px;background:#2b2f36d0;display:flex;align-items:center}
+.mzh-res__icon{position:absolute;left:0;bottom:0;width:70px;height:56px;background-repeat:no-repeat;background-position:center;background-size:contain}
+.mzh-res--hope{left:0;width:270px;background:#5b5f64a0}
+.mzh-res--hope .mzh-res__icon{width:76px;height:60px;bottom:0;background-color:#8a5a00}
+.mzh-res__bar{position:absolute;left:76px;top:0;width:80px;height:36px;background:#00000000}
+.mzh-res__bar i{display:block;height:100%;background:#ffd400}
+.mzh-res__pair{position:absolute;left:158px;right:8px;top:-6px;display:flex;align-items:center;gap:6px;font:400 30px/48px "Bender",sans-serif;color:#ffd400}
+.mzh-res__pair:before{content:"";border:6px solid #0000;border-right-color:#ffd400}
+.mzh-res__pair b{font-weight:400}
+.mzh-res__pair b.is-cap{color:#a9adb3;margin-left:6px}
+.mzh-res__pair b.is-cap:before{content:"\25C2";font-size:14px;margin-right:2px}
+.mzh-res--gold{left:274px;width:168px;background:#16806f80}
+.mzh-res--gold .mzh-res__icon{width:76px;height:62px;bottom:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 76 62'%3E%3Cpath d='M38 3 L72 58 H4 Z' fill='none' stroke='%2300d6b0' stroke-width='5' stroke-linejoin='round'/%3E%3Cpath d='M38 24 L48 36 L38 48 L28 36 Z' fill='none' stroke='%2300d6b0' stroke-width='4'/%3E%3C/svg%3E") center/contain no-repeat!important}
+.mzh-res--key{left:462px;width:168px;background:#10406e90}
+.mzh-res__value{margin-left:auto;padding-right:14px;font:400 36px/36px "Bender",sans-serif;color:#f1f3f6}
+.mzh-res--gold .mzh-res__value{margin-left:auto;padding-left:76px}
+.mzh-res--key .mzh-res__value{padding-left:76px}
+.mzh-res--key .mzh-res__icon{width:76px;background-position:22px center;background-size:auto 56px;top:-24px;bottom:auto;height:60px}
+
+/* bottom bar */
+.mzh-bottom{position:absolute;left:0;bottom:0;width:1920px;height:113px;z-index:20;background:linear-gradient(#171717f2,#111);border-top:1px solid #ffffff1a}
+.mzh-diamond{position:absolute;left:24px;top:22px;width:76px;height:76px;background-repeat:no-repeat;background-position:center;background-size:contain!important;opacity:.9}
+.mzh-dice{position:absolute;left:115px;top:-14px;width:122px;height:122px;border-radius:50%;background:radial-gradient(#27324a,#161c2b 70%);border:1px solid #2e3a52;color:#c9d2e0;text-align:center}
+.mzh-dice small{position:absolute;left:0;right:0;top:12px;font:400 8px/8px "Bender",sans-serif;color:#9aa8bf}
+.mzh-dice__icon{position:absolute;left:26px;top:25px;width:70px;height:60px;background:url(/assets/mizuki/native-ui-hud/topic-dice.png) center/contain no-repeat;opacity:.35}
+.mzh-dice b{position:absolute;left:0;right:0;top:20px;font:400 44px/48px "Bender",sans-serif;color:#fff}
+.mzh-dice span:last-child{position:absolute;left:0;right:0;top:66px;font-size:20px;line-height:24px;color:#aeb8c8}
+.mzh-collect{position:absolute;left:253px;top:2px;width:125px;height:111px;background:#3c3f46;color:#fff;text-align:center}
+.mzh-collect__icon{position:absolute;left:34px;top:6px;width:60px;height:60px;background:url(/assets/mizuki/native-ui-hud/cmn2-icon_relic.png) center/contain no-repeat;opacity:.5}
+.mzh-collect b{position:absolute;left:0;right:0;top:10px;font:400 36px/46px "Bender",sans-serif}
+.mzh-collect span:last-child{position:absolute;left:0;right:0;top:62px;font-size:26px;line-height:34px}
+.mzh-operators--left{left:241px}
+.mzh-operators--right{left:1412px}
+.mzh-operators{position:absolute;display:flex;height:90px;top:12px;background:#33353a;color:#fff}
+.mzh-operators__label{width:123px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;line-height:30px;background:#44474d}
+.mzh-operators__label i{width:30px;height:34px;background-repeat:no-repeat;background-position:center;background-size:contain}
+.mzh-operators b{width:70px;font:400 40px/90px "Bender",sans-serif;text-align:center}
+.mzh-screen .mzh-confirm{display:inline-flex;align-items:center;justify-content:center;gap:14px;height:68px;min-width:262px;padding:0 24px;background:#0b6fb8!important;border:1px solid #2aa0f0!important;color:#fff;font-size:30px}
+.mzh-confirm:disabled{background:#3a4654!important;border-color:#55606c!important;color:#9aa4b0}
+.mzh-confirm__check{width:50px;height:50px;border-radius:50%;background:#fff;position:relative}
+.mzh-confirm__check:after{content:"";position:absolute;left:15px;top:10px;width:10px;height:20px;border:solid #0b6fb8;border-width:0 5px 5px 0;transform:rotate(40deg)}

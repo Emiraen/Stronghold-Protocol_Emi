@@ -581,8 +581,9 @@ test('#18 安洁莉娜 兼职工作 is an HP-regen attribute (PRTS 备注 "不�
   assert.ok(!ag.skill.active, 'skill off');
   const w = h.b.allyUnits.find((x) => x.defId === 'token_10028_vigil_wolf' && x.alive);
   assert.ok(w.s.flags.noHeal, '狼群 holds 禁疗');
-  assert.equal(w.findBuff('aglina:parttime')?.mods.hpRegen, 20, '禁疗 does not stop the regen attribute');
-  assert.ok(w.s.hpRegen >= 20);
+  const rate = ag.def.talents.find(t => t.name === '兼职工作').bb.hp_recovery_per_sec;
+  assert.equal(w.findBuff('aglina:parttime')?.mods.hpRegen, rate, '禁疗 does not stop the talent regen attribute');
+  assert.ok(w.s.hpRegen >= rate);
   assert.ok(!y.findBuff('aglina:parttime') && !y.findBuff('aglina:field'), '孤立: no ally talent selects 炎佑');
   assert.ok(h.unit('chess_char_3_19_a').findBuff('aglina:field'), 'the operators get 加速力场');
 });

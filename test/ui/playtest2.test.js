@@ -111,10 +111,10 @@ describe('8: the detail card never covers the selected unit\'s underframe', () =
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(new URL('../../public/css/screens/game.css', import.meta.url), 'utf8');
     assert.match(css, /\.gm__bonds > \*, \.gm__bonds \.bstrip \{ pointer-events: none; \}/, 'the strip box lets taps through');
-    assert.match(css, /\.gm__bonds \.bslot, \.gm__bonds \.bstrip__more \{ pointer-events: auto; \}/, 'the discs stay clickable');
+    assert.match(css, /\.gm__bonds \.bond, \.gm__bonds \.bstrip__more \{ pointer-events: auto; \}/, 'only the actual discs stay clickable, not their whole slots');
     assert.doesNotMatch(css, /\.gm__bonds > \* \{ pointer-events: auto; \}/);
     const dev = readFileSync(new URL('../../public/css/devices.css', import.meta.url), 'utf8');
-    assert.match(dev, /\.gm__hud > \.uframe \{ margin-left: calc\(-1 \* var\(--sa-l\)\); margin-top: calc\(-1 \* var\(--sa-t\)\); \}/);
+    assert.match(dev, /\.gm__hud > \.uframe \{ margin-left: calc\(-1 \* \(var\(--sa-l\) \+ var\(--sp-vv-left\)\)\); margin-top: calc\(-1 \* \(var\(--sa-t\) \+ var\(--sp-vv-top\)\)\); \}/);
   });
 
   test('underframeRect covers the diamond and its buttons', () => {

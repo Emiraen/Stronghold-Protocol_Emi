@@ -100,15 +100,17 @@ export function ExitModal({ open, onClose, solo, onAway }) {
 }
 
 /** The original East round chart, using the round-specific simulation counters. */
-export function RoundDamageModal({ open, onClose, round, ownerIds }) {
+export function RoundDamageModal({ open, onClose, round, ownerIds, getRows = null, Thumb = UnitThumb }) {
   const [sample, setSample] = useState({ round: null, owners: '', rows: [] });
-  const panelRef = useRef(null), closeRef = useRef(onClose);
+  const panelRef = useRef(null), closeRef = useRef(onClose), rowsRef = useRef(getRows);
   closeRef.current = onClose;
+  rowsRef.current = getRows;
   const owners = ownerIds ? JSON.stringify(ownerIds) : '';
   useEffect(() => {
     if (!open) return;
     const ids = owners ? JSON.parse(owners) : null;
-    const refresh = () => setSample({ round, owners, rows: battleRunner?.roundDamage(round, ids) || [] });
+    const refresh = () => setSample({ round, owners,
+      rows: (rowsRef.current ? rowsRef.current(round, ids) : battleRunner?.roundDamage(round, ids)) || [] });
     refresh();
     const timer = setInterval(refresh, 200);
     return () => clearInterval(timer);
@@ -143,7 +145,7 @@ export function RoundDamageModal({ open, onClose, round, ownerIds }) {
     <p class="round-damage__note" title=${trA("含本回合联防、所属召唤物；元素损伤与元素伤害均计入灰色部分。换回合清零。")}>${trA("含召唤物 · 换回合清零")}</p>
     <div class="round-damage__heading"><span>${trA("干员")}</span><span>${trA("伤害构成")}</span><span>${trA("总伤害")}</span></div>
     ${rows.length ? rows.map((r) => html`<div key=${r.key} class="round-damage__row">
-      <${UnitThumb} kind=${r.kind} id=${r.id} rec=${r.rec} skin=${r.skin} size="sm" showTier=${false} title=${r.name} />
+      <${Thumb} kind=${r.kind} id=${r.id} rec=${r.rec} skin=${r.skin} size="sm" showTier=${false} title=${r.name} />
       <div class="round-damage__chart">
         <span class="round-damage__name">${r.name}</span>
         <div class="round-damage__track" role="img" aria-label=${`${r.name}：物理 ${number(r.phys)}，法术 ${number(r.arts)}，元素及其他 ${number(r.other)}，总伤害 ${number(r.total)}`}>

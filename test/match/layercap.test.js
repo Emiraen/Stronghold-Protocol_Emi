@@ -32,7 +32,7 @@ test('prep-side layer gains stop at 999; a gain at the cap adds nothing and fire
 test('IN_BATTLE gains merged at settlement stop at 999 too; below the cap they apply in full', () => {
   const h = makeMatch({
     mode: 'coop', humans: 2, seed: 82, fake: true,
-    script: (b) => (b.round === 1 ? { layerGains: { p_0: { yanShip: 50 }, p_1: { yanShip: 50 } } } : {}),
+    script: (b) => (b.round === 1 ? { layerGains: { p_0: { yanShip: 50, soloShip: 50 }, p_1: { yanShip: 50, soloShip: 50 } } } : {}),
   }).start();
   const m = h.m;
   h.toPrep(1);
@@ -41,6 +41,8 @@ test('IN_BATTLE gains merged at settlement stop at 999 too; below the cap they a
   h.drive(() => m.phase === PHASE.SETTLE);
   assert.equal(a.layers.yanShip, 999, '980 + 50 stops at 999');
   assert.equal(b.layers.yanShip, 50);
+  assert.equal(a.layers.soloShip, undefined, 'settlement drops forbidden 独行 gains');
+  assert.equal(b.layers.soloShip, undefined);
   checkInvariants(m);
   m.dispose();
 });

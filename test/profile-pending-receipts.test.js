@@ -64,8 +64,8 @@ test('economic receipt: successful response is reused by concurrent waiters and 
 
 test('economic receipt: response received but clearing durable pending fails, so the request is blocked rather than resent', async t => {
   let calls = 0; const { pending } = fixture(t, async () => { calls++; return { result: completeJob().result }; });
-  const save = pending.save.bind(pending); let saves = 0;
-  pending.save = () => { if (++saves === 3) throw new Error('injected pending clear failure'); return save(); };
+  const save = pending.save.bind(pending);
+  pending.save = () => { if (!pending.jobs.size) throw new Error('injected pending clear failure'); return save(); };
   await assert.rejects(pending.submit('complete', [completeJob()]), { code: 'RESULT_SETTLEMENT_FAILED' });
   await pending.drain(); assert.equal(calls, 1); assert.equal(pending.jobs.size, 1); assert.equal(pending.timer, undefined);
 });
@@ -91,8 +91,43 @@ test('economic receipt: blocked unknown settlement does not prevent a different 
 
 test('economic receipt: inability to persist the dispatch barrier means authority is never called', async t => {
   let calls = 0; const { pending } = fixture(t, async () => { calls++; fail(); });
-  const save = pending.save.bind(pending); let saves = 0;
-  pending.save = () => { if (++saves >= 2) throw new Error('injected barrier write failure'); return save(); };
-  await assert.rejects(pending.submit('complete', [completeJob()]), { code: 'RESULT_SETTLEMENT_FAILED' });
-  assert.equal(calls, 0); assert.equal(pending.jobs.size, 1); assert.equal(pending.timer, undefined);
+  pending.save = () => { throw new Error('injected barrier write failure'); };
+  assert.throws(() => pending.submit('complete', [completeJob()]), /injected barrier write failure/);
+  assert.equal(calls, 0); assert.equal(pending.jobs.size, 0); assert.equal(pending.timer, undefined);
+});
+
+test('economic receipt: initial durable save already owns the dispatch barrier, without a second pre-dispatch fsync', async t => {
+  let calls = 0, saves = 0;
+  const { pending, file } = fixture(t, async () => {
+    calls++;
+    assert.equal(saves, 1);
+    assert.equal(JSON.parse(readFileSync(file, 'utf8')).jobs[0].blocked.receipt, 'unknown');
+    return { result: completeJob().result };
+  });
+  const save = pending.save.bind(pending);
+  pending.save = () => { saves++; return save(); };
+  await pending.submit('complete', [completeJob()]);
+  assert.equal(calls, 1); assert.equal(saves, 2, 'one initial barrier plus one completed-receipt removal');
+});
+
+test('economic receipt: a queued first attempt stays durable and cannot replay from a reopened process', async t => {
+  let release, calls = 0;
+  const { pending, file } = fixture(t, async (_op, [job]) => {
+    calls++;
+    if (job.match.matchId === mid) await new Promise(resolve => { release = resolve; });
+    return { result: job.result };
+  });
+  const first = pending.submit('complete', [completeJob()]);
+  const next = completeJob(); next.match.matchId = '2'.repeat(32);
+  next.seats[0].aid = next.entries[0].who.aid = 'b'.repeat(32);
+  const second = pending.submit('complete', [next]);
+  assert.equal(calls, 1);
+  assert.ok(JSON.parse(readFileSync(file, 'utf8')).jobs.every(job => job.blocked.receipt === 'unknown'));
+  let reopenedCalls = 0;
+  const reopened = new PendingResults(file, () => { reopenedCalls++; }, () => {}, log);
+  t.after(() => reopened.close());
+  await reopened.drain();
+  assert.equal(reopenedCalls, 0);
+  release(); await first; await second;
+  assert.equal(calls, 2); assert.equal(pending.jobs.size, 0);
 });

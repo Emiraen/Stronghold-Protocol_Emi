@@ -30,7 +30,7 @@ function battle(opts) {
   const h = makeBattle({
     defs: DEFS, timeLimit: 400, seed: 7, ...opts,
     setup(b) {
-      b.on('damaged', (c) => log.push({ src: c.source?.id ?? null, tgt: c.target.id, amount: c.amount, type: c.type, element: c.dmg?.element ?? null, tags: c.dmg?.tags ?? [], skill: !!c.dmg?.isSkill, attack: !!c.dmg?.isAttack, splash: !!c.dmg?.isSplash, t: b.time }), { priority: -999 });
+      b.on('damaged', (c) => log.push({ src: c.source?.id ?? null, tgt: c.target.id, amount: c.amount, type: c.type, element: c.dmg?.element ?? null, tags: c.dmg?.tags ?? [], skill: !!c.dmg?.isSkill, attack: !!c.dmg?.isAttack, splash: !!c.dmg?.isSplash, attackId: c.dmg?.attackId, t: b.time }), { priority: -999 });
       if (opts.setup) opts.setup(b);
     },
   });
@@ -282,7 +282,7 @@ test('余: blocked enemies take 40 % ATK arts + 12 % burn per second, 庇护 whi
   const burn = h.dmg.filter((d) => d.src === u.id && d.element === 'burn');
   assert.ok(burn.length >= 2);
   // 庇护 (ba.protect): physical and arts damage only
-  assert.ok(u.findBuff('yu:shelter') && near(u.s.physTakenMul, 1 - t0.damage_resistance) && near(u.s.artsTakenMul, 1 - t0.damage_resistance));
+  assert.ok(u.buffs.some(b => b.source === u && near(b.mods.physTakenMul, 1 - t0.damage_resistance)) && near(u.s.physTakenMul, 1 - t0.damage_resistance) && near(u.s.artsTakenMul, 1 - t0.damage_resistance));
   assert.equal(u.s.trueTakenMul, 1, '庇护 does not reduce true damage');
   assert.equal(u.s.dmgTakenMul, 1);
   const base = u.base.maxHp;
@@ -997,8 +997,11 @@ test('荒芜拉普兰德: 叙拉古的荣幸 +5 initial SP on every deployment; 
   // (S3 may be running — its drones do not normal-attack): wait for a normal attack after stage 3
   assert.ok(h.runUntil(() => h.dmg.some((d) => d.src === u.id && d.attack && d.tgt === e.id && d.t > ts), 60));
   const last = h.dmg.filter((d) => d.src === u.id && d.attack && d.tgt === e.id).at(-1);
-  const same = h.dmg.filter((d) => d.src === u.id && d.attack && d.t === last.t);
-  assert.equal(same.length, 2, 'two drone hits per attack');
+  assert.ok(Number.isInteger(last.attackId) && last.attackId > 0);
+  const volley = () => h.dmg.filter((d) => d.src === u.id && d.tgt === e.id && d.attackId === last.attackId);
+  assert.ok(h.runUntil(() => volley().filter((d) => d.tags.includes('funnel')).length === 2, 5), 'both additional drones arrive');
+  assert.equal(volley().filter((d) => d.attack).length, 1, 'one caster body hit, not duplicated by extra drones');
+  assert.equal(volley().length, 3, 'one body plus two drone additions share one attackId');
 });
 
 test('缪尔赛思: 流形 copies stats/range/damage type but not the attack shape (锏 2-hit); a capped melee copy steals nothing more', () => {

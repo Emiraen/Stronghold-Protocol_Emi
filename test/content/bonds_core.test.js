@@ -353,8 +353,8 @@ test('阿戈尔 devour: 物理流失 ignores the marker’s damage bonuses and t
   assert.ok(!g2.alive, 'g2 devoured');
   assert.ok(h.hooksOf('kill').some((c) => c.victim === g2 && c.killer === g1), 'kill credited to the marker');
   const dv = tagged(h, 'bond:egir:devour');
-  assert.deepEqual(dv.map((c) => [c.source.defId, c.target.defId]), [['g1_a', 'g2_a'], ['g1_a', 'fod_a']], 'g2’s own mark on the fodder is cancelled');
-  close(f.hp, 20000 - (5000 - 500), 1e-6, '5000 less its DEF 500: no ×1.25, shield untouched');
+  assert.deepEqual(dv.map((c) => [c.source.defId, c.target.defId]), [['g1_a', 'g2_a'], ['g1_a', 'fod_a'], ['g2_a', 'fod_a']], 'a knocked-out marker still resolves its marks; only a target knock-out cancels marks');
+  close(f.hp, 20000 - 2 * (5000 - 500), 1e-6, 'two marks less DEF 500 each: no ×1.25, shield untouched');
   assert.equal(f.buffs.find((b) => b.key === 'test:shield')?.shield, 3000);
   close(g1.s.atk, 1000 + 1000 + 1000, 1e-6, 'the base ATK of everything it marked stays');
   assert.equal(h.b.getPlayer('p1').bonds.egirShip.layers, 1 + 2, 'layers = tiers of the devoured units');
@@ -512,29 +512,27 @@ test('阿戈尔 5: shared charges follow first knock-out order in 联防, 调和
   checkInvariants(hb.b);
 });
 
-test('阿戈尔 5: a beneficiary 埃芒加德 or M3茧甲 save in place has used its 阿戈尔 revive [ASSUMED]; the others keep theirs', () => {
-  const list = [['g0_a', ['egirShip']], ['g1_a', ['egirShip']], ['g2_a', ['egirShip']], ['g3_a', ['egirShip']], ['g4_a', ['egirShip']]];
+test('阿戈尔 5: 埃芒加德 / M3茧甲 redeploy first without spending a shared revive; the first unanswered knock-out uses one', () => {
+  const list = Array.from({ length: 5 }, (_, i) => [`g${i}_a`, ['egirShip']]);
   const units = (it = {}) => list.map(([chessId], i) => ({ chessId, row: 9 + (i % 2) * 3, col: 3 + i, items: it[i] }));
   const kill = (h, id) => { const u = h.unit(id); h.b.dealDamage(null, u, { amount: 1e9, type: 'true' }); return u; };
   for (const how of ['band', 'item']) {
-    const h = makeBattle({
-      defs: defsOf(list), autoFinish: false, timeLimit: 60, hooks: ['death', 'deploy'],
-      units: units(how === 'item' ? { 0: ['chess_item_4_12_e_a'] } : {}), ...(how === 'band' ? { bandId: 'band_ermengard' } : {}),
-      bonds: { egirShip: bondOn(5, 0, null, [3, 5]) },
-    });
-    h.step(1);
-    // g0, g1, g2 (columns 3–5) hold the 阿戈尔 revives; g0 is saved in place first
+    const h = makeBattle({ defs: defsOf(list), autoFinish: false, timeLimit: 60, hooks: ['death', 'deploy'],
+      units: units(how === 'item' ? { 0: ['chess_item_4_12_e_a'] } : {}),
+      ...(how === 'band' ? { bandId: 'band_ermengard' } : {}),
+      bonds: { egirShip: bondOn(5, 0, null, [3, 5]) } });
+    h.step();
+    const redeploys = u => h.hooksOf('deploy').filter(c => c.unit === u && !c.initial).length;
     const g0 = kill(h, 'g0_a');
-    assert.ok(g0.alive && h.hooksOf('death').filter((c) => c.unit === g0).length === 0, `${how}: saved in place (no knock-out)`);
-    // 埃芒加德 saves the battle's first 3 knock-downs: its other 2 go to g3 and g4 (no 阿戈尔 beneficiaries)
-    if (how === 'band') for (const id of ['g3_a', 'g4_a']) assert.ok(kill(h, id).alive, 'band revive');
+    assert.ok(g0.alive && redeploys(g0) === 1, `${how}: real death and free redeployment`);
+    assert.equal(h.hooksOf('death').filter(c => c.unit === g0 && c.reason === 'killed').length, 1);
+    if (how === 'band') for (const id of ['g3_a', 'g4_a']) assert.ok(kill(h, id).alive, 'remaining band revives');
     kill(h, 'g0_a');
-    assert.ok(!g0.alive, `${how}: its 阿戈尔 revive went with the save — its first knock-out is final`);
-    assert.equal(h.hooksOf('deploy').filter((c) => c.unit === g0 && !c.initial).length, 0);
-    for (const id of ['g1_a', 'g2_a']) {
-      const u = kill(h, id);
-      assert.ok(u.alive && h.hooksOf('deploy').filter((c) => c.unit === u && !c.initial).length === 1, `${how}: ${id} revived by 阿戈尔`);
-    }
+    assert.ok(g0.alive && redeploys(g0) === 2, `${how}: its first unanswered knock-out uses 阿戈尔`);
+    kill(h, 'g0_a');
+    assert.ok(!g0.alive, 'a second unanswered knock-out has no shared revive');
+    for (const id of ['g1_a', 'g2_a']) { const u = kill(h, id); assert.ok(u.alive && redeploys(u) === 1, `${id}: remaining shared charge`); }
+    assert.ok(!kill(h, 'g3_a').alive, 'all three shared charges spent');
     checkInvariants(h.b);
   }
 });

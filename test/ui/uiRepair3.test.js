@@ -65,7 +65,7 @@ describe('detail card vs a press on the field', () => {
   });
 
   test('the field press handler closes the card whether or not a piece is selected', () => {
-    const src = readFileSync(new URL('../../public/js/screens/game.js', import.meta.url), 'utf8');
+    const src = readFileSync(new URL('../../public/js/screens/game/match.js', import.meta.url), 'utf8');
     const h = src.slice(src.indexOf('const onDown = () => {'), src.indexOf("host.addEventListener('pointerdown', onDown, true)"));
     assert.ok(h.length > 0);
     assert.match(h, /setDetail\(\(d\) => \(closesOnFieldPress\(d\) \? null : d\)\)/);
@@ -87,6 +87,6 @@ describe('dev hook', () => {
   test('useFieldView clears globalThis.__SP_VIEW__ when it destroys the view', () => {
     const src = readFileSync(new URL('../../public/js/ui/fieldHost.js', import.meta.url), 'utf8');
     const cleanup = src.slice(src.indexOf('return () => {', src.indexOf('export function useFieldView')));
-    assert.match(cleanup.slice(0, 600), /globalThis\.__SP_VIEW__ === viewRef\.current\) globalThis\.__SP_VIEW__ = null/);
+    assert.match(cleanup, /globalThis\.__SP_VIEW__ === viewRef\.current\) globalThis\.__SP_VIEW__ = null/);
   });
 });

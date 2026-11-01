@@ -1,3 +1,6 @@
+import { store, useStore } from './store.js';
+import { zhajingEditorChess } from '../../shared/zhajing-loadout.js';
+import { isZhajing } from '../../shared/zhajing-constants.js';
 // Lazy loader + cache for the generated game data served at /data/*.json.
 //
 // Files are fetched on first use and cached for the page's lifetime (the Promise is shared, so concurrent callers
@@ -477,7 +480,35 @@ export function createDataStore(opts = {}) {
 }
 
 /** Browser data store singleton. */
-export const data = createDataStore({ rosterAssets: true });
+const vanillaData = createDataStore({ rosterAssets: true });
+const zhajingData = createDataStore({ base: '/data/zhajing/', rosterAssets: true, fetch: (...args) => globalThis.fetch(...args) });
+export const getDataSource = mode => mode === 'zhajing' ? zhajingData : vanillaData;
+let editorChess, editorDefaults, editorRecords;
+function zhajingRecords() {
+  const chess = zhajingData.get('chess'), defaults = zhajingData.get('zjDefaultLoadout');
+  if (chess !== editorChess || defaults !== editorDefaults) {
+    editorChess = chess; editorDefaults = defaults;
+    editorRecords = zhajingEditorChess(chess, defaults);
+  }
+  return editorRecords || {};
+}
+export const zhajingEditorData = new Proxy({}, { get(_target, key) {
+  if (key === 'get') return name => name === 'chess' ? zhajingRecords() : zhajingData.get(name);
+  if (key === 'lookup') return (name, id) => name === 'chess' ? zhajingRecords()[id] || null : zhajingData.lookup(name, id);
+  if (key === 'list') return name => name === 'chess'
+    ? Object.values(zhajingRecords()).filter(c => c?.zhajing) : zhajingData.list(name);
+  const value = zhajingData[key]; return typeof value === 'function' ? value.bind(zhajingData) : value;
+} });
+
+export function dataModeKey(state = store.get()) {
+  return isZhajing(state.room || state.spectator || state.match?.public) ? 'zhajing' : 'vanilla';
+}
+export const data = new Proxy({}, { get(_target, key) {
+  if (key === 'modeKey') return dataModeKey;
+  if (key === 'setLocale') return (...args) => Promise.all([vanillaData.setLocale(...args), zhajingData.setLocale(...args)]);
+  const owner = dataModeKey() === 'zhajing' ? zhajingData : vanillaData;
+  const value = owner[key]; return typeof value === 'function' ? value.bind(owner) : value;
+} });
 
 /** @param {...string} names @returns {Promise<any[]>} */
 export const loadData = (...names) => data.loadAll(...names);
@@ -570,16 +601,21 @@ export function getMode(modeId) {
  * @returns {boolean} true once every file is settled (ready or missing)
  */
 export function useData(...names) {
+  const mode = useStore(dataModeKey);
+  return useDataSource(getDataSource(mode), ...names);
+}
+
+export function useDataSource(source, ...names) {
   const [, force] = useReducer((c) => c + 1, 0);
   const key = names.join('|');
   useEffect(() => {
     let alive = true;
-    const unsub = data.subscribe((n) => { if (alive && names.includes(n)) force(); });
-    for (const n of names) data.load(n);
+    const unsub = source.subscribe((n) => { if (alive && names.includes(n)) force(); });
+    for (const n of names) source.load(n);
     return () => { alive = false; unsub(); };
-  }, [key]);
+  }, [key, source]);
   return names.every((n) => {
-    const s = data.status(n);
+    const s = source.status(n);
     return s === 'ready' || s === 'missing';
   });
 }

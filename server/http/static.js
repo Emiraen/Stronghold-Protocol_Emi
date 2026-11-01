@@ -27,7 +27,10 @@ const EMPTY_LOCAL_ART = Buffer.from(JSON.stringify({ version: 1, source: 'none',
 export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = path.join(ROOT, 'server', 'sim'),
   packsDir = path.join(ROOT, 'packs'), pluginsDir = path.join(ROOT,'plugins'), packs = null, pluginHttp = null, log = noopLog }) {
   const registry = packs || createPackRegistry({ publicDir, dataDir, packsDir, pluginsDir }, { log });
+  const zhajingEngine = path.join(ROOT, 'server/modes/zhajing/engine');
   const mounts = [
+    { prefix: '/zhajing/server/sim/', name: 'sim', dir: path.join(zhajingEngine, 'server/sim'), only: new Set(['.js']), deny: SIM_PRIVATE },
+    { prefix: '/zhajing/shared/', name: 'shared', dir: path.join(zhajingEngine, 'shared'), only: new Set(['.js']) },
     { prefix: '/data/', name: 'data', dir: path.resolve(dataDir) },
     { prefix: '/shared/', name: 'shared', dir: path.resolve(sharedDir) },
     // the simulation: ES modules only (no directory listings, no other file types, no Node-only loader)
@@ -48,6 +51,10 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
     }
     if (isStudioPath(decoded)) { sendError(req,res,404,'页面不存在 · Not found'); return; }
     if (pluginHttp && await pluginHttp(req,res,decoded,query)) return;
+    if (decoded === '/zhajing/server/data.js') {
+      const body = Buffer.from(DATA_SHIM_JS.replace("'./sim/simdata.js'", "'/zhajing/server/sim/simdata.js'"));
+      await serveStaticBuffer(req, res, body, { type: MIME['.js'], cacheControl: 'no-cache' }, gzipCache, log); return;
+    }
     if (decoded === '/data.js') {
       const headers = { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache', ETag: shimTag, 'Content-Length': shimBody.length };
       if (isNotModified(req, shimTag, new Date(0))) { delete headers['Content-Length']; res.writeHead(304, headers); res.end(); return; }

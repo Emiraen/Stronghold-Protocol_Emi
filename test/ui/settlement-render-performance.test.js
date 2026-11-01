@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parse } from 'acorn';
+import { settlementReady, reportResult, bestResultStats } from '../../public/js/screens/result.js';
 
 // Structural guards complement the browser profile: they protect which component
 // owns an animation, not machine-dependent frame-time thresholds.
@@ -80,4 +81,45 @@ test('level and ranked progress animate transform on full-width tracks, not layo
     assert.ok(css.includes('transform-origin: left center'));
   }
   assert.ok(rule(rankCss, '.rsettle__cursor-track').includes('inset: 0'));
+});
+
+
+test('ready receipts bypass the fixed end plate and extra radar wait, pending receipts do not', () => {
+  const ready = { matchId: 'one', players: [{ playerId: 'p', stats: { kills: 2 }, reward: 17 }] };
+  assert.equal(settlementReady(null), false);
+  assert.equal(settlementReady({}), false);
+  assert.equal(settlementReady({ ...ready, settlementPending: true }), false);
+  assert.equal(settlementReady({ ...ready, incomplete: true }), false);
+  assert.equal(settlementReady({ ...ready, settlementErrors: [{ code: 'FAILED' }] }), false);
+  assert.equal(settlementReady({ ...ready, players: [{ stats: null }] }), false);
+  assert.equal(settlementReady({ ...ready, players: [{ settlementError: { code: 'FAILED' } }] }), false);
+  assert.equal(settlementReady(ready), true);
+  assert.ok(game.includes('const endOn = !resultReady &&'));
+  assert.ok(game.includes('if (!over || resultReady)'));
+  assert.ok(game.includes('}, [over, resultReady])'));
+  assert.ok(sourceOf('SettleFlow').includes("useState(() => (!self ? 'team' : 'self'))"));
+});
+
+test('same match pending and later final payloads are never confused by identity caching', () => {
+  const pending = { matchId: 'same-match', settlementPending: true, players: [{ playerId: 'p', stats: { kills: 3 }, reward: 5 }] };
+  const complete = { ...pending, settlementPending: false, players: [{ playerId: 'p', stats: { kills: 9 }, reward: 31 }] };
+  assert.equal(reportResult(pending).players[0].reward, null);
+  assert.equal(settlementReady(pending), false);
+  assert.equal(settlementReady(complete), true);
+  assert.equal(reportResult(complete).players[0].reward, 31);
+  assert.equal(reportResult(complete).players[0].stats.kills, 9);
+  assert.ok(sourceOf('SettleFlow').includes('[res, pub]'));
+  assert.ok(sourceOf('SettleFlow').includes('[res, myId]'), 'late final payload refreshes the level summary');
+  assert.ok(result.includes('useMemo(() => reportResult(result, pub), [result, pub])'));
+});
+
+test('best-stat comparison is memoized and preserves zero, tie and new final-data rules', () => {
+  const rows = [{ playerId: 'a', stats: { kills: 3, dmgDealt: 0 } }, { playerId: 'b', stats: { kills: 3, dmgDealt: 7 } }];
+  const before = structuredClone(rows);
+  assert.deepEqual(bestResultStats(rows), { kills: 'a', dmgDealt: 'b' });
+  assert.deepEqual(bestResultStats([rows[0]]), {});
+  assert.deepEqual(bestResultStats([]), {});
+  assert.deepEqual(rows, before);
+  assert.equal(bestResultStats([{ ...rows[0], stats: { kills: 10 } }, rows[1]]).kills, 'a');
+  assert.ok(result.includes('useMemo(() => bestResultStats(r.players), [r.players])'));
 });

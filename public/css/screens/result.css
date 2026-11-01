@@ -86,7 +86,7 @@
    design's pixels / 100. The terrain, rays, emblems and frames are drawn here (original shapes).
    ========================================================================================== */
 .settle { background: #040606; color: #eef3f1; }
-.settle__stage { position: absolute; left: 50%; top: 50%; width: 19.2rem; height: 10.8rem; transform: translate(-50%, -50%) scale(var(--k, 1));
+.settle__stage { position: absolute; left: var(--settle-center-x, 50%); top: var(--settle-center-y, 50%); width: 19.2rem; height: 10.8rem; transform: translate(-50%, -50%) scale(var(--k, 1)); --t: 1rem;
   /* fixed positions: the 文字大小 boost (theme.css --t) would push the text over its neighbours; --k already scales it */
 }
 .settle__barbg { position: absolute; left: -10rem; right: -10rem; top: 9rem; bottom: -6rem; background: linear-gradient(180deg, #0d1010, #070909 40%); border-top: 1px solid rgba(200, 214, 210, .1); }

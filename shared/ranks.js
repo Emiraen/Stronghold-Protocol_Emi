@@ -36,6 +36,13 @@ export const PLACEMENT_MATCHES = 3;
 export const PLACEMENT_MAX_POINTS = 2050;   // 超凡三 50 分
 export const RADIANT_POINTS = 2550;
 export const RADIANT_GLOBAL_LIMIT = 50;
+export const RANK_INACTIVITY_MS = 5 * 24 * 60 * 60 * 1000;
+
+/** Presentation only: never replace stored points or scoring inputs with this masked tier. */
+export function inactiveRank(points) {
+  return { ...rankOf(2100), points: Math.max(0, Math.floor(Number(points) || 0)),
+    label: '神话一', globalRanked: false, inactive: true };
+}
 export const RANK_BASE_GAIN_MAX = 50;
 
 const CN_NUM = { 1: '一', 2: '二', 3: '三' };

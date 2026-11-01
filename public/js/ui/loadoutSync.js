@@ -1,7 +1,7 @@
 import { t as trA } from '../../../shared/i18n.js';
 // 档案调配以服务器为准；无身份的旧本地配置仅供用户主动导入。
 import { createStore, loadPref, savePref } from '../store.js';
-import { data } from '../data.js';
+import { data, getDataSource } from '../data.js';
 import { contentSet as appContentSet } from '../content.js';
 import { LOADOUT_PREF, parseStored, parseStoredOps, sanitizeEntries, sanitizeOps } from './loadoutModel.js';
 import { isLoadoutEntries, isLoadoutOps, cultivationCharIds } from '../../../shared/protocol.js';
@@ -45,33 +45,36 @@ export const loadoutStore = createStore({
   sync: 'loading',
 });
 
+export const zhajingLoadoutStore = createStore({ ...loadoutStore.get(), entries: {}, ops: {}, legacyEntries: {}, legacyOps: {} });
+
 /** 仅用户编辑调用；异步导入/确认必须携带开始时的身份代次。 */
-export function setEntries(entries, identityEpoch = loadoutStore.get().identityEpoch) {
-  const s = loadoutStore.get();
+export function setEntries(entries, identityEpoch = loadoutStore.get().identityEpoch, target = loadoutStore) {
+  const s = target.get();
   if (!s.profileReady || identityEpoch !== s.identityEpoch) return false;
-  loadoutStore.set({ entries: entries && typeof entries === 'object' ? entries : {} });
+  target.set({ entries: entries && typeof entries === 'object' ? entries : {} });
   return true;
 }
 
-export function setOpsMap(ops, identityEpoch = loadoutStore.get().identityEpoch) {
-  const state = loadoutStore.get();
+export function setOpsMap(ops, identityEpoch = loadoutStore.get().identityEpoch, target = loadoutStore) {
+  const state = target.get();
   if (!state.profileReady || identityEpoch !== state.identityEpoch) return false;
-  loadoutStore.set({ ops: ops && typeof ops === 'object' ? ops : {} });
+  target.set({ ops: ops && typeof ops === 'object' ? ops : {} });
   return true;
 }
 
 export function applyLoadoutEntries(entries, lookup, options = loadoutStore.get().identityEpoch) {
   const opts = typeof options === 'number' ? { identityEpoch: options } : options || {};
-  const identityEpoch = opts.identityEpoch ?? loadoutStore.get().identityEpoch;
+  const target = opts.target || loadoutStore;
+  const identityEpoch = opts.identityEpoch ?? target.get().identityEpoch;
   const asked = Object.keys(entries || {}).length;
   const clean = sanitizeEntries(entries, lookup);
   const applied = Object.keys(clean).length;
   const cleanOps = opts.ops && opts.isOperator ? sanitizeOps(opts.ops, opts.isOperator) : null;
   const countOps = cleanOps ? Object.keys(cleanOps).length : 0;
   const askedOps = opts.ops ? Object.keys(opts.ops).length : 0;
-  const state = loadoutStore.get();
+  const state = target.get();
   if (!state.profileReady || state.identityEpoch !== identityEpoch) return { applied: 0, ops: 0, dropped: asked + askedOps };
-  if (applied || countOps) loadoutStore.set({ ...(applied ? { entries: clean } : {}), ...(cleanOps ? { ops: cleanOps } : {}) });
+  if (applied || countOps) target.set({ ...(applied ? { entries: clean } : {}), ...(cleanOps ? { ops: cleanOps } : {}) });
   return { applied, ...(cleanOps ? { ops: countOps } : {}), dropped: Math.max(0, asked - applied) + Math.max(0, askedOps - countOps) };
 }
 
@@ -90,15 +93,15 @@ export function openLoadout(from = 'lobby', sel = null, tab = null) {
   data.load('backups');
   data.load('effects');
   data.load('garrisons');
-  loadoutStore.set({ open: true, from, ...(sel ? { sel } : {}), ...(['loadout', 'ownership', 'diy'].includes(tab) ? { tab } : {}) });
+  loadoutStore.set({ open: true, from, ...(sel ? { sel } : {}), ...(data.modeKey() === 'zhajing' && tab == null ? { tab: 'zhajing' } : {}), ...(['loadout', 'ownership', 'diy', 'zhajing'].includes(tab) ? { tab } : {}) });
 }
 export const closeLoadout = () => loadoutStore.set({ open: false });
 
 /** 网络、数据与计时器可注入；服务端状态永不触发上传。 */
-export function installLoadoutSync({ net, getChessReady, lookupChess, timers, target = loadoutStore, notify } = {}) {
+export function installLoadoutSync({ net, getChessReady, lookupChess, timers, target = loadoutStore, notify, scope = null, dataSource = getDataSource('vanilla') } = {}) {
   const T = timers || { setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms), clearTimeout: (id) => globalThis.clearTimeout(id) };
-  const ready = getChessReady || (() => data.load('chess'));
-  const lookup = lookupChess || ((id) => data.lookup('chess', id));
+  const ready = getChessReady || (() => dataSource.load('chess'));
+  const lookup = lookupChess || ((id) => dataSource.lookup('chess', id));
   const tell = notify || ((text) => toast(text, 'warn'));
   let timer = null;
   let epoch = 0;
@@ -143,14 +146,14 @@ export function installLoadoutSync({ net, getChessReady, lookupChess, timers, ta
       if (loaded == null) { setState('error'); return; }
       const needsOps = Object.keys(target.get().ops || {}).length > 0;
       if (needsOps) {
-        const opData = await Promise.all([data.load('chess'), data.load('backups')]);
+        const opData = await Promise.all([dataSource.load('chess'), dataSource.load('backups')]);
         if (opData.some((value) => value == null)) { setState('error'); return; }
       }
       if (disposed || generation !== epoch || !edited || !target.get().profileReady || net.status !== 'online') return;
       // Read both maps after all data awaits so a newer edit cannot be paired with stale entries.
       const latest = target.get();
       const entries = sanitizeEntries(latest.entries || {}, lookup);
-      const ids = cultivationCharIds(data.get('chess'), data.get('backups'));
+      const ids = cultivationCharIds(dataSource.get('chess'), dataSource.get('backups'));
       const ops = sanitizeOps(latest.ops || {}, (id) => ids.has(id));
       const json = JSON.stringify({ entries, ops });
       if (json === pendingJson) { edited = false; setState('sending'); return; }
@@ -163,7 +166,7 @@ export function installLoadoutSync({ net, getChessReady, lookupChess, timers, ta
       pendingJson = json;
       setState('sending');
       try {
-        await net.request('profile.loadout', { v: 1, profileId: target.get().profileId, editId: my, entries, ops });
+        await net.request('profile.loadout', { v: 1, ...(scope ? { scope } : {}), profileId: target.get().profileId, editId: my, entries, ops });
         if (disposed || generation !== epoch || my !== seq) return;
         pendingJson = null;
         lastAccepted = json;
@@ -194,7 +197,7 @@ export function installLoadoutSync({ net, getChessReady, lookupChess, timers, ta
   const offWelcome = net.on('welcome', reset);
   const offStatus = net.on('status', (s) => { if (s?.status !== 'online') reset(); });
   const offState = net.on('loadout.state', (msg) => {
-    if (disposed || net.status !== 'online' || msg?.v !== 1 || !/^[0-9a-f]{32}$/.test(msg.profileId)
+    if ((msg?.scope || null) !== scope || disposed || net.status !== 'online' || msg?.v !== 1 || !/^[0-9a-f]{32}$/.test(msg.profileId)
         || typeof msg.initialized !== 'boolean' || !isLoadoutEntries(msg.entries) || (msg.ops != null && !isLoadoutOps(msg.ops))) return;
     const s = target.get();
     if (s.profileId && s.profileId !== msg.profileId) return;

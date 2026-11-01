@@ -36,7 +36,7 @@ test('titles: each player ≤ 1 title, each title ≤ once, leaders first, 卫�
   assert.equal(dead.size, 0, 'an eliminated player gets nothing for zero stats');
 });
 
-test('m.result rows: lineup, bonds, stats, roundsPassed per player, trophies (co-op) and rewards', () => {
+test('m.result rows: lineup, bonds, stats, roundsPassed per player, trophies (co-op) and rewards', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'HARD', humans: 2, seed: 80, fake: true, script: (b) => (b.round !== 2 ? {} : b.kind === 'unite' ? { survivors: { p_1: 10 } } : { leaks: { p_1: 10 } }) }).start();
   const m = h.m;
   h.toPrep(1);
@@ -46,7 +46,7 @@ test('m.result rows: lineup, bonds, stats, roundsPassed per player, trophies (co
   h.m.onLeave('p_1');
   assert.equal(h.ended, null, 'a human is still there');
   h.m.onLeave('p_0');
-  const r = h.ended;
+  const r = await h.waitForEnd();
   assert.ok(r);
   assert.equal(r.reason, 'abandoned');
   assert.equal(r.victory, false);
@@ -64,11 +64,11 @@ test('m.result rows: lineup, bonds, stats, roundsPassed per player, trophies (co
   m.dispose();
 });
 
-test('Final Assault: the result LP are the alive players\' shares of the merged team LP (a team beaten to 0 shows 0)', () => {
+test('Final Assault: the result LP are the alive players\' shares of the merged team LP (a team beaten to 0 shows 0)', async () => {
   // defeat: the boss is never hurt, the overtime drain empties the team pool
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 4, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 0 } : {}) }).start();
   h.autoHumans();
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(h.m.teamLp, 0);
   assert.equal(end.reason, 'defeat');
   assert.equal(end.teamLp, 0);
@@ -90,7 +90,7 @@ test('Final Assault: the result LP are the alive players\' shares of the merged 
   h2.drive(() => h2.m.phase === PHASE.PREP && h2.m.round === 14);
   const [a, b, c] = ['p_0', 'p_1', 'p_2'].map((id) => h2.ps(id));
   a.lp = 30; b.lp = 21; c.lp = 9;
-  const r2 = h2.runToEnd();
+  const r2 = (await h2.runToEnd());
   assert.equal(r2.victory, true);
   assert.equal(h2.m.teamLp, 60 - 11);
   assert.equal(r2.teamLp, 49);

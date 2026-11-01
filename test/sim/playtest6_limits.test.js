@@ -372,11 +372,9 @@ test('限伤 vs the real leader defences [ASSUMED order]: 阿利斯泰尔\'s 500
   assert.equal(pool10.hp, before10);
 });
 
-test('限伤 vs 【死亡集群】 (real kit): a drone killed by an operator costs the leader 2 % of the pool max — a loss that lands up to a 14999950 pool and is cancelled above it (ceil)', () => {
-  // boss_1 / boss_8 skill 2: bb hp_ratio 0.02; the leader's max HP is the shared pool's max (Battle syncs it), so the
-  // loss is 0.02 × pool max. Today's largest drone pool is boss_8 ABYSS 7.2M → 144000; a pool above 14999950 (≈ 2.08 ×
-  // that), where ceil(0.02 × max) reaches 300000, would make every drone kill a cancelled hit — kept in view for any
-  // change to the pool size (research 11 §6).
+test('死亡集群 drone link: a pool-share loss is not a hit and bypasses the leader hit cap (DESIGN §25.13.4)', () => {
+  // boss_1 / boss_8 skill 2: bb hp_ratio 0.02; the shared-pool loss is marked noHitLimit.
+  // Check both sides of the old 300000 hit threshold without treating this loss as a hit.
   assert.equal(gd.enemy('enemy_9013_acstmk').skills.find((s) => s.prefabKey === '2').bb.hp_ratio, 0.02);
   assert.equal(gd.enemy('enemy_9013_acstmk_2').skills.find((s) => s.prefabKey === '2').bb.hp_ratio, 0.02);
   const withOp = [{ ...PAIR[0], units: [{ uid: 1, chessId: 'chess_char_1_01_a', row: 10, col: 2 }] }, PAIR[1]];
@@ -407,8 +405,8 @@ test('限伤 vs 【死亡集群】 (real kit): a drone killed by an operator cos
   assert.deepEqual(under.caps, []);
   for (const m of [14999951, 15000000]) {
     const over = run(m);
-    assert.equal(over.lost, 0, `${m}: ceil(0.02 × max) = 300000, one hit at the line: cancelled`);
-    assert.deepEqual(over.caps.map((c) => c[0]), [over.id]);
+    assert.ok(Math.abs(over.lost - m * 0.02) < 1e-6, `${m}: the full 2% pool share is deducted`);
+    assert.deepEqual(over.caps, [], 'pool share is never reported as a capped hit');
   }
 });
 

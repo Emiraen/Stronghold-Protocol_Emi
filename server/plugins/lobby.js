@@ -1,3 +1,6 @@
+import { ZHAJING_VARIANT } from '../../shared/zhajing-constants.js';
+import { getZhajingData } from '../modes/zhajing/Match.js';
+import { MIZUKI_VARIANT } from '../../shared/mizuki-constants.js';
 import { ERR, DIFFICULTIES, ENDLESS_VARIANT, modeIdFor } from '../../shared/constants.js';
 import { isContentHash } from '../../shared/plugins/identity.js';
 import { KITTED_CHARS } from '../sim/content/kits/index.js';
@@ -11,6 +14,9 @@ export class PluginLobby {
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     if (room.match) return fail(ERR.ROOM_STARTED);
+    if (room.variant === ZHAJING_VARIANT) return fail(ERR.PLUGIN_BLOCKED, '炸惊模拟使用独立内置规则');
+    if (room.variant === 'entertainment_annihilation') return fail(ERR.PLUGIN_BLOCKED, '湮灭模拟使用独立内置规则');
+    if (room.variant === MIZUKI_VARIANT) return fail(ERR.PLUGIN_BLOCKED, '水月联合探索使用独立内置规则，不接受房间插件');
     if (room.variant === ENDLESS_VARIANT) return fail(ERR.PLUGIN_BLOCKED, '无尽模式使用内置规则，不接受房间插件');
     if (room.ranked) return fail(ERR.PLUGIN_BLOCKED, '排位房间仅使用原版内容');
     if (room.matchFill || room.matchCandidate) return fail(ERR.PLUGIN_BLOCKED, '请先结束匹配补齐');
@@ -156,7 +162,7 @@ export class PluginLobby {
   }
 
 
-  dataFor(room) { return room?.modded ? this.plugins?.dataOf(room.content.cs) || this.safeData() : this.safeData(); }
+  dataFor(room) { if (room?.variant === ZHAJING_VARIANT) return getZhajingData(); return room?.modded ? this.plugins?.dataOf(room.content.cs) || this.safeData() : this.safeData(); }
   kittedFor(room) { return room?.modded ? this.plugins?.kittedOf(room.content.cs) || KITTED_CHARS : KITTED_CHARS; }
   notePluginsChanged(identity, ids, kind) {
     for (const room of this.rooms.values()) {

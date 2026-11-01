@@ -14,6 +14,12 @@
 .sp-chat.is-open { width: min(380px, calc(100vw - 24px)); }
 .sp-chat:not(.sp-chat--match) { bottom: calc(var(--sp-vv-bottomGap) + max(12px, var(--sa-b)) + 30px); }
 .sp-chat--match { --chat-cap: 240px; top: auto; transform: none; }
+/* Exploration owns an empty header slot; never float its launcher over map nodes. */
+.mz-chat-slot { display:block; flex:none; width:32px; height:32px; }
+.sp-chat.sp-chat--docked .sp-chat__toggle { width:32px; min-width:32px; height:32px; min-height:32px; padding:5px; justify-content:center; gap:0; }
+.sp-chat.sp-chat--docked .sp-chat__toggle .sp-chat__compact-icon { display:block; width:18px; height:18px; }
+.sp-chat.sp-chat--docked .sp-chat__label,.sp-chat.sp-chat--docked .sp-chat__state { display:none; }
+.sp-chat.sp-chat--docked .sp-chat__count { position:absolute; top:-6px; right:-6px; min-width:15px; padding:1px 3px; font-size:9px; pointer-events:none; }
 /* 避让高度由组件测量工具栏/房间操作区，不再猜测 rem 行数。 */
 .gm__corner { bottom: 12px; left: 12px; }
 .gm__corner .gm__chat-slot {

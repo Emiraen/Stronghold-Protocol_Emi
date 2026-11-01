@@ -120,9 +120,15 @@ test('ring healers heal three allies; bards heal everyone in range every second'
   });
   h2.step();
   h2.unit('a1').hp = 1000; h2.unit('a2').hp = 1000;
-  h2.run(3.05);
-  approx(h2.unit('a1').hp, 1000 + 3 * 100);
-  approx(h2.unit('a2').hp, 1000 + 3 * 100);
+  assert.ok(h2.runUntil(() => h2.unit('a1').s.hpRegen > 0, 1), 'bard aura starts');
+  const t0 = h2.b.time;
+  const initial = ['a1', 'a2'].map(id => ({ hp: h2.unit(id).hp, pending: h2.unit(id)._regenAcc ?? 0 }));
+  h2.run(3);
+  for (const [i, id] of ['a1', 'a2'].entries()) {
+    const a = h2.unit(id);
+    approx(a.findBuff(`trait:bard:${h2.unit('t_bard').id}`).mods.hpRegen, 100);
+    approx(a.hp - initial[i].hp + (a._regenAcc ?? 0) - initial[i].pending, 100 * (h2.b.time - t0));
+  }
   assert.equal(h2.unit('t_bard').stats.attacks, 0);
 });
 

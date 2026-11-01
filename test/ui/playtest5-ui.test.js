@@ -149,7 +149,8 @@ describe('9: the prep camera keeps the bench clear of the shop bar on phones in 
     assert.match(read('public/js/ui/fieldHost.js'), /padding: hudPadding, hud: hudBands \}/);
     const app = read('public/js/render/app.js');
     // (the folded shop's band since public issue #5: test/ui/issue5-fold-camera.test.js)
-    assert.match(app, /hud: hudBands\(vk, sz, \{ shop: o\.shop !== false \}\),/);
+    assert.match(app, /const hud = hudBands\(vk, sz, \{ shop: o\.shop !== false \}\);/);
+    assert.match(app, /const camera = presetCamera\([\s\S]*?\n\s+hud,/);
     assert.match(app, /presetCamera\('prep', \{ width: s0\.width, height: s0\.height, padding: defaultPadding\('prep', s0\) \}, \{ hud: hudBands\('prep', s0\) \}\)/);
   });
 

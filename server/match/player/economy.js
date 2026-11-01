@@ -1,4 +1,4 @@
-import { ERR, layerGainRoom, CYCLOPS_EXP_PRICE, CYCLOPS_EXP_PRICE_SCALE, CYCLOPS_EXP_NEED_SCALE } from "../../../shared/constants.js";
+import { ERR, layerGainRoom, canStackBond, CYCLOPS_EXP_PRICE, CYCLOPS_EXP_PRICE_SCALE, CYCLOPS_EXP_NEED_SCALE } from "../../../shared/constants.js";
 
 import { freeSlot } from "../board.js";
 
@@ -35,6 +35,10 @@ export class PlayerEconomy {
     if (receipt) receipt.stage = 'preflight';
     if (!this.gd.bond(bondId) || !Number.isFinite(n) || n <= 0) {
       if (receipt) receipt.noop = 'invalid';
+      return 0;
+    }
+    if (!canStackBond(bondId)) {
+      if (receipt) receipt.noop = 'non-stacking-bond';
       return 0;
     }
     if (requireActive && !(this.bonds[bondId] && this.bonds[bondId].active)) {
@@ -224,7 +228,15 @@ export class PlayerEconomy {
     if (!loc) return fail(ERR.BAD_TARGET);
     if (loc.piece.kind !== 'chess') return fail(ERR.BAD_TARGET, loc.piece.kind === 'item' ? 'items cannot be sold' : 'tokens cannot be sold');
     const piece = loc.piece;
-    // Returned equipment always has persistent overflow storage.
+    // Ordinary temp is finite. Refuse before detaching anything if returning
+    // the equipment would lose an item; entertainment item overflow is unchanged.
+    const unlimitedItems = !this.m.ranked && ['entertainment_multi', 'entertainment_cyclops', 'entertainment_endless'].includes(this.m.variant);
+    if (!unlimitedItems && piece.items?.length) {
+      const handRoom = this.hand.filter(p => p == null).length + (loc.area === 'hand' ? 1 : 0);
+      const tempRoom = this.temp.slice(0, this.gd.tempSize).filter(p => p == null).length
+        + (loc.area === 'temp' && loc.idx < this.gd.tempSize ? 1 : 0);
+      if (piece.items.length > handRoom + tempRoom) return fail(ERR.HAND_FULL);
+    }
     this._detach(loc);
     this.removeTokensOf(piece.uid);
     for (const it of piece.items || []) {

@@ -66,7 +66,7 @@ export function roundHalfEven(x) {
   return Math.floor(x + 0.5);
 }
 
-const gen = (gd) => (gd.factions.generation && typeof gd.factions.generation === 'object' ? gd.factions.generation : {});
+const gen = (gd) => gd.difficulty === 'ANNIHILATION' ? { ...(gd.factions.generation || {}), ...gd.generation } : (gd.factions.generation && typeof gd.factions.generation === 'object' ? gd.factions.generation : {});
 const intOr = (v, d) => (Number.isInteger(v) && v > 0 ? v : d);
 
 /** Official movement class of an enemy key (randomEnemyAttributeDict.isFlyEnemy, else its motion). */
@@ -218,7 +218,7 @@ export function setupMatchWaves(gd, rng) {
 export function roundPick(gd, rng, factionsOrSetup, round) {
   const src = factionsOrSetup;
   const picks = src && !Array.isArray(src) && Array.isArray(src.picks) ? src.picks : (src && src.schedule && Array.isArray(src.schedule.picks) ? src.schedule.picks : null);
-  if (picks) return picks[round] ?? null;
+  if (picks && !(gd.difficulty === 'ANNIHILATION' && gd.endless && picks[round] === undefined)) return picks[round] ?? null;
   const factions = Array.isArray(src) ? src : (src && Array.isArray(src.factions) ? src.factions : []);
   const g = gen(gd);
   const types = gd.factions.types && typeof gd.factions.types === 'object' ? gd.factions.types : {};

@@ -21,6 +21,8 @@ function fakeTimers() {
     clearTimeout: (id) => queue.delete(id),
     setInterval: (fn, ms) => add(fn, ms, ms),
     clearInterval: (id) => queue.delete(id),
+    stall(ms) { now += ms; }, // a main-thread long task: clocks advance without executing callbacks
+    scheduled: () => [...queue.values()],
     advance(ms) {
       const end = now + ms;
       let calls = 0;
@@ -32,7 +34,7 @@ function fakeTimers() {
         if (!next) break;
         assert.ok(++calls < 100_000, 'fake timer queue must terminate');
         const [id, timer] = next;
-        now = timer.at;
+        now = Math.max(now, timer.at);
         if (timer.interval) timer.at += timer.interval;
         else queue.delete(id);
         timer.fn();
@@ -102,7 +104,7 @@ test('foreground silence at the old 15-second threshold retains the same socket'
   assert.equal(original.closes.length, 0);
 });
 
-test('foreground silence gets the exact 15.5-second grace then reconnects', (t) => {
+test('foreground silence gets the unchanged 15.5-second grace and one task to process queued input', (t) => {
   const { net, timers, socket, sockets } = context(t);
   const original = socket();
   timers.advance(15_500);
@@ -111,6 +113,8 @@ test('foreground silence gets the exact 15.5-second grace then reconnects', (t) 
   assert.equal(original.closes.length, 0);
   timers.advance(1);
   net._heartbeat();
+  assert.equal(net.status, 'online', 'one bounded task turn is available for queued input');
+  timers.advance(0);
   assert.equal(net.status, 'reconnecting');
   assert.equal(original.closes.at(-1).reason, 'heartbeat timeout');
   timers.advance(500);
@@ -130,7 +134,7 @@ test('a delayed pong clears silence without replacing the connection', (t) => {
   assert.equal(sockets.length, 1);
 });
 
-test('any valid inbound frame clears both heartbeat silence and a pending resume probe', (t) => {
+test('any valid inbound frame clears heartbeat silence after a foreground probe', (t) => {
   const { net, timers, socket, sockets } = context(t);
   timers.advance(13_300);
   net.resumeConnection();
@@ -141,24 +145,119 @@ test('any valid inbound frame clears both heartbeat silence and a pending resume
   assert.equal(sockets.length, 1);
 });
 
-test('focus recovery keeps its original 3-second deadline', (t) => {
-  const { net, timers, sockets } = context(t);
+test('foreground focus accepts a pong slower than three seconds without switching sockets', (t) => {
+  const { net, timers, socket, sockets } = context(t);
+  const original = socket();
   net.resumeConnection();
-  timers.advance(2_999);
+  assert.equal(net._resumeTimer, null, 'a live session has no shorter focus deadline');
+  const probe = original.last('ping');
+  timers.advance(5_000);
   assert.equal(sockets.length, 1);
   assert.equal(net.status, 'online');
-  timers.advance(1);
-  assert.equal(sockets.length, 2);
-  assert.equal(net.status, 'connecting');
+  original.receive({ t: 'pong', c: probe.c, s: timers.now() });
+  assert.equal(net.ping, 5_000);
+  timers.advance(10_000);
+  assert.equal(net.ws, original);
+  assert.equal(net.status, 'online');
 });
 
 test('repeated focus signals do not indefinitely extend a silent probe deadline', (t) => {
-  const { net, timers, sockets } = context(t);
+  const { net, timers, socket, sockets } = context(t);
+  const original = socket();
+  const since = net._unansweredSince;
   net.resumeConnection();
-  timers.advance(1_000); net.resumeConnection();
-  timers.advance(1_000); net.resumeConnection();
-  timers.advance(1_000);
+  for (let i = 0; i < 15; i++) {
+    timers.advance(1_000); net.resumeConnection(i % 2 === 0);
+    assert.equal(net._unansweredSince, since);
+    assert.equal(net._resumeTimer, null);
+  }
+  assert.equal(net.ws, original);
+  timers.advance(501); net.resumeConnection();
+  timers.advance(0);
+  assert.equal(net.status, 'reconnecting');
+  assert.equal(original.closes.at(-1).reason, 'heartbeat timeout');
+  timers.advance(500);
   assert.equal(sockets.length, 2);
+});
+
+test('a live socket with no focus reply still reconnects on its existing heartbeat deadline', (t) => {
+  const { net, timers, socket, sockets } = context(t);
+  const original = socket();
+  net.resumeConnection();
+  timers.advance(15_500);
+  assert.equal(net.ws, original);
+  timers.advance(500); // the existing four-second heartbeat samples silence at 16 seconds
+  assert.equal(net.status, 'reconnecting');
+  assert.equal(original.closes.at(-1).reason, 'heartbeat timeout');
+  timers.advance(500);
+  assert.equal(sockets.length, 2);
+});
+
+test('the pre-hello connected indicator also retains the full heartbeat window after focus', (t) => {
+  const { net, timers, socket } = context(t);
+  const original = socket();
+  net.name = net.helloName = null;
+  net.status = 'connected';
+  net.resumeConnection();
+  timers.advance(5_000);
+  assert.equal(net.ws, original);
+  assert.equal(net.status, 'connected');
+  original.receive({ t: 'pong', c: original.last('ping').c, s: timers.now() });
+  assert.equal(net._resumeTimer, null);
+});
+
+test('a long foreground pause gives an already queued message one task before timeout confirmation', (t) => {
+  const { net, timers, socket } = context(t);
+  const original = socket();
+  timers.setTimeout(() => original.receive({ t: 'room.state', code: 'TEST' }), 5_000);
+  timers.stall(20_000);
+  net._heartbeat(); // overdue timer runs before the queued socket event
+  assert.equal(net.status, 'online');
+  assert.notEqual(net._silenceTimer, null);
+  timers.advance(0);
+  assert.equal(net.status, 'online');
+  assert.equal(net.ws, original);
+  assert.equal(original.closes.length, 0);
+  assert.equal(net._silenceTimer, null);
+});
+
+test('a long foreground pause without queued input closes after exactly one confirmation task', (t) => {
+  const { net, timers, socket } = context(t);
+  const original = socket();
+  timers.stall(20_000);
+  const since = net._unansweredSince;
+  net._heartbeat();
+  const timer = net._silenceTimer;
+  for (let i = 0; i < 5; i++) net.resumeConnection();
+  assert.equal(net._silenceTimer, timer, 'focus cannot replace or extend confirmation');
+  assert.equal(net._unansweredSince, since);
+  timers.advance(0);
+  assert.equal(original.closes.at(-1).reason, 'heartbeat timeout');
+  assert.equal(net.status, 'reconnecting');
+});
+
+test('a cancelled timeout confirmation and stale socket input cannot close or alter a switched connection', (t) => {
+  const { net, timers, socket, welcome } = context(t);
+  const old = socket();
+  const oldMessage = old.onmessage;
+  timers.stall(20_000);
+  net._heartbeat();
+  const confirmation = timers.scheduled().find((item) => item.interval === 0 && item.at === timers.now())?.fn;
+  assert.equal(typeof confirmation, 'function');
+  net.closeForServerSwitch();
+  net.setName('博士');
+  net.connect(); socket().open(); welcome();
+  const current = socket();
+  current.receive({ t: 'session.lease', state: 'recovering', retryMs: 1500 });
+  const pending = net._unansweredSince;
+  oldMessage({ data: JSON.stringify({ t: 'pong', c: old.last('ping').c, s: timers.now() }) });
+  confirmation();
+  assert.equal(net.ws, current);
+  assert.equal(net.status, 'online');
+  assert.equal(net.leaseState, 'recovering');
+  assert.equal(net._unansweredSince, pending);
+  assert.equal(current.closes.length, 0);
+  assert.equal(net._silenceTimer, null);
 });
 
 test('returning from background gets a fresh probe window instead of stale foreground timeout', (t) => {
@@ -174,6 +273,18 @@ test('returning from background gets a fresh probe window instead of stale foreg
   timers.advance(6_000);
   assert.equal(net.ws, original);
   assert.equal(net.status, 'online');
+});
+
+test('a genuinely silent background socket still closes at the existing five-minute budget', (t) => {
+  const { net, timers, socket, setHidden } = context(t);
+  const original = socket();
+  setHidden(true); net.resumeConnection();
+  timers.advance(BACKGROUND_DEAD_AFTER_MS);
+  assert.equal(net.status, 'online');
+  assert.equal(net.ws, original);
+  timers.advance(4_000);
+  assert.equal(original.closes.at(-1).reason, 'heartbeat timeout');
+  assert.equal(net.status, 'reconnecting');
 });
 
 test('connecting sockets keep their original 10-second connection budget', (t) => {

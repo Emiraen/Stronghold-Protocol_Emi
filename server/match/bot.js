@@ -1066,7 +1066,7 @@ export function* createRehearsalSteps(m, ps, chosen, plans) {
         seed: deriveSeed(m.seed, `rehearse:${m.round}:${ps.seat}`), kind: 'normal', modeId: m.modeId, round: m.round,
         stageId: m.stageId, rect: { ...GEO.NORMAL_RECT }, timeLimit: wave.timeLimit, players: [ps.battleInput({ side: 'L', colOffset: 0 })],
         spawns: m._sanitizeSpawns(spawns, ps.playerId), routes: wave.routes, sharedBoss: null,
-        flags: { layerGainsEnabled: false, uncappedBondLayers: m.isEndless, uncappedNumericValues: m.isEndless, ...m.gd.dp }, fieldId: `r:${ps.playerId}`, enemyOverrides: wave.overrides, waveId: wave.templateId,
+        flags: { layerGainsEnabled: false, uncappedBondLayers: m.isEndless, uncappedNumericValues: m.isEndless, ...m.gd.dp, ...(m.isAnnihilation ? m.gd.annihilationFlags('normal', m.round) : {}) }, fieldId: `r:${ps.playerId}`, enemyOverrides: wave.overrides, waveId: wave.templateId,
         recordEvents: false,
       };
       if (m.workerPool) options.push(structuredClone({ ...opts, content: m.battleContent }));
@@ -1870,11 +1870,22 @@ function makeHandRoom(m, ps) {
 }
 
 function resolveTemp(m, ps) {
+  const unlimitedItems = !m.ranked && ['entertainment_multi', 'entertainment_cyclops', 'entertainment_endless'].includes(m.variant);
   for (let i = 0; i < ps.temp.length; i++) {
     const p = ps.temp[i];
     if (!p) continue;
     const idx = freeSlot(ps.hand);
     if (idx >= 0 && tryDo(() => ps.move(p.uid, { area: 'hand', idx }))) continue;
+    if (p.kind === 'item') {
+      if (unlimitedItems) continue;
+      // Resolve a finite temp item before the prep deadline can destroy it.
+      // Free a bench slot without selling a deployed unit or changing item rules.
+      if (sellWeakestHand(m, ps, { handOnly: true, keepPairs: false })) {
+        const j = freeSlot(ps.hand);
+        if (j >= 0) tryDo(() => ps.move(p.uid, { area: 'hand', idx: j }));
+      }
+      continue;
+    }
     if (p.kind === 'chess') {
       if (!sellWeakestHand(m, ps)) tryDo(() => ps.sell(p.uid));
       else {

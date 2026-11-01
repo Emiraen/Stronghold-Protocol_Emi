@@ -26,8 +26,8 @@ function FactionChips({ types }) {
     <${Img} src=${factionIconUrl(m, f[t]?.icon)} class="fchip__icon" /><span>${f[t]?.name || t}</span></span>`)}</div>`;
 }
 
-function EnemiesTab({ pub, priv, onEnemy }) {
-  const rows = groupEnemies(priv?.nextEnemies, (k) => data.lookup('enemies', k));
+function EnemiesTab({ pub, priv, onEnemy, records = data, Thumb = UnitThumb }) {
+  const rows = groupEnemies(priv?.nextEnemies, (k) => records.lookup('enemies', k));
   const types = factionTypes(pub?.factions);
   const f = data.get('factions')?.types || {};
   const total = rows.reduce((s, r) => s + r.count, 0);
@@ -40,7 +40,7 @@ function EnemiesTab({ pub, priv, onEnemy }) {
     ${rows.length ? html`<div class="elist">
       ${rows.map((r) => html`<button key=${`${r.enemyKey}|${r.tag}`} type="button" class=${cx('erow', r.tag && `erow--${r.tag}`, `erow--${r.rank.toLowerCase()}`)}
           onClick=${() => onEnemy(r.enemyKey, r.count)}>
-        <${UnitThumb} kind="enemy" id=${r.enemyKey} size="md" />
+        <${Thumb} kind="enemy" id=${r.enemyKey} rec=${records.lookup('enemies', r.enemyKey)} size="md" />
         <span class="erow__text">
           <b class="erow__name">${r.name}</b>
           <span class="erow__tags">
@@ -61,13 +61,13 @@ function EnemiesTab({ pub, priv, onEnemy }) {
   </div>`;
 }
 
-function InfoTab({ pub, priv, onChess }) {
+function InfoTab({ pub, priv, onChess, records = data, Thumb = UnitThumb }) {
   const { bonds, banned, perBond, stateOf } = matchInfoModel(pub, {
     bonds: data.list('bonds'), chess: (id) => data.lookup('chess', id), mode: data.get('config')?.modes?.[pub?.modeId],
   });
   const disabled = new Set(bonds.filter((b) => stateOf(b.bondId)).map((b) => b.bondId));
-  const band = priv?.bandId ? data.lookup('bands', priv.bandId) : null;
-  const stage = pub?.stageId ? data.lookup('stages', pub.stageId) : null;
+  const band = priv?.bandId ? records.lookup('bands', priv.bandId) : null;
+  const stage = pub?.stageId ? records.lookup('stages', pub.stageId) : null;
   const withBans = bonds.filter((b) => disabled.has(b.bondId) || (perBond.get(b.bondId) || 0) > 0)
     .sort((a, b) => (disabled.has(b.bondId) - disabled.has(a.bondId)) || ((perBond.get(b.bondId) || 0) - (perBond.get(a.bondId) || 0)));
   return html`<div class="edrawer__body">
@@ -85,19 +85,19 @@ function InfoTab({ pub, priv, onChess }) {
       </span>`) : html`<span class="t-dim">${trA("本局没有禁用盟约")}</span>`}
     </div>
     ${banned.length ? html`<div class="ibanned">${banned.map((id) => html`<button key=${id} type="button" class="ibanned__one" onClick=${() => onChess(id)}>
-      <${UnitThumb} kind="chess" id=${id} size="sm" dim=${true} /></button>`)}</div>` : null}
+      <${Thumb} kind="chess" id=${id} rec=${records.lookup('chess', id)} size="sm" dim=${true} /></button>`)}</div>` : null}
   </div>`;
 }
 
 /**
  * @param {{ tab:'enemies'|'info', onTab:(t:string)=>void, pub:any, priv:any, onClose:Function, onEnemy:(key:string, count:number)=>void, onChess:(id:string)=>void }} props
  */
-export function EnemyDrawer({ tab, onTab, pub, priv, onClose, onEnemy, onChess }) {
+export function EnemyDrawer({ tab, onTab, pub, priv, onClose, onEnemy, onChess, records = data, Thumb = UnitThumb }) {
   return html`<${FloatingPanel} class="edrawer brackets" onClose=${onClose} placement="center" width=${620} family="match-info" ignore="[data-testid=check-player]" role="dialog" aria-label=${tab === 'info' ? trA("本局信息") : trA("敌方情报")}>
     <div class="edrawer__top">
       <${Tabs} size="sm" value=${tab} onChange=${onTab} items=${[{ id: 'info', label: '本局信息' }, { id: 'enemies', label: '敌方情报' }]} />
       <${CloseButton} class="edrawer__close" label=${tab === 'info' ? trA("本局信息") : trA("敌方情报")} onClose=${onClose} />
     </div>
-    ${tab === 'info' ? html`<${InfoTab} pub=${pub} priv=${priv} onChess=${onChess} />` : html`<${EnemiesTab} pub=${pub} priv=${priv} onEnemy=${onEnemy} />`}
+    ${tab === 'info' ? html`<${InfoTab} pub=${pub} priv=${priv} onChess=${onChess} records=${records} Thumb=${Thumb} />` : html`<${EnemiesTab} pub=${pub} priv=${priv} onEnemy=${onEnemy} records=${records} Thumb=${Thumb} />`}
   <//>`;
 }

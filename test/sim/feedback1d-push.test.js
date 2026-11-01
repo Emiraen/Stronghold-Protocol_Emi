@@ -85,12 +85,12 @@ test('D2 野鬃 S2: a target within 45° of her direction goes straight along it
   }
 });
 
-test('D2 野鬃 S2: a target behind her, beside her (> 45° off) or on her centre — radial at 受力等级 −2, never a full throw backwards', REAL, () => {
+test('D2 野鬃 S2: behind keeps attack direction at force −2; beside and near-centre use the radial correction', REAL, () => {
   for (const dir of ['RIGHT', 'UP', 'LEFT', 'DOWN']) {
     // behind her centre (blocked by her, as after the hand-over): the user's case — it used to fly 1.7 tiles backwards
     const back = wildmnHit(dir, [0, -0.45]);
     approx(back.len, WEAK, 1e-6, `${dir} behind: the −2 distance`);
-    assert.ok(back.fwd < 0 && Math.abs(back.side) < 1e-9, `${dir} behind: radial (away from her)`);
+    assert.ok(back.fwd > 0 && Math.abs(back.side) < 1e-9, `${dir} behind: reduced force, attack direction retained`);
     // beside her, 63° off: radial, −2
     const beside = wildmnHit(dir, [0.6, 0.3]);
     approx(beside.len, WEAK, 1e-6, `${dir} beside: the −2 distance`);
@@ -113,7 +113,7 @@ test('D2 野鬃 S2 on the mirrored right half of the Final Assault field: the sa
     approx(diag.side, 0, 1e-9, `R ${dir} diagonal: no sideways`);
     const back = wildmnHit(dir, [0, -0.45], { side: 'R', kind: 'boss' });
     approx(back.len, WEAK, 1e-6, `R ${dir} behind: the −2 distance`);
-    assert.ok(back.fwd < 0, `R ${dir} behind: away from her`);
+    assert.ok(back.fwd > 0, `R ${dir} behind: attack direction retained`);
   }
 });
 

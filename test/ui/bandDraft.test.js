@@ -164,7 +164,7 @@ describe('server: automatic assignments never duplicate a teammate\'s strategy',
   test('every human idle: the turn timeouts assign distinct strategies (no separate step cap)', () => {
     const h = draftOf({ humans: 4, seed: 9 });
     const m = h.m;
-    h.run(() => m.phase !== PHASE.BAND_DRAFT, { maxTime: 120000 });
+    h.run(() => m.phase !== PHASE.BAND_DRAFT, { maxTime: TURN_MS * m.draft.order.length + 1 });
     assert.equal(m.phase, PHASE.BATTLE_CHECK);
     const ids = distinct(m);
     assert.ok(ids.includes('band_bldsk'), 'the first idle player still gets the official default');

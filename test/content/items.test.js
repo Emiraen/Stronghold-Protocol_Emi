@@ -598,8 +598,10 @@ test('黄沙罗盘: initial SP +30 / +50; (萨尔贡) first skill end +30 SP; + 
   close(u.skill.sp, 30, 'first skill end +30');
   u.skill.sp = 0;
   u.skill.activate('test', { free: true });
+  close(u.skill.sp, 3, 'second cast still triggers the separate 萨尔贡浓茶');
+  const beforeEnd = u.skill.sp;
   u.skill.end('test');
-  close(u.skill.sp, 0, 'only the first skill end');
+  close(u.skill.sp, beforeEnd, '罗盘 adds no SP on the second skill end');
   cover(A('6_07'), B('6_07'), A('2_04'), B('2_04'));
 });
 
@@ -702,10 +704,7 @@ test('lendItemEffects (萨尔贡 × 娜仁图亚): tier ≤ V battle effects len
 // ---------------------------------------------------------------------------------------------------------------
 // prep side
 
-function setup({ mode = 'solo', humans = 1, seed = 41 } = {}) {
-  const h = makeMatch({ mode, humans, seed, registry: REG, fake: true }).start();
-  h.toPrep(1);
-  const m = h.m;
+function resetPrepFixture(m) {
   for (const ps of m.players.values()) {
     for (const p of [...ps.board.values(), ...ps.hand.filter(Boolean), ...ps.temp.filter(Boolean)]) if (p.kind === 'chess') ps.returnCopies(p);
     ps.board.clear(); ps.hand.fill(null); ps.temp.fill(null); ps.offers.length = 0;
@@ -713,6 +712,13 @@ function setup({ mode = 'solo', humans = 1, seed = 41 } = {}) {
     ps.bandId = null; // no band prep effects
     ps.recompute();
   }
+}
+
+function setup({ mode = 'solo', humans = 1, seed = 41 } = {}) {
+  const h = makeMatch({ mode, humans, seed, registry: REG, fake: true }).start();
+  h.toPrep(1);
+  const m = h.m;
+  resetPrepFixture(m);
   const ps = h.ps('p_0');
   const equip = (item, target, pid = 'p_0') => m.handle(pid, { t: 'g.equip', itemUid: item.uid, targetUid: target.uid });
   return { h, m, ps, equip };
@@ -885,9 +891,10 @@ test('信标: target and item destroyed, offer of 2 same-tier operators; co-op: 
 test('pick-one chess offers never repeat an operator — 信标, 寻呼模块, any offer list (user playtest #6 item 19)', () => {
   let n = 0;
   for (let seed = 1; seed <= 24; seed++) {
+    const { m, ps, equip } = setup({ seed });
     for (const lvl of [1, 3, 6]) {
       // 寻呼模块: same-bond operators up to the shop level — fewer cards when the pool has no other one, never a repeat
-      let { m, ps, equip } = setup({ seed });
+      resetPrepFixture(m);
       ps.shop.level = lvl;
       const pool1 = plain((c) => c.bonds.length && c.tier <= lvl);
       const cid = pool1[seed % pool1.length];
@@ -895,12 +902,13 @@ test('pick-one chess offers never repeat an operator — 信标, 寻呼模块, a
       assert.deepEqual(equip(giveItem(m, ps, A('4_01')), t), OK);
       for (const o of ps.offers) { const ids = o.slots.map((x) => x.id); assert.equal(new Set(ids).size, ids.length, `寻呼模块 seed ${seed} lv ${lvl}: ${ids}`); n++; }
       // 信标: operators of the target's tier (topped up from the tier below), never a repeat
-      ({ m, ps, equip } = setup({ seed }));
+      resetPrepFixture(m);
       const pool2 = plain((c) => c.tier === lvl && c.bonds.length);
       const t2 = give(m, ps, pool2[seed % pool2.length], 'hand');
       assert.deepEqual(equip(giveItem(m, ps, A('5_04')), t2), OK);
       for (const o of ps.offers) { const ids = o.slots.map((x) => x.id); assert.equal(new Set(ids).size, ids.length, `信标 seed ${seed} tier ${lvl}: ${ids}`); n++; }
     }
+    m.dispose();
   }
   assert.ok(n >= 100, `offers checked (${n})`);
   // whoever builds the list, the offer drops a repeated operator
@@ -1061,9 +1069,9 @@ test('画卷 (Art): copies the operator on the tile / in front with its elite st
   assert.equal(copy && copy.id, DATA.chess[cid].goldenId, 'elite copy in the hand');
   // the copied 激光发射器 pairs with the original's (items merge "无论是否被装备") ⇒ the golden goes to the hand;
   // 变形同构体 never merges ⇒ the copy wears it too
-  assert.deepEqual(copy.items.map((x) => x.id), [A('6_09')]);
-  assert.deepEqual(ps.find(target.uid).piece.items.map((x) => x.id), [A('6_09')]);
-  assert.deepEqual(handIds(ps, 'item'), [B('3_03')], 'merged golden in the hand (regression: was equipped on the copy)');
+  assert.deepEqual(copy.items, [], 'the copied operator is unequipped');
+  assert.deepEqual(ps.find(target.uid).piece.items.map((x) => x.id), [A('3_03'), A('6_09')], 'original equipment stays attached');
+  assert.deepEqual(handIds(ps, 'item').sort(), [A('3_03'), A('6_09')].sort(), 'both copied items are loose inventory');
   const art2 = giveItem(m, ps, 'chess_item_6_02_m');
   assert.equal(m.handle('p_0', { t: 'g.art', itemUid: art2.uid, row: 11, col: 7 }).error, 'BAD_TARGET', 'no operator in range');
   cover('chess_item_6_02_m');
@@ -1079,6 +1087,14 @@ test('教鞭 (Art): a 战术特训 bounty (PRTS "于3个战术特训的悬赏任
     for (let k = 0; k < 2; k++) {
       const art = giveItem(m, ps, 'chess_item_6_03_m');
       assert.deepEqual(m.handle('p_0', { t: 'g.art', itemUid: art.uid, row: 10, col: 5 }), OK);
+      const offer = ps.personalChoice;
+      assert.ok(offer && offer.cards.length === 3, 'three training bounties offered');
+      assert.ok(offer.cards.every(c => training.has(c.effectId)));
+      assert.equal(ps.bounties.length, k, 'no bounty applied before confirmation');
+      const selected = offer.cards[(s + k) % offer.cards.length];
+      assert.deepEqual(m.handle('p_0', { t: 'g.choice', idx: (s + k) % offer.cards.length, choiceId: offer.id }), OK);
+      assert.equal(ps.personalChoice, null);
+      assert.equal(ps.bounties.at(-1).card.effectId, selected.effectId);
     }
     assert.equal(ps.bounties.length, 2);
     for (const b of ps.bounties) {

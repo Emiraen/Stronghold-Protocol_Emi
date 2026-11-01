@@ -1,3 +1,6 @@
+import { ZHAJING_VARIANT, ZHAJING_CAPACITIES } from '../../../shared/zhajing-constants.js';
+import { MIZUKI_VARIANT, MIZUKI_CAPACITIES, MIZUKI_DEFAULT_SEATS } from '../../../shared/mizuki-constants.js';
+import { ANNIHILATION_VARIANT, ANNIHILATION_CAPACITIES } from '../../../shared/annihilation-constants.js';
 import { t as trA } from '../../../shared/i18n.js';
 // Room screen (同盟等待室): 4 seat cards (avatar frame, name, ready state, AI badge, host crown),
 // host controls (difficulty picker, add/remove AI in co-op, start), invite code with copy code /
@@ -22,6 +25,7 @@ import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch } from '../store.js';
 import { difficultyInfo, RankBadge, ProtoCard, useHallKeyboard } from './lobby.js';
 import { ChatPanel } from './chat.js';
+import { RoomFriendsButton, RoomPlayerMenu } from '../ui/friends.js';
 import { data, useData } from '../data.js';
 import { CardPicker, cardOperators, seatAvatar, seatPortrait, useSpecialNameCardCache, isSpecialCardPortrait } from '../ui/seatArt.js';
 import { skinsStore, setPlayerCard } from '../ui/skins.js';
@@ -36,7 +40,7 @@ import { UiPluginHost } from '../ui/pluginSlots.js';
 import { rankPyramidMiniView } from '../ui/rankPyramid.js';
 import { RankPyramidGraphic } from '../ui/rankPyramidGraphic.js';
 
-const isEntertainmentRoom = (room) => room?.variant === 'entertainment_multi' || room?.variant === 'entertainment_cyclops' || room?.variant === ENDLESS_VARIANT;
+const isEntertainmentRoom = (room) => room?.variant === ZHAJING_VARIANT || room?.variant === MIZUKI_VARIANT || room?.variant === ANNIHILATION_VARIANT || room?.variant === 'entertainment_multi' || room?.variant === 'entertainment_cyclops' || room?.variant === ENDLESS_VARIANT;
 
 /**
  * Seats padded to the room's capacity (co-op 4, solo 1), each null or a seat record.
@@ -44,7 +48,7 @@ const isEntertainmentRoom = (room) => room?.variant === 'entertainment_multi' ||
  * @returns {(null | {seat:number, playerId:any, name:string, isBot:boolean, ready:boolean, connected:boolean})[]}
  */
 export function normalizeSeats(room) {
-  const cap = room?.mode === 'solo' ? 1 : room?.variant === 'entertainment_cyclops'
+  const cap = room?.mode === 'solo' ? 1 : room?.variant === ZHAJING_VARIANT ? (ZHAJING_CAPACITIES.includes(room.capacity) ? room.capacity : 4) : room?.variant === MIZUKI_VARIANT ? (MIZUKI_CAPACITIES.includes(room.capacity) ? room.capacity : MIZUKI_DEFAULT_SEATS) : room?.variant === ANNIHILATION_VARIANT ? (ANNIHILATION_CAPACITIES.includes(room.capacity) ? room.capacity : 4) : room?.variant === 'entertainment_cyclops'
     ? (CYCLOPS_CAPACITIES.includes(room.capacity) ? room.capacity : CYCLOPS_DEFAULT_SEATS)
     : room?.variant === 'entertainment_multi' || room?.variant === ENDLESS_VARIANT
       ? (ENTERTAINMENT_CAPACITIES.includes(room.capacity) ? room.capacity : ENTERTAINMENT_DEFAULT_SEATS) : MAX_SEATS;
@@ -77,7 +81,7 @@ export function roomFacts(room, myId) {
   return {
     seats, occupied, humans, mine, isHost, readyHumans, isReady,
     emptySeats: seats.filter((s) => !s).length,
-    canStart: isHost && othersReady && !!mine,
+    canStart: isHost && othersReady && !!mine && (room?.variant !== MIZUKI_VARIANT || humans.length === seats.length && occupied.length === humans.length),
     othersReady,
   };
 }
@@ -123,6 +127,7 @@ export async function copyText(text) {
 function RoomProtocol({ room, variant, onClose, onPick, busy, leaving = false }) {
   const [pick, setPick] = useState(room.difficulty);
   const endless = room.variant === ENDLESS_VARIANT;
+
   const ref = useRef(null);
   useHallKeyboard(ref, onClose);
   return html`<${Overlay} level="hall"><div ref=${ref} tabindex="-1" class=${`rs-proto${leaving ? ' is-leaving' : ''}`}  style=${`--d-color:${DIFFICULTY_COLORS[pick]}`} role="dialog" aria-modal="true" aria-label=${trA('选择模拟协议')}
@@ -148,7 +153,7 @@ function RankPyramidBadge({ view }) {
   return html`<div class="rseat__pyramid"><${RankPyramidGraphic} view=${view} mini=${true} /></div>`;
 }
 
-function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, onRemoveBot, onKick, onCancelReady, portraits, onPickCard, onInvite, pyramid }) {
+function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, onRemoveBot, onKick, onCancelReady, portraits, onPickCard, onInvite, onPlayer, pyramid }) {
   const [bad, setBad] = useState(null);
   const flash = useRise(!!seat && (seat.ready || seat.isBot || seat.playerId === room.hostId));
   if (!seat) {
@@ -156,10 +161,10 @@ function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, on
       <span class="rseat__clip" aria-hidden="true"></span>
       <header class="rseat__strip"><i></i><span class="num">P${index + 1}</span></header>
       <div class="rseat__art">
-        <button type="button" class="rseat__invite" onClick=${onInvite}><span class="rseat__plus" aria-hidden="true"></span><b>${trA("邀请")}</b><small>${trA("复制同盟密钥以邀请队友")}</small></button>
+        <button type="button" class="rseat__invite" onClick=${onInvite}><span class="rseat__plus" aria-hidden="true"></span><b>${trA("邀请")}</b><small>邀请现有好友</small></button>
         <span class="rseat__noinfo" aria-hidden="true">NOINFO</span>
       </div>
-      ${room.mode !== 'solo' && facts.isHost ? html`<button type="button" class="rseat__botadd" disabled=${matching || !!busy} onClick=${onAddBot}>
+      ${room.mode !== 'solo' && room.variant !== MIZUKI_VARIANT && facts.isHost ? html`<button type="button" class="rseat__botadd" disabled=${matching || !!busy} onClick=${onAddBot}>
         ${busy === 'add' ? html`<${Spinner} size="sm" />` : html`<${Icon} name="robot" />`}${trA("添加 AI 队友")}</button>` : null}
       <div class="rseat__plate rseat__plate--empty" aria-hidden="true"></div>
     </article>`;
@@ -178,6 +183,7 @@ function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, on
       ${src && src !== bad ? html`<img src=${src} alt="" draggable=${false} loading="lazy" onError=${() => setBad(src)} />` : html`<span class="rseat__glyph">${seat.isBot ? html`<${Icon} name="robot" />` : [...(seat.name || '?')][0]}</span>`}
       ${pyramid ? html`<${RankPyramidBadge} view=${pyramid} />` : null}
       ${canPick ? html`<button type="button" class="rseat__pick" onClick=${onPickCard} aria-label=${trA('更换名片干员')}><${Icon} name="edit" /><span>${trA('更换立绘')}</span></button>` : null}
+      ${!isMe && !seat.isBot && seat.profileId ? html`<button type="button" class="rseat__player-open" aria-label=${`查看${seat.name}的玩家菜单`} onClick=${event => onPlayer(seat, { left: event.clientX || event.currentTarget.getBoundingClientRect().left, bottom: event.clientY || event.currentTarget.getBoundingClientRect().top })}></button>` : null}
       ${isHostSeat ? html`<span class="rseat__host">${trA("创建者")}</span>` : null}
       ${offline ? html`<span class="rseat__lost"><${Icon} name="wifiOff" />${trA("连接中断")}</span>` : null}
       <span class="rseat__state"><span class="rseat__box">${ready ? html`<${Icon} name="check" />` : null}</span>
@@ -188,7 +194,7 @@ function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, on
     <div class="rseat__plate">
       ${isMe ? html`<span class="rseat__me" title=${trA("你")}><${Icon} name="user" /></span>` : null}
       <${AvatarFrame} size="sm" src=${avatarSrc} fallbackIcon="user" name=${seat.name} seat=${index} bot=${seat.isBot} self=${isMe} />
-      <span class="rseat__who"><b class="rseat__name">${seat.name || trA("博士")}</b></span>
+      <span class="rseat__who">${!isMe && !seat.isBot && seat.profileId ? html`<button type="button" class="rseat__name rseat__name-button" onClick=${event => onPlayer(seat, event.currentTarget.getBoundingClientRect())}>${seat.name || trA('博士')}</button>` : html`<b class="rseat__name">${seat.name || trA("博士")}</b>`}</span>
       <small class="rseat__doc">${seat.isBot ? 'AUTONOMOUS UNIT' : `DOCTOR #${doctorNo(seat.playerId)}`}</small>
     </div>
     ${!isEntertainmentRoom(room) && room.ranked === true ? html`<div class="rseat__rank">${seat.isBot ? html`<span>${trA("人机 · 不参与排位")}</span>` : html`<${RankBadge} rank=${seat.rank} size="sm" />`}</div>` : null}
@@ -239,6 +245,8 @@ export function RoomScreen() {
   const rank = useStore((s) => s.rank, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
   const [busy, setBusy] = useState(null);
+  const [friendOpen, setFriendOpen] = useState(0);
+  const [playerMenu, setPlayerMenu] = useState(null);
   const [protocolOpen, setProtocolOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
@@ -261,8 +269,11 @@ export function RoomScreen() {
   const coop = room.mode !== 'solo';
   const cyclops = room.variant === 'entertainment_cyclops';
   const endless = room.variant === ENDLESS_VARIANT;
+  const mizuki = room.variant === MIZUKI_VARIANT;
+  const zhajing = room.variant === ZHAJING_VARIANT;
   const entertainment = isEntertainmentRoom(room);
-  const capacities = cyclops ? CYCLOPS_CAPACITIES : ENTERTAINMENT_CAPACITIES;
+  const annihilation = room.variant === ANNIHILATION_VARIANT;
+  const capacities = zhajing ? ZHAJING_CAPACITIES : mizuki ? MIZUKI_CAPACITIES : annihilation ? ANNIHILATION_CAPACITIES : cyclops ? CYCLOPS_CAPACITIES : ENTERTAINMENT_CAPACITIES;
   const ranked = !entertainment && isRankedMatch(room.ranked, room.difficulty);
   const facts = roomFacts(room, me.playerId);
   const showPyramids = ranked && !room.inMatch;
@@ -315,7 +326,7 @@ export function RoomScreen() {
     if (!online || inFlight.current || !setPlayerCard(charId, choice)) return;
     setPicking(false);
   };
-  const invite = async () => { if (await copyText(room.code)) toast(trA('已复制同盟密钥 {code}', { code: room.code }), 'success'); else toast(trA('复制失败，请手动复制'), 'warn'); };
+  const invite = () => setFriendOpen(value => value + 1);
   const elapsed = Math.floor((Date.now() - since) / 1000);
   const clock = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
   const statusLine = !online
@@ -331,7 +342,7 @@ export function RoomScreen() {
         : html`<span class="t-lo">${trA("准备就绪后，创建者即可开始模拟")}</span>`;
 
   return html`<div class=${`screen room-screen east-room rs${coop ? '' : ' rs--solo'}${entertainment ? ' room-screen--multi rs--big' : ''}${cyclops ? ' room-screen--cyclops' : ''}`} style=${`--d-color:${DIFFICULTY_COLORS[room.difficulty]};--n:${facts.seats.length}`}>
-    ${endless ? null : html`<${UiPluginHost} />`}
+    ${endless || annihilation ? null : html`<${UiPluginHost} />`}
     <div class="rs__bg" aria-hidden="true"></div>
     <header class="topbar rs-top">
       <div class="rs-top__left">
@@ -339,17 +350,18 @@ export function RoomScreen() {
           <button type="button" class="rs-exit" disabled=${busy === 'leave'} onClick=${leave} aria-label=${trA("离开同盟")}><${Icon} name="exit" /></button>
         <//>
         <div class="rs-clock">
-          <b>${endless ? '娱乐 · 无尽模式' : cyclops ? '舟铲铲之战' : entertainment ? '娱乐 · 多人同盟' : coop ? trA("同盟模拟") : trA("独立模拟")}</b>
+          <b>${zhajing ? '娱乐 · 炸惊模拟' : mizuki ? '水月联合探索 · 手操作战' : endless ? '娱乐 · 无尽模式' : cyclops ? '舟铲铲之战' : entertainment ? '娱乐 · 多人同盟' : coop ? trA("同盟模拟") : trA("独立模拟")}</b>
           <span>${trA("等待时间")} <b class="num">${clock}</b> · <${PingPill} ms=${conn.ping} online=${online} /></span>
         </div>
         <div class="rs-tools">
+          ${!room.inMatch ? html`<${RoomFriendsButton} forceOpen=${friendOpen} />` : null}
           <${Button} variant="secondary" size="sm" square=${true} icon="chart" onClick=${openStats} title=${trA('统计数据')} aria-label=${trA('统计数据')} />
           <${Button} class="settings-btn" variant="secondary" size="sm" square=${true} onClick=${() => setSettingsOpen(true)} title=${trA('设置')} aria-label=${trA('设置')}><${GIcon} name="gear" class="btn__icon" /><//>
           <${GuideButton} class="room-guide" variant="secondary" square=${true} />
         </div>
       </div>
       <div class="rs-top__right">
-        ${!endless && ((!entertainment && room.ranked !== true) || installedPlugins > 0 || room.content?.plugins?.length) ? html`<${PluginTag} room=${room} myId=${me.playerId} />` : null}
+        ${!zhajing && !mizuki && !endless && !annihilation && ((!entertainment && room.ranked !== true) || installedPlugins > 0 || room.content?.plugins?.length) ? html`<${PluginTag} room=${room} myId=${me.playerId} />` : null}
         <span class="room-ranked-chip" title=${ranked ? trA("排位赛：结算计入段位分") : trA("不影响段位分、定级进度和隐藏分")}><${Icon} name="shield" />${ranked ? trA("排位赛") : trA("不计排位分")}</span>
 
         ${coop ? html`<${InviteBox} code=${room.code} />` : html`<div class="rs-key rs-key--solo"><${MicroLabel}>SINGLE OPERATOR<//><span>${trA("仅限 1 名博士")}</span></div>`}
@@ -357,18 +369,19 @@ export function RoomScreen() {
     </header>
 
     <${ChatPanel} roomCode=${room.code} online=${online} me=${me} />
-    ${entertainment ? html`<section class="entertainment-options" aria-label=${cyclops ? '舟铲铲之战房间设置' : endless ? '无尽模式房间设置' : '多人房间设置'}>
-      <label>房间容量 <select aria-label="调整房间容量" value=${room.capacity} disabled=${!facts.isHost || !!busy || !online}
+    ${entertainment ? html`<section class="entertainment-options" aria-label=${mizuki ? '水月联合探索房间设置' : cyclops ? '舟铲铲之战房间设置' : endless ? '无尽模式房间设置' : '多人房间设置'}>
+      <label>房间容量 <select aria-label="调整房间容量" value=${room.capacity} disabled=${zhajing && !coop || !facts.isHost || !!busy || !online}
         onChange=${(e) => run('capacity', () => net.request('room.setCapacity', { capacity: Number(e.currentTarget.value) }))}>
         ${capacities.map((n) => html`<option key=${n} value=${n}>${n} 人</option>`)}
       </select></label>
-      <span>已入座 ${facts.occupied.length}/${facts.seats.length} · 仅房号邀请 / 手动 AI · 不计排位</span>
+      <span>已入座 ${facts.occupied.length}/${facts.seats.length} · ${mizuki ? 'A 场 1–2 号位 / B 场 3–4 号位 · 全队投票 · 真人手操' : '仅房号邀请 / 手动 AI'} · 不计排位</span>
     </section>` : null}
     <main class="rs-seats">
       ${facts.seats.map((s, i) => html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
         myId=${me.playerId} busy=${busy} matching=${matching} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick}
         pyramid=${showPyramids && s && !s.isBot ? rankPyramidMiniView(s.rankPyramid ?? (s.playerId === me.playerId ? rank?.rankPyramid : null)) : null}
         portraits=${portraits} onPickCard=${() => setPicking(true)} onInvite=${invite}
+        onPlayer=${(player, anchor) => setPlayerMenu({ player, anchor })}
         onCancelReady=${(seat, playerId) => run('cancelReady', () => net.request('room.cancelReady', { seat, playerId }))} />`)}
       ${coop ? null : html`<aside class="solo-brief rs-brief brackets">
         <${MicroLabel} tone="mint">BRIEFING<//>
@@ -387,16 +400,16 @@ export function RoomScreen() {
       <div class="rs-foot__center">
         <p class="rs-hint">${coop ? html`<span class="rs-ready num" title=${trA("已就绪")}>${facts.humans.map((s) => html`<${Icon} key=${s.playerId} name="user" class=${facts.isReady(s) ? 'is-on' : ''} />`)}<b>${facts.readyHumans}</b>/${facts.humans.length}</span>` : null}${statusLine}</p>
         <div class="rs-pill">
-          <span class="rs-pill__mode">${cyclops ? '舟铲铲之战' : entertainment ? '娱乐模式' : ranked ? trA("排位赛") : trA("模拟协议")}</span>
+          <span class="rs-pill__mode">${mizuki ? '水月联合探索' : cyclops ? '舟铲铲之战' : entertainment ? '娱乐模式' : ranked ? trA("排位赛") : trA("模拟协议")}</span>
           <i class="rs-pill__sep"></i>
-          ${endless ? html`<span class="rs-pill__diff" title="固定标准起始规则"><${Icon} name="hourglass" />${trA('无尽模式')}</span>` : html`<button type="button" class="rs-pill__diff" disabled=${!facts.isHost || !!busy} onClick=${() => setProtocolOpen(true)} title=${facts.isHost ? trA("模拟难度") : trA("由创建者选择")}>
+          ${zhajing ? html`<span class="rs-pill__diff">炸惊模拟</span>` : mizuki ? html`<span class="rs-pill__diff" title="双人分场 · 四人投票 · 服务端手操">水月联合探索 · 标准规则</span>` : annihilation ? html`<span class="rs-pill__diff" title="湮灭专属协议">湮灭模拟 · 蚀流 ${room.erosion || 1}</span>` : endless ? html`<span class="rs-pill__diff" title="固定标准起始规则"><${Icon} name="hourglass" />${trA('无尽模式')}</span>` : html`<button type="button" class="rs-pill__diff" disabled=${!facts.isHost || !!busy} onClick=${() => setProtocolOpen(true)} title=${facts.isHost ? trA("模拟难度") : trA("由创建者选择")}>
             <${DifficultyIcon} difficulty=${room.difficulty} />${trA(DIFFICULTY_NAMES[room.difficulty])}<${Icon} name="chevrons" />
           </button>`}
           <i class="rs-pill__sep"></i><button type="button" class="rs-pill__gear" aria-label=${trA('同盟设置')} onClick=${() => setOptsOpen(!optsOpen)}><${GIcon} name="gear" /></button>
         </div>
         ${optsOpen ? html`<div class="rs-opts" role="dialog" aria-label=${trA('同盟设置')}><h4>${trA('同盟设置')}<button class="rs-opts__close" type="button" aria-label=${trA('关闭')} onClick=${() => setOptsOpen(false)}><${Icon} name="close" /></button></h4>
-          <label class="rs-opt"><span>${trA('AI 队友最后选择')}<small>${trA('策略与机变阶段先由真人选择')}</small></span><input type="checkbox" checked=${!!room.aiPicksLast} disabled=${!facts.isHost || !coop || !!busy} onChange=${(e) => run('aiLast', () => net.request('room.setAiPicksLast', { on: e.currentTarget.checked }))} /></label>
-          ${entertainment ? html`<label class="rs-opt"><span>${trA('人数上限')}</span><select aria-label=${trA('设置房间容量')} value=${room.capacity} disabled=${!facts.isHost || !!busy} onChange=${e => run('capacity', () => net.request('room.setCapacity', { capacity: Number(e.currentTarget.value) }))}>${capacities.map(n => html`<option key=${n} value=${n}>${n}</option>`)}</select></label>` : null}
+          <label class="rs-opt"><span>${trA('AI 队友最后选择')}<small>${trA('策略与机变阶段先由真人选择')}</small></span><input type="checkbox" checked=${!!room.aiPicksLast} disabled=${mizuki || !facts.isHost || !coop || !!busy} onChange=${(e) => run('aiLast', () => net.request('room.setAiPicksLast', { on: e.currentTarget.checked }))} /></label>
+          ${entertainment ? html`<label class="rs-opt"><span>${trA('人数上限')}</span><select aria-label=${trA('设置房间容量')} value=${room.capacity} disabled=${zhajing && !coop || !facts.isHost || !!busy} onChange=${e => run('capacity', () => net.request('room.setCapacity', { capacity: Number(e.currentTarget.value) }))}>${capacities.map(n => html`<option key=${n} value=${n}>${n}</option>`)}</select></label>` : null}
         </div>` : null}
       </div>
       <div class="rs-foot__right">
@@ -415,5 +428,6 @@ export function RoomScreen() {
     ${picking ? html`<${CardPicker} current=${myCard} list=${cardList} m=${m} online=${online}
       loading=${!m || !data.get('chess') || !data.get('backups')} onPick=${pickCard} onClose=${() => setPicking(false)} />` : null}
     <${SettingsModal} open=${settingsOpen} onClose=${() => setSettingsOpen(false)} />
+    ${playerMenu && !room.inMatch ? html`<${RoomPlayerMenu} player=${playerMenu.player} anchor=${playerMenu.anchor} onClose=${() => setPlayerMenu(null)} />` : null}
   </div>`;
 }

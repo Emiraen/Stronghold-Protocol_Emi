@@ -406,7 +406,7 @@ test('#7 uniteLeft (sim) = each source\'s enemies unspawned + alive + through ag
   h.m.dispose();
 });
 
-test('#7 a leaked enemy that splits (磨砻: DeadSpawn ×2) raises the counter — the children are billed to the same leaker; the clamp is what settlement can bill, not what was sent in', () => {
+test('#7 a leaked enemy that splits (磨砻: DeadSpawn ×2) creates real children without billing runtime spawns to the leaker', () => {
   const MOLONG = 'enemy_1195_sfyin';
   const SENT = 4;
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 710, instant: false });
@@ -421,19 +421,19 @@ test('#7 a leaked enemy that splits (磨砻: DeadSpawn ×2) raises the counter �
   for (let i = 0; i < 4000 && m.phase === PHASE.UNITE; i++) {
     const p = pubOf(m, 'p_1');
     if (!b.finished) {
-      const alive = b.enemies.filter((e) => e.alive && e.counted && e.sourcePlayerId === 'p_1').length;
+      const alive = b.enemies.filter((e) => e.alive && e.counted && !e.uniteRuntime && e.sourcePlayerId === 'p_1').length;
       const pending = b._pending.filter((x) => x.sourcePlayerId === 'p_1').length;
-      const through = Object.values(b._perPlayer).flatMap((pp) => pp.leaked).filter((l) => l.counted !== false && l.sourcePlayerId === 'p_1').length;
-      assert.equal(p.uniteLeft, pending + alive + through, 'm.public = the leaker\'s enemies standing on the field, children included');
+      const through = Object.values(b._perPlayer).flatMap((pp) => pp.leaked).filter((l) => l.counted !== false && !l.uniteRuntime && l.sourcePlayerId === 'p_1').length;
+      assert.equal(p.uniteLeft, pending + alive + through, 'only enemies sent by the escaped wave are billable (2026-10-16 rule)');
     }
     seen.push(p.uniteLeft);
     h.sched.advance(500);
   }
-  assert.ok(b.total > SENT, `the 磨砻 split (${SENT} → ${b.total} on the field)`);
-  const rises = seen.filter((v, i) => i > 0 && v > seen[i - 1]).length;
-  assert.ok(rises > 0, `the counter rose after a split: ${seen.filter((v, i) => i === 0 || v !== seen[i - 1]).join(' → ')}`);
-  assert.ok(Math.max(...seen) > SENT, 'above the number sent in (the old clamp hid it)');
-  assert.ok(Math.max(...seen) <= SENT * 3, 'within what 4 磨砻 can leave behind (2 each)');
+  const children = b.units.filter((e) => e.side === 'enemy' && e.uniteRuntime);
+  assert.ok(children.length > 0, 'the real 磨砻 death split creates combatants');
+  assert.ok(children.every((e) => e.sourcePlayerId === 'p_1' && !e.waveScheduled && !e.inTotal), 'split children retain attribution but are outside scheduled counters');
+  assert.equal(b.total, SENT, 'runtime children do not inflate the wave denominator');
+  assert.ok(seen.every((v, i) => v >= 0 && v <= SENT && (i === 0 || v <= seen[i - 1])), 'splits cannot increase the billable counter');
   const last = seen[seen.length - 1];
   toSettled(h);
   assert.equal(lp - leaker.lp, Math.min(10, last), `settled LP loss = min(10, ${last} left)`);

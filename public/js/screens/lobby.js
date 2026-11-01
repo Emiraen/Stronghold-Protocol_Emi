@@ -1,3 +1,9 @@
+import { ZHAJING_VARIANT } from '../../../shared/zhajing-constants.js';
+import { ZhajingSetup } from './zhajingSetup.js';
+import { MIZUKI_VARIANT, MIZUKI_DEFAULT_SEATS } from '../../../shared/mizuki-constants.js';
+import { AnnihilationSetup } from '../ui/annihilationSetup.js';
+import { MizukiSetup } from '../ui/mizukiSetup.js';
+import { ANNIHILATION_VARIANT } from '../../../shared/annihilation-constants.js';
 import { t as trA, N_ } from '../../../shared/i18n.js';
 // Lobby screen: pick 独立模拟 / 同盟模拟 and a difficulty (标准/险境/绝境/终极), create a room,
 // or join one with a 同盟密钥 (recent codes remembered). Shows connection status + ping.
@@ -10,7 +16,7 @@ import { t as trA, N_ } from '../../../shared/i18n.js';
 
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, PHASE_NAMES, ROOM_CODE_LEN, MAX_SEATS, ENTERTAINMENT_DEFAULT_SEATS, ENTERTAINMENT_CAPACITIES, CYCLOPS_DEFAULT_SEATS, CYCLOPS_CAPACITIES, ENDLESS_VARIANT, modeIdFor } from '../../../shared/constants.js';
-import { isRankedMatch, rankIconUrl, rankBoundaries, rankOf, normalizeRankLabel } from '../../../shared/ranks.js';
+import { isRankedMatch, rankIconUrl, rankBoundaries, rankOf, inactiveRank, normalizeRankLabel } from '../../../shared/ranks.js';
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo, Modal, Overlay, isTopOverlay } from '../ui/components.js';
 import { toast, toastError, describeError } from '../ui/toasts.js';
 import { GuideButton, openGuide } from '../ui/guide.js';
@@ -26,7 +32,7 @@ import { Emblem } from './title.js';
 import { FullscreenButton } from '../ui/device.js';
 import { useHubBackdrop, HubBackdrop, HubRadar, BackdropSettings, BackdropGlyph, backdropTheme } from '../ui/hubBackdrop.js';
 import { LobbyMusicButton } from '../ui/lobbyMusic.js';
-import { ProtocolScene } from '../ui/protocolScene.js';
+import { ProtocolScene, StampRing } from '../ui/protocolScene.js';
 import { RadarScene, CreateArt, JoinArt } from '../ui/matchFlow.js';
 import { useLeave } from '../ui/transitions.js';
 import { ResultView } from './result.js';
@@ -38,6 +44,8 @@ import { rankPyramidView } from '../ui/rankPyramid.js';
 import { RankPyramidGraphic, rankPyramidCaption } from '../ui/rankPyramidGraphic.js';
 import { rankingPending } from '../ui/rankStatus.js';
 import { useNameCardNotice } from '../ui/nameCardNotices.js';
+import { FriendsHall, FriendActivityDot } from '../ui/friends.js';
+import { friendAction } from '../friends.js';
 
 /** Official mode texts (activity_table act2autochess.modeDataDict), fallback when config.json is absent. */
 export const MODE_TEXT = {
@@ -93,7 +101,7 @@ export function stageNote(stages) {
 export function difficultyInfo(roomMode, difficulty) {
   const fallback = MODE_TEXT[roomMode === 'solo' ? 'single' : 'multi'][difficulty] || { code: '', desc: '', effects: [] };
   // modeIdFor() lower-cases the difficulty: never call it with a value the server did not validate.
-  const m = DIFFICULTIES.includes(difficulty) ? getMode(modeIdFor(roomMode, difficulty)) : null;
+  const m = (DIFFICULTIES.includes(difficulty) || difficulty === 'ANNIHILATION') ? getMode(modeIdFor(roomMode, difficulty)) : null;
   const effects = Array.isArray(m?.effectDescList)
     ? m.effectDescList.map((e) => String(e).replace(/^[·•\s]+/, '')).filter(Boolean)
     : fallback.effects;
@@ -203,9 +211,18 @@ function TipsPanel() {
  *  label 由服务端拼好（含小段小分；未定级为「未定级 (x/y)」；神话以上尾部带「#N」全服排名）。 */
 export function RankBadge({ rank, size = 'md', onIconClick, expanded = false, controls, showLabel = true }) {
   const r = rank && typeof rank === 'object' ? rank : null;
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const left = Number(r?.rankActiveUntil) - Date.now();
+    if (!(left > 0) || left > 2147483647) return undefined;
+    const timer = setTimeout(() => setNow(Date.now()), left + 1);
+    return () => clearTimeout(timer);
+  }, [r?.rankActiveUntil]);
+  const hidden = !!r?.inactive || (r?.points >= 2100 && Number.isFinite(r?.rankActiveUntil) && now >= r.rankActiveUntil);
+  const display = hidden ? inactiveRank(r.points) : r?.rank || r;
   const pending = rankingPending(r);
-  const label = normalizeRankLabel(r?.rank?.label || r?.label || trA("未定级"));
-  const icon = r?.rank?.icon || r?.icon || 'unranked';
+  const label = normalizeRankLabel(display?.label || trA("未定级"));
+  const icon = display?.icon || 'unranked';
   return html`<span class="rank-badge rank-badge--${size}">
     ${onIconClick ? html`<button type="button" class="rank-badge__toggle" onClick=${onIconClick}
       aria-label=${expanded ? trA('返回段位说明') : trA('查看排位金字塔')} aria-pressed=${expanded} aria-controls=${controls}
@@ -283,7 +300,7 @@ export function HistoryScreen({ playerId, name, onBack }) {
           : html`<div class="history-screen__list">${items.map((item) => html`<button type="button" key=${`${item.matchId}:${item.playerId}`}
             class="history-entry" disabled=${loading} onClick=${() => open(item)}>
             <span class="history-entry__result ${item.victory ? 'is-win' : 'is-lose'}">${item.victory ? trA("模拟完成") : trA("模拟失败")}</span>
-            <span class="history-entry__info"><b>${item.variant === ENDLESS_VARIANT ? '娱乐 · 无尽模式' : item.variant === 'entertainment_multi' ? '娱乐 · 多人同盟' : item.ranked ? trA("排位赛") : trA("普通模拟")} · ${trA(DIFFICULTY_NAMES[item.difficulty] || item.difficulty || trA("未知难度"))}</b>
+            <span class="history-entry__info"><b>${item.variant === MIZUKI_VARIANT ? '娱乐 · 水月联合探索' : item.variant === ENDLESS_VARIANT ? '娱乐 · 无尽模式' : item.variant === 'entertainment_multi' ? '娱乐 · 多人同盟' : item.ranked ? trA("排位赛") : trA("普通模拟")} · ${trA(DIFFICULTY_NAMES[item.difficulty] || item.difficulty || trA("未知难度"))}</b>
               <small>${(/^(mode_)?single/.test(item.modeId || '')) ? trA("独立模拟") : (/^(mode_)?multi/.test(item.modeId || '')) ? trA("同盟模拟") : trA("模拟")} ${trA("· 通过")} ${item.roundsPassed ?? 0} ${trA("回合")}${item.rank?.tierAfter ? ` · ${normalizeRankLabel(item.rank.tierAfter)}` : ''}</small></span>
             <time class="history-entry__time num">${historyDate(item.at)}</time>
             <${Icon} name="chevronRight" />
@@ -339,7 +356,7 @@ function SpectatorHall({ online, onBack }) {
       ${!online || error ? html`<p>${error || trA("连接中断，请稍候…")}</p>` : null}
       ${online && unavailable.length ? html`<p role="status">${unavailable.map(regionName).join(' / ')}观战列表暂不可用，其余服务器仍可观战。</p>` : null}
       ${online && !error && items.length ? items.map((item) => html`<article class="spectator-hall__card" key=${item.matchId}>
-        <h2>${regionName(item.serverId)} · ${item.variant === ENDLESS_VARIANT ? '娱乐 · 无尽模式' : item.variant === 'entertainment_multi' ? '娱乐 · 多人同盟' : item.mode === 'solo' ? trA("独立模拟") : trA("同盟模拟")} · ${item.code}</h2>
+        <h2>${regionName(item.serverId)} · ${item.variant === MIZUKI_VARIANT ? '娱乐 · 水月联合探索' : item.variant === ENDLESS_VARIANT ? '娱乐 · 无尽模式' : item.variant === 'entertainment_multi' ? '娱乐 · 多人同盟' : item.mode === 'solo' ? trA("独立模拟") : trA("同盟模拟")} · ${item.code}</h2>
         <p>${trA(DIFFICULTY_NAMES[item.difficulty] || item.difficulty)} · ${item.ranked ? trA("排位") : trA("普通")} ${trA("· 第")} ${item.round || 0} ${trA("回合 ·")} ${trA(PHASE_NAMES[item.phase] || item.phase)} · ${item.spectators} ${trA("人观战")}</p>
         <div class="spectator-hall__players">${item.players.map((p) => html`<span key=${p.playerId}>${p.name}${p.isBot ? '（AI）' : ''} · ${p.alive ? `${p.lp} LP` : trA("已淘汰")}</span>`)}</div>
         <button type="button" disabled=${!online || !!busy} onClick=${() => watch(item)}>${busy === item.matchId ? trA("进入中…") : trA("进入观战")}</button>
@@ -350,7 +367,7 @@ function SpectatorHall({ online, onBack }) {
 
 const RANK_BOUNDARIES = rankBoundaries();
 
-function RankHelp({ open, onClose }) {
+export function RankHelp({ open, onClose }) {
   return html`<${Modal} open=${open} onClose=${onClose} title=${trA("段位积分边界")} micro="RANK POINTS" class="rank-help" overlayClass="rank-help-overlay"
     actions=${html`<${Button} variant="primary" onClick=${onClose}>${trA("关闭")}<//>`}>
     <p>${trA("源能战魂需达到神话450分（总积分2550），且位列全服前50名；积分达标但未进入前50名时仍为神话三。")}</p>
@@ -360,7 +377,7 @@ function RankHelp({ open, onClose }) {
   <//>`;
 }
 
-export function RankLeaderboard({ onClose }) {
+export function RankLeaderboard({ onClose, targetId = null, targetName = '' }) {
   const myName = useStore((s) => s.me.name);
   const [items, setItems] = useState([]);
   const [radiantThreshold, setRadiantThreshold] = useState(null);
@@ -400,12 +417,12 @@ export function RankLeaderboard({ onClose }) {
         : !items.length ? html`<p class="rank-leaderboard-screen__state" role="status">${trA("暂无神话及以上玩家")}</p>`
         : html`<div class="rank-leaderboard-screen__table-wrap"><div class="rank-leaderboard-screen__row rank-leaderboard-screen__row--head"><span>${trA("排名")}</span><span>${trA("头像")}</span><span>${trA("昵称")}</span><span>${trA("段位")}</span><span>${trA("分数")}</span><span>${trA("胜场")}</span></div>
           <div class="rank-leaderboard-screen__rows">${items.map((item, idx) => { const seat = { playerId: item.position || idx + 1, card: item.card, cardSkin: item.cardSkin || 'original' };
-            const isSelf = !!myName && item.name === myName;
+            const isSelf = targetId ? item.profileId === targetId : !!myName && item.name === myName;
             const avatar = seatAvatar(seat, { pool: cardList, byChar, m, myId: null, myCard: null });
             const fallbackAvatar = item.cardSkin && item.cardSkin !== 'original'
               ? seatAvatar({ ...seat, cardSkin: 'original' }, { pool: cardList, byChar, m, myId: null, myCard: null }) : null;
-            return html`<div key=${item.position || idx} class=${`rank-leaderboard-screen__row rank-leaderboard-screen__row--r${Math.min(item.position || idx + 1, 3)}${isSelf ? ' is-self' : ''}`} aria-current=${isSelf ? 'true' : undefined} title=${isSelf ? trA('本账号') : undefined}>
-              <span class="rank-leaderboard-screen__rank num">${item.position}</span><span class="rank-leaderboard-screen__avatar"><${AvatarFrame} size="sm" name=${item.name || trA('博士')} src=${avatar} fallbackSrc=${fallbackAvatar} fallbackIcon="user" seat=${idx} /></span>
+            return html`<div key=${`${item.name || ''}:${idx}`} class=${`rank-leaderboard-screen__row${item.inactive ? '' : ` rank-leaderboard-screen__row--r${Math.min(item.position || idx + 1, 3)}`}${isSelf ? ' is-self' : ''}`} aria-current=${isSelf ? 'true' : undefined} title=${isSelf ? targetId ? `${targetName || item.name}的段位` : trA('本账号') : undefined}>
+              <span class="rank-leaderboard-screen__rank num">${item.inactive ? '' : item.position}</span><span class="rank-leaderboard-screen__avatar"><${AvatarFrame} size="sm" name=${item.name || trA('博士')} src=${avatar} fallbackSrc=${fallbackAvatar} fallbackIcon="user" seat=${idx} /></span>
               <span class="rank-leaderboard-screen__name">${item.name || trA('博士')}</span><span class="rank-leaderboard-screen__tier"><img src=${rankIconUrl(item.rank.icon)} alt=${normalizeRankLabel(item.rank.label)} /><b>${normalizeRankLabel(item.rank.label)}</b></span>
               <span class="rank-leaderboard-screen__points num">${item.points}</span><span class="rank-leaderboard-screen__wins num">${item.wins || 0}</span>
             </div>`; })}</div></div>`}
@@ -533,6 +550,7 @@ function AllianceSelect({ onClose, code, onCode, codeOk, recent, online, maint, 
 
 /** Icons drawn on the same 24px grid as the imported UI. */
 function EastGlyph({ name }) {
+  if (name === 'skull') return html`<${GIcon} name="skull" />`;
   const paths = {
     entertainment: 'M5 4h14l3 5v11H2V9zm1.2 2L4 9.7V18h16V9.7L17.8 6zM7 10h2v2h2v2H9v2H7v-2H5v-2h2zm9 1h2v2h-2zm-3 3h2v2h-2z',
     cyclops: 'M12 2 3 7v10l9 5 9-5V7zm0 2.3L19 8v8l-7 3.7L5 16V8zm0 3C8 7.3 6 12 6 12s2 4.7 6 4.7 6-4.7 6-4.7-2-4.7-6-4.7zm0 2.5a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4z',
@@ -554,10 +572,6 @@ function HubEntry({ name, en, icon, tone = 'mint', onClick }) {
       <span class="hub-entry__icon"><${EastGlyph} name=${icon} /></span><span class="hub-entry__en">${en}</span>
       <span class="hub-entry__name">${name}</span><span class="hub-entry__corner" aria-hidden="true"></span>
     </button></div>`;
-}
-
-function StampRing() {
-  return html`<svg class="pcard__ring" viewBox="0 0 120 100" aria-hidden="true"><path pathLength="1" d="M18 62C6 34 34 8 70 10c34 2 48 30 38 54-10 24-46 32-72 22C20 80 10 66 16 50" /><path pathLength="1" d="M30 20c22-14 62-12 78 10 12 18 4 44-16 54" /></svg>`;
 }
 
 export function ProtoCard({ roomMode, difficulty, selected, onSelect, cyclops }) {
@@ -620,8 +634,11 @@ function HallFrame({ title, en, onBack, children, class: cls = '', difficulty = 
 
 function EntertainmentHall({ onBack, onPick }) {
   const modes = [
+    { id: ZHAJING_VARIANT, name: '炸惊模拟', en: 'ZHAJING SIMULATION', icon: 'skull', no: '06', desc: '惊变卡牌、专属棋库、锻造器与独立经济和首领规则。', tags: ['独立 / 1–4 人同盟', '20 格候战区', '不计排位'] },
+    { id: MIZUKI_VARIANT, name: '水月联合探索', en: 'MIZUKI · COOPERATIVE EXPEDITION', icon: 'users', no: '05', desc: '1–4 名真人联合探索，备战摆位后自动战斗，支持动态分路与汇合。', tags: ['1–4 名博士', '备战摆位 / 自动作战', '个人生命 / 团队灯火'] },
     { id: 'entertainment_multi', name: '多人模式', en: 'MULTIPLAYER ALLIANCE', icon: 'users', no: '01', desc: '组建至多 20 人的同盟，分组卡池与轮选，多轮联防。', tags: ['1–20 名博士', '房号邀请 / 手动 AI', '不计排位'] },
     { id: 'entertainment_cyclops', name: '舟铲铲之战', en: 'CYCLOPS TACTICS', icon: 'cyclops', no: '02', desc: '21 回合 · 全干员池 · 装备奖励 · 独眼巨人的馈赠。', tags: ['1–8 名博士', '每 4 人共享卡池', '存款利息 / 经验升级'] },
+    { id: ANNIHILATION_VARIANT, name: '湮灭模拟', en: 'ANNIHILATION SIMULATION', icon: 'skull', no: '04', desc: '蚀流 1–6 · 藏品选择 · 毒雾与致命地形 · 无尽湮灭。', tags: ['独立 / 1–4 人同盟', '独立蚀流规则', '不计排位'] },
     { id: ENDLESS_VARIANT, name: '无尽模式', en: 'ENDLESS PROTOCOL', icon: 'hourglass', no: '03', desc: '击败原版最终首领后继续推进，每五回合迎来新的首领，敌方强度持续增长。', tags: ['4–20 名博士', '回合与强度无上限', '不计排位'] },
   ];
   return html`<${HallFrame} title=${trA('娱乐模式大厅')} en="ENTERTAINMENT" onBack=${onBack} class="east-entertainment">
@@ -644,7 +661,7 @@ export function rankHistoryDelta(rank) {
   return null;
 }
 
-function RankHistory({ playerId, name, online }) {
+function RankHistory({ playerId, name, online, targetId = null, historyItems = [] }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -656,6 +673,12 @@ function RankHistory({ playerId, name, online }) {
     selected.current = null;
     setItems(null); setDetail(null); setLoading(''); setError('');
     if (!online || !playerId) { setItems([]); return () => { active = false; }; }
+    if (targetId) {
+      const put = values => { if (active) setItems(values.filter(item => item.ranked).slice(0, 10)); };
+      if (!refresh) put(historyItems);
+      else friendAction('profile', { targetId }).then(result => put(result.items || []), err => { if (active) { setItems([]); setError(describeError(err)); } });
+      return () => { active = false; selected.current = null; };
+    }
     const off = net.on('history.list', msg => {
       if (!active || msg.viewerId !== playerId) return;
       setItems((Array.isArray(msg.items) ? msg.items : []).filter(item => item.ranked).slice(0, 10));
@@ -667,12 +690,15 @@ function RankHistory({ playerId, name, online }) {
     });
     net.request('history.list', {}).catch(err => { if (active) { setItems([]); setError(describeError(err)); } });
     return () => { active = false; selected.current = null; off(); offDetail(); };
-  }, [playerId, name, online, refresh]);
+  }, [playerId, name, online, refresh, targetId]);
   const open = item => {
     if (loading) return;
     const selection = { matchId: item.matchId, playerId: item.playerId };
     selected.current = selection; setLoading(item.matchId); setError('');
-    net.request('history.detail', selection).catch(err => {
+    const request = targetId ? friendAction('history', { targetId, ...selection }).then(result => {
+      if (selected.current === selection) { setDetail(result); setLoading(''); }
+    }) : net.request('history.detail', selection);
+    request.catch(err => {
       if (selected.current === selection) { setLoading(''); setError(describeError(err)); }
     });
   };
@@ -707,7 +733,7 @@ function RankHistory({ playerId, name, online }) {
   </section>`;
 }
 
-function RankHall({ rank, me, online, onBack, onStart, onLeaderboard, onHelp }) {
+export function RankHall({ rank, me, online, onBack, onStart, onLeaderboard, onHelp, targetId = null, historyItems = [] }) {
   const [showPyramid, setShowPyramid] = useState(false);
   const pending = rankingPending(rank);
   const pyramid = rankPyramidView(rank?.rankPyramid);
@@ -722,8 +748,8 @@ function RankHall({ rank, me, online, onBack, onStart, onLeaderboard, onHelp }) 
       </div>
       ${pending ? html`<p role="status">${trA('全服排名待确认，排位与排行榜暂不可用；其他模拟不受影响。')}</p>` : null}
       <div class="east-ranked__tools"><${Button} icon="crown" disabled=${!online || pending} onClick=${onLeaderboard}>${trA('全服排行榜')}<//><${Button} icon="info" onClick=${onHelp}>${trA('段位规则')}<//></div>
-      <div class="east-ranked__start"><${Button} icon="user" disabled=${!online || pending} onClick=${() => onStart('solo')}>${trA('创建独立排位')}<//><${Button} variant="secondary" icon="users" disabled=${!online || pending} onClick=${() => onStart('coop')}>${trA('创建同盟排位')}<//></div>
-    </section><${RankHistory} key=${me?.playerId || ''} playerId=${me?.playerId} name=${me?.name} online=${online} /></main>
+      ${!targetId ? html`<div class="east-ranked__start"><${Button} icon="user" disabled=${!online || pending} onClick=${() => onStart('solo')}>${trA('创建独立排位')}<//><${Button} variant="secondary" icon="users" disabled=${!online || pending} onClick=${() => onStart('coop')}>${trA('创建同盟排位')}<//></div>` : null}
+    </section><${RankHistory} key=${me?.playerId || ''} playerId=${me?.playerId} name=${me?.name} online=${online} targetId=${targetId} historyItems=${historyItems} /></main>
   <//>`;
 }
 
@@ -770,6 +796,11 @@ export function LobbyScreen() {
   const [variant, setVariant] = useState(null);
   const [capacity, setCapacity] = useState(ENTERTAINMENT_DEFAULT_SEATS);
   const [cyclopsCapacity, setCyclopsCapacity] = useState(CYCLOPS_DEFAULT_SEATS);
+  const [mizukiCapacity, setMizukiCapacity] = useState(MIZUKI_DEFAULT_SEATS);
+  const [mizukiDifficultyGrade, setMizukiDifficultyGrade] = useState(() => {
+    const grade = loadPref('lobby.mizukiDifficultyGrade', 0);
+    return Number.isInteger(grade) && grade >= 0 && grade <= 18 ? grade : 0;
+  });
   const [difficulty, setDifficulty] = useState(() => {
     const d = loadPref('lobby.difficulty', 'NORMAL');
     return DIFFICULTIES.includes(d) ? d : 'NORMAL';
@@ -785,17 +816,22 @@ export function LobbyScreen() {
   const online = conn.status === 'online' && !switching;
   const entertainment = variant !== null;
   const cyclops = variant === 'entertainment_cyclops';
+  const mizuki = variant === MIZUKI_VARIANT;
   const rankedEligible = !entertainment && isRankedMatch(ranked, difficulty);
   const rankPending = rankingPending(rank);
   const codeOk = CODE_RE.test(normalizeCode(code));
   const pickDifficulty = (d) => { setDifficulty(d); savePref('lobby.difficulty', d); };
+  const pickMizukiDifficulty = (grade) => {
+    if (!Number.isInteger(grade) || grade < 0 || grade > 18) return;
+    setMizukiDifficultyGrade(grade); savePref('lobby.mizukiDifficultyGrade', grade);
+  };
   const toggleRanked = () => { if (rankPending && !ranked) return; setRanked(!ranked); savePref('lobby.ranked', !ranked); };
   const openMode = (mode, rankedStart = false) => {
     if (rankedStart && rankPending) return;
     setRoomMode(mode); setVariant(null); setHall('protocol'); savePref('lobby.mode', mode);
     if (rankedStart) { setRanked(true); savePref('lobby.ranked', true); if (difficulty === 'FUNNY') pickDifficulty('NORMAL'); }
   };
-  const pickEntertainment = (id) => { setVariant(id); setRoomMode('coop'); if (id === ENDLESS_VARIANT) pickDifficulty('NORMAL'); setHall('protocol'); };
+  const pickEntertainment = (id) => { if (id === ZHAJING_VARIANT) { setHall('zhajing'); return; } if (id === ANNIHILATION_VARIANT) { setHall('annihilation'); return; } setVariant(id); setRoomMode('coop'); if (id === MIZUKI_VARIANT) setDifficulty('NORMAL'); else if (id === ENDLESS_VARIANT) pickDifficulty('NORMAL'); setHall('protocol'); };
   const run = async (kind, fn) => {
     if (inFlight.current || serversState.get().switching) return;
     if (!online) { toast(trA('尚未连接到服务器，请稍候'), 'warn'); return; }
@@ -806,7 +842,7 @@ export function LobbyScreen() {
   const create = () => {
     if (rankPending && rankedEligible) { toast(trA('全服排名待确认，请先关闭排位赛'), 'warn'); return; }
     return run('create', () => net.request('room.create', entertainment
-      ? { mode: 'coop', variant, capacity: cyclops ? cyclopsCapacity : capacity, difficulty, ranked: false }
+      ? { mode: 'coop', variant, capacity: mizuki ? mizukiCapacity : cyclops ? cyclopsCapacity : capacity, difficulty: mizuki ? 'NORMAL' : difficulty, ranked: false, ...(mizuki ? { mizukiDifficultyGrade } : {}) }
       : { mode: roomMode, difficulty, ranked }));
   };
   const join = () => {
@@ -818,7 +854,7 @@ export function LobbyScreen() {
     if (!online || !setPlayerCard(charId, choice)) return;
     setDialog(null);
   };
-  const modeName = variant === ENDLESS_VARIANT ? '无尽模式' : cyclops ? '舟铲铲之战' : entertainment ? '多人模式' : roomMode === 'solo' ? '独立模拟' : '同盟模拟';
+  const modeName = mizuki ? '水月联合探索' : variant === ENDLESS_VARIANT ? '无尽模式' : cyclops ? '舟铲铲之战' : entertainment ? '多人模式' : roomMode === 'solo' ? '独立模拟' : '同盟模拟';
   const backFromProtocol = () => setHall(entertainment ? 'entertainment' : roomMode === 'coop' ? 'alliance' : null);
 
   return html`<div class="screen lobby-screen lobby-hub east-hub" data-hub-theme=${backdropTheme(bg)}>
@@ -837,7 +873,7 @@ export function LobbyScreen() {
       <aside class="hub-side">
         <${HubTile} icon="crown" label=${trA('排位')} en="RANKED PROTOCOL" class="east-rank-tile" onClick=${() => setHall('ranked')}><${RankBadge} rank=${rank} size="sm" /><//>
         <${HubTile} icon="chart" label=${trA('统计数据')} en="STATISTICS" onClick=${openStats} />
-        <${HubTile} icon="key" label=${trA('密钥加入')} en="JOIN WITH KEY" onClick=${() => setDialog('join')} />
+        <${HubTile} icon="users" label="好友列表" en="FRIENDS" class="friends-entry" onClick=${() => setDialog('friends')}><${FriendActivityDot} /><//>
         <${HubTile} icon="eye" label=${trA('观战大厅')} en="SPECTATOR HALL" onClick=${() => setDialog('spectator')} disabled=${!online} />
         <${HubTile} icon="book" label=${trA('对局记录')} en="MATCH HISTORY" onClick=${() => setDialog('history')} disabled=${!online || !me.playerId} />
         <${TipsPanel} />
@@ -859,10 +895,13 @@ export function LobbyScreen() {
       loading=${!data.get('assets') || !data.get('chess') || !data.get('backups')} onPick=${pickCard} onClose=${() => setDialog(null)} />` : null}
     ${sweepOpen ? html`<${LazySweepReport} onClose=${() => setSweepOpen(false)} />` : null}
     ${hall === 'alliance' ? html`<${Overlay} level="hall"><${AllianceSelect} onClose=${() => setHall(null)} code=${code} onCode=${(v) => setCode(normalizeCode(v))} codeOk=${codeOk} recent=${recent} online=${online} busy=${busy} difficulty=${difficulty} onCreate=${() => openMode('coop')} onJoin=${join} onSpectate=${() => setDialog('spectator')} /><//>` : null}
+    ${hall === 'zhajing' ? html`<${ZhajingSetup} Frame=${HallFrame} onBack=${() => setHall('entertainment')} online=${online} busy=${busy} onCreate=${params => run('zhajing', () => net.request('room.create', params))} />` : null}
+    ${hall === 'annihilation' ? html`<${AnnihilationSetup} Frame=${HallFrame} onBack=${() => setHall('entertainment')} online=${online} busy=${busy} onCreate=${params => run('annihilation', () => net.request('room.create', params))} />` : null}
     ${hall === 'entertainment' ? html`<${EntertainmentHall} onBack=${() => setHall(null)} onPick=${pickEntertainment} />` : null}
     ${hall === 'ranked' ? html`<${RankHall} rank=${rank} me=${me} online=${online} onBack=${() => setHall(null)} onStart=${(m) => openMode(m, true)} onLeaderboard=${() => setHall('leaderboard')} onHelp=${() => setRankHelpOpen(true)} />` : null}
     ${hall === 'leaderboard' ? html`<${RankLeaderboard} onClose=${() => setHall('ranked')} />` : null}
-    ${hall === 'protocol' ? html`<${HallFrame} title=${trA('选择模拟协议')} en=${entertainment ? 'ENTERTAINMENT' : roomMode === 'solo' ? 'SOLO SIMULATION' : 'ALLIANCE SIMULATION'} modeName=${trA(modeName)} difficulty=${difficulty} onBack=${backFromProtocol}>
+    ${hall === 'protocol' && mizuki ? html`<${MizukiSetup} Frame=${HallFrame} onBack=${backFromProtocol} online=${online} busy=${busy} grade=${mizukiDifficultyGrade} onGrade=${pickMizukiDifficulty} capacity=${mizukiCapacity} onCapacity=${setMizukiCapacity} onCreate=${create} />` : null}
+    ${hall === 'protocol' && !mizuki ? html`<${HallFrame} title=${trA('选择模拟协议')} en=${entertainment ? 'ENTERTAINMENT' : roomMode === 'solo' ? 'SOLO SIMULATION' : 'ALLIANCE SIMULATION'} modeName=${trA(modeName)} difficulty=${difficulty} onBack=${backFromProtocol}>
       <div class="proto-body"><section class="proto-stage"><${ProtocolScene} key=${difficulty} difficulty=${difficulty} /><div class="proto-brief"><span class="proto-brief__code num">${variant === ENDLESS_VARIANT ? 'ENDLESS' : difficultyInfo(roomMode, difficulty).code}</span><b class="proto-brief__name">${trA(variant === ENDLESS_VARIANT ? '无尽模式' : DIFFICULTY_NAMES[difficulty])}</b><p>${variant === ENDLESS_VARIANT ? '标准起始规则 · 击败最终首领后持续推进 · 每五回合首领战 · 不计排位' : cyclops ? '21 回合 · 装备奖励 · R10 征召 · 经验升级' : entertainment ? '多人同盟 · 分组卡池与轮选 · 不计排位' : roomMode === 'solo' ? '独自调配阵容，以自己的节奏完成模拟。' : '邀请同伴或手动添加 AI，共同抵御敌潮。'}</p></div></section>
       <section class="proto-side">${variant === ENDLESS_VARIANT ? html`<div class="proto-list" aria-label="无尽模式规则"><article class="pcard is-on pcard--endless"><span class="pcard__glow" aria-hidden="true"></span><span class="pcard__head"><${Icon} name="hourglass" class="pcard__glyph" /><span class="pcard__name">${trA('无尽模式')}</span></span><span class="pcard__desc">${trA('击败原版最终首领后继续推进')}</span><span class="pcard__effects"><span>${trA('每五回合迎来新的首领')}</span><span>${trA('敌方强度持续提升，无数值上限')}</span></span><span class="pcard__meta"><span class="num">ENDLESS</span><span><b class="num">∞</b> ${trA('回合')}</span><span>${trA('固定标准起始规则')}</span></span><span class="pcard__stamp" aria-hidden="true"><${StampRing} /><span class="pcard__tick"><${Icon} name="check" /></span><span class="pcard__ok">${trA('已选定')}</span></span></article></div>` : html`<div class="proto-list" aria-label=${trA('模拟难度')}>${DIFFICULTIES.map((d) => html`<${ProtoCard} key=${d} roomMode=${roomMode} difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} cyclops=${cyclops} />`)}</div>`}
         <div class="proto-foot">
@@ -873,6 +912,7 @@ export function LobbyScreen() {
       </section></div>
     <//>` : null}
     <${SettingsModal} open=${dialog === 'settings'} onClose=${() => setDialog(null)} />
+    ${dialog === 'friends' ? html`<${FriendsHall} onClose=${() => setDialog(null)} />` : null}
     <${Modal} open=${dialog === 'backdrop'} title=${trA('大厅背景')} micro="LOBBY BACKDROP" onClose=${() => setDialog(null)} class="east-backdrop-modal" width="min(700px, 94vw)"><${BackdropSettings} bg=${bg} /><//>
     <${Modal} open=${dialog === 'join'} title=${trA('密钥加入')} micro="JOIN WITH ALLIANCE KEY" onClose=${() => setDialog(null)} width="min(640px, 94vw)">
       <div class="join-row"><${TextField} size="code" icon="key" value=${code} placeholder=${trA('输入同盟密钥 / 粘贴邀请链接')} onInput=${setCode} onEnter=${join} /></div>

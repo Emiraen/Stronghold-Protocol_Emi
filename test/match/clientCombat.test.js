@@ -247,7 +247,7 @@ test('observing: no watching while the own battle runs; after it ends a teammate
   m.dispose();
 });
 
-test('Final Assault: two client-run pair fields share the server pool (b.progress bossDmg), b.pool ≤ 4 Hz, victory, per-player damage', () => {
+test('Final Assault: two client-run pair fields share the server pool (b.progress bossDmg), b.pool ≤ 4 Hz, victory, per-player damage', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 4, seed: 9108, fake: true, clientCombat: true, instant: false,
     script: (b) => (b.kind === 'boss' ? { bossDps: 20000 } : { duration: 2 }) }).start();
   const m = h.m;
@@ -271,7 +271,7 @@ test('Final Assault: two client-run pair fields share the server pool (b.progres
   assert.ok(pools.length > 3);
   for (let i = 1; i < poolAt.length; i++) assert.ok(poolAt[i] - poolAt[i - 1] >= 250, `b.pool ≤ 4 Hz (${poolAt[i] - poolAt[i - 1]} ms apart)`);
   assert.deepEqual(Object.keys(pools[pools.length - 1].acked).sort(), ['b1', 'b2']);
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   const dmg = [...m.players.values()].map((p) => p.stats.bossDamage);
   assert.ok(dmg.every((d) => d > 0), `per-player boss damage attributed (${dmg})`);
@@ -279,7 +279,7 @@ test('Final Assault: two client-run pair fields share the server pool (b.progres
   m.dispose();
 });
 
-test('Final Assault: leaks and leader LP effects from b.progress drain the team LP; overtime after 150 real s at 1 LP/real s; team LP 0 → b.end → defeat', () => {
+test('Final Assault: leaks and leader LP effects from b.progress drain the team LP; overtime after 150 real s at 1 LP/real s; team LP 0 → b.end → defeat', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 9109, fake: true, clientCombat: true, instant: false,
     script: (b) => (b.kind === 'boss' ? { bossDps: 0, leakEvents: [{ at: 2, lpr: 3 }], lpLossEvents: [{ at: 3, amount: 2 }] } : { duration: 2 }) }).start();
   const m = h.m;
@@ -294,19 +294,19 @@ test('Final Assault: leaks and leader LP effects from b.progress drain the team 
   const pub = () => h.bc.filter((x) => x.t === 'm.public').pop();
   m.flush(true);
   assert.equal(pub().deadline, t0 + 120000, 'the HUD counts the boss level\'s 120 s down');
-  assert.equal(pub().overtimeAt, t0 + 150000, 'and knows when the drain starts');
-  h.sched.advance(t0 + 150000 - m.sched.now() + 500);
-  assert.equal(m.teamLp, lp1, 'no drain before 150 real s (the countdown ran out at 120 s, the battle went on)');
+  assert.equal(pub().overtimeAt, t0 + 120000, 'all-human team overtime starts at the level deadline');
+  h.sched.advance(t0 + 120000 - m.sched.now() + 500);
+  assert.equal(m.teamLp, lp1, 'no full second of overtime has elapsed yet');
   h.sched.advance(5000);
   assert.ok(m.teamLp <= lp1 - 4 && m.teamLp >= lp1 - 6, `overtime drain ≈ 5 LP over 5 real s (${lp1} → ${m.teamLp})`);
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, false);
   assert.equal(m.teamLp, 0);
   assert.ok(h.clients.get('p_1').ends.some((x) => x.reason === 'forced') || h.clients.get('p_0').ends.some((x) => x.reason === 'forced'), 'b.end reached the field');
   m.dispose();
 });
 
-test('Final Assault: the authority leaves → its partner\'s replica takes over; nobody left → the server paces the field (credits only new damage)', () => {
+test('Final Assault: the authority leaves → its partner\'s replica takes over; nobody left → the server paces the field (credits only new damage)', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 9110, fake: true, clientCombat: true, instant: false,
     script: (b) => (b.kind === 'boss' ? { bossDps: 2000 } : { duration: 2 }) }).start();
   const m = h.m;
@@ -328,7 +328,7 @@ test('Final Assault: the authority leaves → its partner\'s replica takes over;
   assert.ok(Math.abs(afterHp - before) < 1e-6, 'the re-simulation does not double count reported damage');
   h.sched.advance(3000);
   assert.ok(m.bossPool.hp < afterHp, 'the server run keeps damaging the pool');
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   m.dispose();
 });
@@ -397,8 +397,8 @@ test('LocalBossPool (client) and CreditPool (server takeover) keep the shared po
   assert.equal(cp.hp, 650);
 });
 
-test('full co-op match with client-side combat and the real sim reaches RESULT with zero errors (humans on AI 托管)', () => {
-  for (const [humans, bots, seed, pace] of [[2, 1, 9113, 'instant'], [4, 0, 9114, 'paced'], [1, 2, 9115, 'instant']]) {
+for (const [humans, bots, seed, pace] of [[2, 1, 9113, 'instant'], [4, 0, 9114, 'paced'], [1, 2, 9115, 'instant']]) {
+  test(`full co-op match with client-side combat and the real sim reaches RESULT with zero errors (humans on AI 托管): ${humans}+${bots}/${pace}`, async () => {
     const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans, bots, seed, captureFrames: false, checkFrames: true, clientCombat: true, pace });
     h.autoHumans();
     const m = h.m;
@@ -407,8 +407,9 @@ test('full co-op match with client-side combat and the real sim reaches RESULT w
     h.run(() => {
       const k = `${m.phase}:${m.round}`;
       if (k !== last) { last = k; checkInvariants(m); if (m.phase === PHASE.PREP && m.round === 1) for (const ps of m.players.values()) ps.lp = 300; }
-      return h.ended != null;
+      return m.ended;
     }, { maxSteps: 6e6 });
+    await h.waitForEnd();
     assert.ok(h.ended, `${humans}+${bots}: ended (${m.phase} R${m.round})`);
     assert.equal(m.errorCount, 0, JSON.stringify(m.errors.slice(0, 2)));
     assert.deepEqual(h.logs.error.filter((l) => !l.startsWith('[sim]')), []);
@@ -418,8 +419,8 @@ test('full co-op match with client-side combat and the real sim reaches RESULT w
     assert.equal(h.sent.filter(([, x]) => x.t === 'b.snap' || x.t === 'b.ev').length, 0);
     for (const c of h.clients.values()) assert.ok(c.log.some((x) => x.t === 'b.result'), 'every human reported results');
     m.dispose();
-  }
-});
+  });
+}
 
 test('fuzz: random / hostile b.progress and b.result frames never throw, never corrupt, never end a field early', () => {
   const h = makeMatch({ mode: 'coop', humans: 2, bots: 1, seed: 9116, captureFrames: false, clientCombat: true, clients: false });

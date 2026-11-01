@@ -49,23 +49,24 @@ test('trickster uses game-hosted avatar and poster until its own Win7 animation 
   } finally { resourceCache.isCached = old; }
 });
 
-test('only the special static avatar and poster bypass the preload image loader', () => {
+test('only special static avatars bypass the selected-server preload image loader', () => {
   assert.equal(hFresh('img', { src: GOOD_BOY_AVATAR }).type, 'img');
-  assert.equal(hFresh('img', { src: GOOD_BOY_POSTER }).type, 'img');
+  assert.equal(hFresh('img', { src: GOOD_BOY_POSTER }).type, CachedImage);
   assert.equal(hFresh('img', { src: GOOD_BOY_ANIMATION }).type, CachedImage);
   assert.equal(hFresh('img', { src: TRICKSTER_AVATAR }).type, 'img');
-  assert.equal(hFresh('img', { src: TRICKSTER_POSTER }).type, 'img');
+  assert.equal(hFresh('img', { src: TRICKSTER_POSTER }).type, CachedImage);
   assert.equal(hFresh('img', { src: TRICKSTER_ANIMATION }).type, CachedImage);
   assert.equal(hFresh('img', { src: '/assets/local/playercards/unknown.png' }).type, CachedImage);
 });
 
-test('all published name-card previews load from the game server without optional preload', () => {
+test('published static name-card previews use resource routing and avatars remain same-origin', () => {
   const cards = ['duck-burnard', 'duck-flower', 'duck-brioche', 'paintbrush-tactics',
     'soft-and-deadly', 'hatchbudz-quacked', 'commander-bruno'];
   for (const card of cards) {
     for (const file of ['avatar.png', 'poster.png']) {
       const src = `/assets/local/playercards/${card}/${file}`;
-      assert.equal(hFresh('img', { src }).type, 'img', `${card}/${file} must not wait for a bulk resource download`);
+      assert.equal(hFresh('img', { src }).type, file === 'avatar.png' ? 'img' : CachedImage,
+        `${card}/${file} must use its correct delivery path`);
     }
     const src = `/assets/local/playercards/${card}/card.gif`;
     assert.equal(hFresh('img', { src }).type, CachedImage, `${card} animation remains explicitly downloaded`);

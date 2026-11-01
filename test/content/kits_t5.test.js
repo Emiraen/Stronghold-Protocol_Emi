@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBattle, enemyRec, chessRec, checkInvariants } from '../helpers/battleHarness.js';
 import KITS from '../../server/sim/content/kits/tier5.js';
+import { COLS } from '../../server/sim/constants.js';
 
 const approx = (a, b, eps = 1e-6, msg = '') => assert.ok(Math.abs(a - b) <= eps * Math.max(1, Math.abs(b)), `${msg} ${a} ≉ ${b}`);
 const dummy = (key = 'enemy_dummy', o = {}) => enemyRec({ key, hp: 1e7, speed: 0, ...o });
@@ -474,12 +475,14 @@ test('魔王 S3: inspire +65 % of her max HP to others in range, HP equalised ev
   h.run(1.05);
   // the 3 motes orbit at range_radius 1.15 (dynamic_spd 30°/s, 120° apart): none sits on the left neighbour at t = 1 s
   assert.ok(!a.hasBuff('cetsyr:mote'), 'motes orbit: not on the left neighbour yet');
-  approx(a.hp - 2000, aura(), 1e-6, 'plain aura before the mote arrives');
-  approx(b.hp - 8000, aura(), 1e-6, 'plain aura (2 tiles away)');
+  approx(a.findBuff(`trait:bard:${u.id}`).mods.hpRegen, aura(), 1e-6, 'plain aura before the mote arrives');
+  approx(b.findBuff(`trait:bard:${u.id}`).mods.hpRegen, aura(), 1e-6, 'plain aura (2 tiles away)');
+  assert.ok(a.hp > 2000 && b.hp > 8000, 'regeneration starts after aura installation');
   assert.ok(h.runUntil(() => a.hasBuff('cetsyr:mote'), 2), 'an orbiting mote reaches the adjacent operator');
-  const hpA = a.hp;
+  assert.ok(h.runUntil(() => Math.abs((a.findBuff(`trait:bard:${u.id}`)?.mods.hpRegen ?? 0) - aura() * t0['attack@trait_mul']) < 1e-6, 1));
+  const hpA = a.hp, pendingA = a._regenAcc ?? 0, regenAt = h.b.time;
   h.run(1);
-  approx(a.hp - hpA, aura() * t0['attack@trait_mul'], 1e-6, 'mote ×1.5');
+  approx(a.hp - hpA + (a._regenAcc ?? 0) - pendingA, aura() * t0['attack@trait_mul'] * (h.b.time - regenAt), 1e-6, 'mote ×1.5 continuous regeneration');
   assert.ok(h.runUntil(() => c.hasBuff('cetsyr:mote'), 12), 'a diagonal neighbour (1.41 tiles) is on the orbit too');
   h.run(8);
   assert.ok(!fxOf(h, 'mote').some((e) => e[4].id === b.id), 'two tiles away: off the orbit');
@@ -526,7 +529,11 @@ test('铃兰 T2 画地为牢 fragile 20 % on sluggish enemies (×1.4 in S3); S3 
   assert.equal(u.lastAttackAt, lastAtk, 'no attacks during S3');
   assert.ok(e.s.flags && e.findBuff('sluggish'), 'enemies in range are sluggish');
   approx(e.s.dmgTakenMul, 1 + (t1.damage_scale - 1) * bb.scale_delta_to_one, 1e-9, 'T2 ×1.4');
-  approx(hurt.hp - 5000, 2 * u.s.atk * bb['attack@atk_to_hp_recovery_ratio'], 1e-6, 'heals 9 % ATK/s');
+  const rate = u.s.atk * bb['attack@atk_to_hp_recovery_ratio'];
+  approx(hurt.s.hpRegen, rate, 1e-6, 'S3 grants 9 % ATK/s regeneration');
+  const hp0 = hurt.hp, pending0 = hurt._regenAcc ?? 0, t0Regen = h.b.time;
+  h.run(0.5);
+  approx(hurt.hp - hp0 + (hurt._regenAcc ?? 0) - pending0, rate * (h.b.time - t0Regen), 1e-6, 'continuous recovery integral');
   clean(h);
 });
 
@@ -794,8 +801,8 @@ test('百炼嘉维尔 S2: drags unblocked enemies in front of her; T1 ATK/DEF +1
   const bb = bbOf(u), t0 = tal(u, 0), t1 = tal(u, 1);
   h.run(0.5);
   assert.equal(u.blocking.length, 3);
-  approx(u.s.atk, u.base.atk * (1 + t0.atk + 2 * t0.atk_add));
-  approx(u.s.def, u.base.def * (1 + t0.def + 2 * t0.def_add));
+  approx(u.s.atk, u.base.atk * (u.cultMul?.atk ?? 1) * (1 + t0.atk + 2 * t0.atk_add));
+  approx(u.s.def, u.base.def * (u.cultMul?.def ?? 1) * (1 + t0.def + 2 * t0.def_add));
   u.hp = u.s.maxHp * 0.8;
   approx(h.b.heal(null, u, 100), 100 * t1.heal_scale_1);
   u.hp = u.s.maxHp * 0.3;
@@ -805,7 +812,8 @@ test('百炼嘉维尔 S2: drags unblocked enemies in front of her; T1 ATK/DEF +1
   const far = h.spawn('enemy_dummy', { pos: [9, 6] });
   u.skill.gainSp(1000);
   assert.ok(h.runUntil(() => u.skill.active, 3));
-  approx(u.s.atk, u.base.atk * (1 + t0.atk + bb.atk));
+  assert.ok(h.runUntil(() => u.mem.axeN === 0, 0.2 + 1 / 30), 'the periodic talent observes that the old blockers died');
+  approx(u.s.atk, u.base.atk * (u.cultMul?.atk ?? 1) * (1 + t0.atk + bb.atk));
   h.b.dealDamage(null, near, { amount: 1e9, type: 'true' });
   h.run(1.5);
   assert.ok(far.x < 5.6, `dragged in front of her by the extended skill range (x=${far.x})`);
@@ -1152,7 +1160,7 @@ test('缇缇 S3: the wake-up chain sleeps the highest-aggro enemy within 1.5 (PR
   clean(h);
 });
 
-test('乌尔比安 S3: lands one tile beyond an occupied anchor tile; the anchor stops in front of a crate', () => {
+test('乌尔比安 S3: lands one tile beyond an occupied anchor tile; a crate blocks unreachable targets without consuming SP', () => {
   const h = makeBattle({
     defs: { enemies: { enemy_dummy: dummy() }, chess: { t_blk: ally('t_blk', { stats: { blockCnt: 1 } }) } },
     units: [{ chessId: 'chess_char_5_05_a', row: 9, col: 3 }, { chessId: 't_blk', row: 9, col: 6 }],
@@ -1174,11 +1182,25 @@ test('乌尔比安 S3: lands one tile beyond an occupied anchor tile; the anchor
   const v = g.unit('chess_char_5_05_a');
   g.step();
   v.skill.gainSp(1000);
-  assert.ok(g.runUntil(() => v.skill.active, 2));
+  g.run(2);
+  assert.equal(v.skill.active, false, 'enemy behind the crate cannot trigger automatic S3');
+  const spBefore = v.skill.sp, chargesBefore = v.skill.charges;
+  assert.equal(v.skill.activate('test', { free: true }), false, 'a manual free cast also needs a reachable anchor target');
+  assert.equal(v.skill.sp, spBefore, 'a refused cast does not consume SP');
+  assert.equal(v.skill.charges, chargesBefore, 'a refused cast does not consume a charge');
+  assert.equal(fxOf(g, 'anchor').length, 0, 'no anchor is emitted through the crate');
+  assert.deepEqual([v.tileR, v.tileC], [9, 3], 'no movement without a legal target');
+  const farEnemy = g.enemy('enemy_dummy');
+  const nearEnemy = g.spawn('enemy_dummy', { pos: [9, 4] });
+  g.b._buildEnemyIndex(); // direct fixture spawns become searchable in the next enemy-index phase
+  assert.ok(g.b.enemiesOnTiles([nearEnemy.tileR * COLS + nearEnemy.tileC], v, { canHitFly: true }).includes(nearEnemy));
+  assert.ok(v.skill.activate('test', { free: true }), 'a target in front of the crate permits a cast');
   const anchor = fxOf(g, 'anchor')[0];
   assert.equal(anchor[2], 4, 'stopped in front of the crate');
   assert.deepEqual([v.tileR, v.tileC], [9, 4]);
-  assert.equal(tagged(g, 'anchor').length, 0, 'the enemy 3 tiles further is out of the 1.8 radius');
+  assert.equal(tagged(g, 'anchor', farEnemy).length, 0, 'the enemy 3 tiles further is out of the 1.8 radius');
+  assert.equal(tagged(g, 'anchor', nearEnemy).length, 1, 'the reachable target takes exactly one anchor hit');
+  assert.ok(nearEnemy.s.flags.stun, 'the reachable target receives the anchor stun');
   clean(h); clean(g);
 });
 

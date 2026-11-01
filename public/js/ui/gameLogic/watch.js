@@ -5,6 +5,31 @@ import { isCombatPhase } from './phases.js';
 
 export const ownFieldId = (playerId) => `n:${playerId}`;
 
+/** Keep the original emote protocol; only battle teammates share the battlefield overlay. */
+export function battleEmotes(emotes, pub, myId, now, ttl = 6000) {
+  if (!isCombatPhase(pub?.phase)) return [];
+  const players = new Map((pub?.players || []).map(p => [p.playerId, p]));
+  const me = players.get(myId);
+  const grouped = [...players.values()].some(p => p.team != null);
+  if (!me && grouped) return [];
+  return (Array.isArray(emotes) ? emotes : []).filter(e => {
+    if (!e || !Number.isFinite(e.at) || e.at > now || now - e.at >= ttl) return false;
+    const sender = players.get(e.playerId);
+    return !!sender && (me?.team == null || sender.team === me.team);
+  }).map(e => ({ ...e, name: players.get(e.playerId).name || trA('队友') }));
+}
+
+/** Only live match text has a local arrival marker; reconnect history must not scroll across the field. */
+export function battleChatDanmaku(items, pub, myId, now, ttl = 6000) {
+  const messages = (Array.isArray(items) ? items : []).filter(item => item?.channel === 'match'
+    && item.kind === 'text' && typeof item.text === 'string' && item.text.trim()
+    && Number.isFinite(item.danmakuAt) && Number.isInteger(item.danmakuSeq));
+  return battleEmotes(messages.map(item => ({
+    seq: item.danmakuSeq, playerId: item.playerId, kind: 'text', text: item.text,
+    at: item.danmakuAt, messageId: item.id,
+  })), pub, myId, now, ttl);
+}
+
 export function homeFieldId(pub, playerId) {
   const fields = Array.isArray(pub?.fields) ? pub.fields : [];
   const special = fields.find((f) => isObj(f) && f.kind !== 'normal' && Array.isArray(f.players) && f.players.includes(playerId) && f.live !== false);

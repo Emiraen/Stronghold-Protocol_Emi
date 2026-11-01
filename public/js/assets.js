@@ -47,7 +47,7 @@ import { installResourcePixi } from './resourcePixi.js';
 import { ownStandIn, standInOf } from './ui/gameLogic/standIn.js';
 import { ownDiyRecord, ownDiyPick, diyRecordFor } from './ui/gameLogic/diy.js';
 import { chessAvatarUrl, chessPortraitUrl, skillIconUrl as chessSkillIconUrl } from './ui/assetUrls.js';
-import { SKADI_SEABORN, SKADI_CHAR, seabornSkinEntry } from './tokenSkins.js';
+import { SKADI_SEABORN, SKADI_CHAR, seabornSkinEntry, tokenSkinEntry } from './tokenSkins.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => (typeof v === 'string' && v ? v : null);
@@ -62,8 +62,8 @@ export function isSkinCached(skin) {
   let urls = skinResources.get(skin);
   if (!urls) {
     // New skin illustrations ship as normal static images. They must not invalidate an already cached model.
-    urls = [str(skin.avatar), resourceCache.isManaged(skin.portrait) ? str(skin.portrait) : null].filter(Boolean);
-    for (const entry of [skin.spine.front, skin.spine.back]) {
+    urls = [str(skin.avatar)].filter(Boolean);
+    for (const entry of [skin.spine.front, skin.spine.back, ...Object.values(skin.tokens || {})]) {
       if (!entry) continue;
       if (!validSpine(entry)) return false;
       urls.push(...spineResourceUrls(entry));
@@ -71,7 +71,8 @@ export function isSkinCached(skin) {
     urls = [...new Set(urls.filter(Boolean))];
     skinResources.set(skin, urls);
   }
-  return urls.every(url => resourceCache.isCached(url));
+  return urls.every(url => resourceCache.isCached(url))
+    && (!resourceCache.isManaged(skin.portrait) || resourceCache.isCached(skin.portrait));
 }
 
 function cachedSkin(character, skinId) {
@@ -198,6 +199,8 @@ export function spineEntry(m, id, opts) {
   }
   const tk = get(get(m, 'tokens'), s);
   if (tk) {
+    const selected = tokenSkinEntry(m, s, opts?.skin, { isCached: url => resourceCache.isCached(url) });
+    if (validSpine(selected)) return selected;
     if (s === SKADI_SEABORN && !/^\/p\//.test(tk.spine?.skel || '')) {
       return seabornSkinEntry(get(get(m, 'chars'), SKADI_CHAR), tk, opts?.skin,
         { isSkinCached, isCached: url => resourceCache.isCached(url) });
@@ -691,7 +694,7 @@ export function spineResourceUrls(entry) {
 }
 
 /** 仅收集当前已确定的卡片、棋子、预览与战场资源，沿用实际外观解析入口。 */
-export function collectMatchResourceUrls(assetStore, source, match, { prepareBoard = false } = {}) {
+export function collectMatchResourceUrls(assetStore, source, match, { prepareBoard = false, localBoard = true } = {}) {
   const urls = new Set();
   const m = assetStore.manifest;
   if (!m) return [];
@@ -767,7 +770,7 @@ export function collectMatchResourceUrls(assetStore, source, match, { prepareBoa
   addSounds(m.audio?.sfx?.battle);
   const localGroups = ['map/autochess', 'map/common', 'map/fx', 'map/water',
     'mesh/s_common_box_01', 'mesh/s_wind_device', 'mesh/s_background_common'];
-  if (prepareBoard || match?.public || match?.private) for (const group of localGroups) {
+  if (localBoard && (prepareBoard || match?.public || match?.private)) for (const group of localGroups) {
     for (const name of Object.keys(assetStore.localManifest?.groups?.[group] || {})) add(assetStore.localUrl(group, name));
   }
   const bench = match?.watchBench;
@@ -1025,6 +1028,21 @@ export function createAssets(options) {
      * manifest is loaded: no second download, nothing to wait for. Returns whether it was adopted.
      */
     seed: (mf) => adopt(mf),
+    /** Add mode-only identities while retaining every already loaded base asset and skin. */
+    extend(mf) {
+      if (!isObj(mf)) return false;
+      if (!manifest) return adopt(mf);
+      let changed = false;
+      for (const group of ['chars', 'tokens', 'enemies']) {
+        if (!isObj(mf[group])) continue;
+        const added = Object.entries(mf[group]).filter(([id]) => !Object.hasOwn(manifest[group] || {}, id));
+        if (!added.length) continue;
+        manifest = { ...manifest, [group]: { ...manifest[group], ...Object.fromEntries(added) } };
+        changed = true;
+      }
+      if (changed) notify('manifest');
+      return changed;
+    },
     /** The same for the optional local-client manifest (data.js 'local'; `{ groups }`), unless one is known. */
     seedLocal(lm) {
       if (localManifest || !isObj(lm) || !isObj(lm.groups)) return false;

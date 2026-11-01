@@ -47,7 +47,7 @@ export function adminRuntime({ lobby, registry }) {
   };
 }
 
-export function adminSnapshot({ lobby, registry, players, runtimes }) {
+export function adminSnapshot({ lobby, registry, players, runtimes, serverIds = Object.keys(SERVER_NAMES) }) {
   const rankedProfiles = [...lobby.ranked.profiles.values()].filter((p) => p.placementDone)
     .sort((a, b) => b.points - a.points || b.lastActive - a.lastActive || a.name.localeCompare(b.name, 'zh'));
   const ranks = new Map();
@@ -57,7 +57,7 @@ export function adminSnapshot({ lobby, registry, players, runtimes }) {
     if (!previous || p.points !== previous.points || p.lastActive !== previous.lastActive) position = i + 1;
     if (p.points >= 2100) ranks.set(p.aid, position);
   }
-  const sources = runtimes ? Object.keys(SERVER_NAMES).map((id) => ({ id, ...runtimes[id] }))
+  const sources = runtimes ? serverIds.map((id) => ({ id, ...runtimes[id] }))
     : [{ runtime: adminRuntime({ lobby, registry }) }];
   const complete = sources.every((source) => !!source.runtime);
   const sessions = sources.flatMap(({ id, runtime }) => (runtime?.online || [])

@@ -1,12 +1,14 @@
+import { activeBenchSize, handTile, zhajingStage } from '../zhajingMode.js';
 // 从 A 原正文按职责拆分；保持原有行为。
 import { GEO, ANIM } from '../../../shared/constants.js';
 import { applyFrameRate, renderFrameBudget } from '../frameRate.js';
 import { loadImageElement } from '../assets.js';
 import { resourceCache } from '../resourceCache.js';
 import { createFrameGuard } from './frameGuard.js';
-import { SKADI_SEABORN, seabornOwnerSkin } from '../tokenSkins.js';
+import { SKADI_SEABORN, tokenOwnerSkin } from '../tokenSkins.js';
 import { fxForm } from '../../../shared/protocol.js';
 import { Camera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
+import { applyCameraSettings, sanitizeCameraSettings } from './cameraSettings.js';
 import { SnapshotBuffer, frameTime } from './interp.js';
 import { TileField } from './tiles.js';
 import { UnitView, ItemView, DeviceView, FORMS, syncView } from './units.js';
@@ -47,6 +49,7 @@ export async function createFieldView(host, options = {}) {
   const data = makeData(opts.data);
   opts.audio?.warmLandings?.();
   const settings = { damageNumbers: true, officialDamageNumbers: false, ammoCount: false, officialFx: 'auto', quality: 'high', ...(opts.settings || {}) };
+  Object.assign(settings, sanitizeCameraSettings(settings));
   // the 3D board (three.js + the official art) loads in parallel with everything else
   const boardPref = boardPreference(opts.board);
   const want3d = boardPref !== '2d' && webgl2Available(boardPref === '3d');
@@ -154,7 +157,8 @@ export async function createFieldView(host, options = {}) {
   let stageRec = null;
   const offsetBoardCamera = (camera, width) => {
     camera.cx -= Math.min(12, Math.max(4, width * 0.006));
-    return camera.update();
+    camera.update();
+    return applyCameraSettings(camera, { width, height: size().height }, settings);
   };
   let cam = offsetBoardCamera(presetCamera('prep', { width: s0.width, height: s0.height, padding: defaultPadding('prep', s0) }, { hud: hudBands('prep', s0) }), s0.width);
   let camFrom = null, camTo = null, camT0 = 0, camKind = 'prep', camOpts = {}, camMs = CAMERA_MS;
@@ -567,6 +571,7 @@ export async function createFieldView(host, options = {}) {
   // ---- stage ----------------------------------------------------------------------------------------------
 
   function setStage(st) {
+    st = zhajingStage(st);
     if (!st || typeof st !== 'object' || !Array.isArray(st.rows)) return false;
     stageRec = st;
     tiles.setStage(st);
@@ -680,6 +685,7 @@ export async function createFieldView(host, options = {}) {
     diyPicks = src.diy && typeof src.diy === 'object' ? src.diy : {};
     ownPen = Array.isArray(src.nextEnemies) ? src.nextEnemies : null;
     setPenList(ownPen);
+    setPrepEnemies(src.prepEnemies);
     addList(src.hand, 'hand');
     addList(src.temp, 'temp');
     addList(src.board, 'board');
@@ -813,6 +819,29 @@ export async function createFieldView(host, options = {}) {
     tiles.setBattleRect(null);
     board3d?.setBattleRect(null);
     clearHl();
+  }
+
+  // Opening enemies share the normal idle-preview UnitView. They never enter
+  // the combat interpolator, event stream, attack FX or editable prep pieces.
+  // enterBattle/enterPrepMode clear this same view map before real spawns.
+  function setPrepEnemies(enemies) {
+    const seen = new Set();
+    for (const info of Array.isArray(enemies) ? enemies : []) {
+      if (info?.side !== 'enemy' || info.id == null || !Number.isFinite(info.x) || !Number.isFinite(info.y)) continue;
+      const key = 'pe:' + info.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      let v = views.get(key);
+      if (v && v.info.defId !== info.defId) { dropView(key); v = null; }
+      if (!v) {
+        v = new UnitView(ctx, { ...info, id: key, preview: true }, { prep: true, lod: 'idle' });
+        v.fadeIn = 0;
+        views.set(key, v);
+      }
+      v.setWorld(info.x, info.y, heightAt(info.y, info.x));
+      v.setFacing?.(info.facing ?? -1);
+    }
+    for (const key of views.keys()) if (String(key).startsWith('pe:') && !seen.has(key)) dropView(key);
   }
 
   // ---- enemy preview pen (render/pen.js) -----------------------------------------------------------------------
@@ -1020,8 +1049,9 @@ export async function createFieldView(host, options = {}) {
     for (let r = F.r0; r <= F.r1; r++) for (let c = F.c0; c <= F.c1; c++) {
       try { if (fn(piece, r, c, { area: 'board', row: r, col: c })) out.push([r, c]); } catch { /* illegal */ }
     }
-    for (let i = 0; i < GEO.HAND_SIZE; i++) {
-      try { if (fn(piece, GEO.HAND_ROW, i, { area: 'hand', idx: i })) out.push([GEO.HAND_ROW, i]); } catch { /* illegal */ }
+    for (let i = 0; i < activeBenchSize(); i++) {
+      const tile = handTile(i);
+      try { if (fn(piece, tile.row, tile.col, { area: 'hand', idx: i })) out.push([tile.row, tile.col]); } catch { /* illegal */ }
     }
     return out;
   }
@@ -1059,8 +1089,8 @@ export async function createFieldView(host, options = {}) {
       v.z = z;
     }
     if (p.target && p.target.area !== 'temp') {
-      const r = p.target.area === 'board' ? p.target.row : GEO.HAND_ROW;
-      const c = p.target.area === 'board' ? p.target.col : p.target.idx;
+      const tile = p.target.area === 'board' ? p.target : handTile(p.target.idx);
+      const r = tile.row, c = tile.col;
       drawHighlight([[r, c]], p.legal ? 'target' : 'illegal', 'dragTarget');
     } else clearHl('dragTarget');
   }
@@ -1070,7 +1100,8 @@ export async function createFieldView(host, options = {}) {
     const v = dragState.view;
     const t = p.target;
     if (t && (t.area === 'board' || t.area === 'hand')) {
-      const row = t.area === 'board' ? t.row : GEO.HAND_ROW, col = t.area === 'board' ? t.col : t.idx;
+      const tile = t.area === 'board' ? t : handTile(t.idx);
+      const row = tile.row, col = tile.col;
       const w = boardWorld(row, col, t.area === 'hand');
       v._tween = { fx: v.x, fy: v.y, fz: v.z, tx: w.x, ty: w.y, tz: w.z, t: 0 };
       pending.set(dragState.key, { t: performance.now(), view: v, board: t.area === 'board' ? { row, col } : null });
@@ -1261,7 +1292,7 @@ export async function createFieldView(host, options = {}) {
     if (v) return v;
     const info = infos.get(id);
     if (!info || gone.has(id)) return null;
-    if (info.defId === SKADI_SEABORN) info.skin = seabornOwnerSkin(info, infos.values());
+    if (info.kind === 'token' || info.defId === SKADI_SEABORN) info.skin = tokenOwnerSkin(info, infos.values(), assets.manifest);
     v = info.kind === 'device' ? new DeviceView(ctx, info) : new UnitView(ctx, info, { prep: !!battleMeta?.prep && info.side === 'ally' });
     v.setWorld(info.x, info.y, 0);
     v._seen = false;
@@ -1832,13 +1863,18 @@ export async function createFieldView(host, options = {}) {
     setSettings(s) {
       if (!s || typeof s !== 'object') return;
       const q = settings.quality;
+      const camera = sanitizeCameraSettings({ ...settings, ...s });
+      const cameraChanged = Object.entries(camera).some(([key, value]) => value !== settings[key]);
+      Object.assign(settings, camera);
       if (typeof s.damageNumbers === 'boolean') settings.damageNumbers = s.damageNumbers;
       if (typeof s.officialDamageNumbers === 'boolean') settings.officialDamageNumbers = s.officialDamageNumbers;
       if (typeof s.ammoCount === 'boolean') settings.ammoCount = s.ammoCount;
       if (['auto', 'off', 'lite', 'full'].includes(s.officialFx) && settings.officialFx !== s.officialFx) { settings.officialFx = s.officialFx; syncOfficialFx(); }
       if (Object.hasOwn(s, 'fpsLimit')) settings.fpsLimit = applyFrameRate(app.ticker, s.fpsLimit);
       if (s.quality === 'high' || s.quality === 'medium' || s.quality === 'low') settings.quality = s.quality;
-      if (q !== settings.quality) { board3d?.setQuality?.(settings.quality); resize(); }
+      if (q !== settings.quality) board3d?.setQuality?.(settings.quality);
+      if (cameraChanged) setCamera(camKind, { ...camOpts, instant: true });
+      if (q !== settings.quality || cameraChanged) resize();
     },
     resize,
     /** Dev / settings: switch the board layer ('3d' loads three.js + the art when available; '2d' = atlas board). */

@@ -1063,3 +1063,5 @@
 .diy-skin__head { display: flex; align-items: center; justify-content: space-between; gap: .08rem; }
 .diy-skin__head small { font-size: max(calc(.12 * var(--utility-text, var(--t))), 9px); color: var(--text-dim); }
 .diy-skin .lo-sec--skin { margin: 0; }
+
+.lo .lo-tabs[hidden], .lo .lo-assist[hidden] { display: none; }

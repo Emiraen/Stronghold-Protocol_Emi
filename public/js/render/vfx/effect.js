@@ -46,6 +46,11 @@ const ALIGN = { 0: 'view', 1: 'world', 2: 'local', 3: 'facing', 4: 'velocity' };
 /** ParticleEffect spawn locations on the ground (ranges, decals). */
 export const GROUND_SPAWNS = new Set([5, 7, 17, 26, 35]);
 
+// These authored renderer offsets use the opposite sign from buildParticles'
+// anchor pivot. Keep the adaptation at the prefab boundary; other effects retain
+// their existing pivot conventions and the source descriptors stay immutable.
+const OFFSET_PIVOT_PREFABS = new Set(['wang_skill_03_range_start', 'wildmn_attack_01_start', 'wildmn_skill_02_start']);
+
 /** A mesh reference ({ mesh: key }, { builtin: 'Quad' } or 'builtin:Quad') as a library key. */
 export function meshRef(v) {
   if (typeof v === 'string') return v || null;
@@ -112,7 +117,15 @@ export function compileEffect(desc, lib = {}) {
       const sub = nd.particleSystem.SubModule;
       if (sub && Array.isArray(sub.subEmitters)) for (const se of sub.subEmitters) if (se && se.emitter && se.emitter.node != null) def.subNodes.add(se.emitter.node);
     }
-    if (nd.particleSystemRenderer) def.psr[i] = psrInfo(nd.particleSystemRenderer);
+    if (nd.particleSystemRenderer) {
+      def.psr[i] = psrInfo(nd.particleSystemRenderer);
+      // Wang's range border and Wild Mane's lance flashes grow away from their
+      // authored anchor. Subtracting their positive offset put the lance flashes
+      // several tiles behind her, apart from the forward-facing mesh and sparks.
+      if (OFFSET_PIVOT_PREFABS.has(def.key) && def.psr[i].pivot) {
+        def.psr[i].pivot = def.psr[i].pivot.map(value => -value);
+      }
+    }
     if (nd.meshRenderer && nd.meshFilter !== undefined) {
       const r = nd.meshRenderer;
       def.mesh[i] = { enabled: r.m_Enabled !== false && r.m_Enabled !== 0, mesh: meshRef(nd.meshFilter),

@@ -211,7 +211,7 @@ K.band_coin_cost_gain_random_char_by_shop_level = (ps) => ({
 K.up_shop_next_refresh_must_present_bond_char = (ps) => ({
   onLevelUp(ctx, ev) {
     const p = ps[0];
-    if (!list(p.lvlist).map(Number).includes(ev.level)) return;
+    if (!ev?.mizukiCommanderLevelUp && !list(p.lvlist).map(Number).includes(ev.level)) return;
     ctx.incCounter('band:pepe:special', 1);
   },
   onRefresh(ctx) {

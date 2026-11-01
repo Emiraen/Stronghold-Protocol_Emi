@@ -23,7 +23,7 @@
 // `tier` = number of thresholds reached (downward: 1 when active); `active = tier ≥ 1`.
 // Layers (`ps.layers[bondId]`) persist the whole match; they are reported for every bond but only matter while active.
 
-import { layerGainRoom } from '../../shared/constants.js';
+import { layerGainRoom, canStackBond } from '../../shared/constants.js';
 
 export const HARMONY_BOND = 'maniShip';
 export const DEPUTY_BOND = 'deputShip';
@@ -99,6 +99,7 @@ function rawCount(gd, id, mem, ps) {
 }
 
 const layersIn = (ps, id) => {
+  if (!canStackBond(id)) return 0;
   const v = ps.layers && ps.layers[id];
   return Number.isFinite(v) && v > 0 ? v : 0;
 };
@@ -245,7 +246,7 @@ export function bondsWithGains(bonds, gains, cap) {
   let out = null;
   for (const [id, n] of Object.entries(gains)) {
     const b = bonds && bonds[id];
-    if (!b) continue;
+    if (!b || !canStackBond(id)) continue;
     const add = layerGainRoom(b.layers, Math.floor(Number(n) || 0), cap);
     if (!(add > 0)) continue;
     if (!out) out = { ...bonds };
@@ -257,6 +258,6 @@ export function bondsWithGains(bonds, gains, cap) {
 /** Snapshot for PlayerBattleInput.bonds: { [bondId]: { count, active, tier, layers } } (plain copy). */
 export function bondSnapshot(bonds) {
   const o = {};
-  for (const [id, b] of Object.entries(bonds || {})) o[id] = { count: b.count, active: b.active, tier: b.tier, layers: b.layers };
+  for (const [id, b] of Object.entries(bonds || {})) o[id] = { count: b.count, active: b.active, tier: b.tier, layers: canStackBond(id) ? b.layers : 0 };
   return o;
 }

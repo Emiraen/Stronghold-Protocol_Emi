@@ -48,7 +48,12 @@ function scenario(chessId, dir, secs) {
         e_fly: enemyRec({ key: 'e_fly', hp: 1e6, speed: 0, motion: 'FLY', def: 50, res: 30 }),
       },
     },
-    setup: (b) => b.on('deploy', ({ unit }) => { if (unit.uid >= 100) unit.hp = unit.s.maxHp * (0.3 + 0.1 * (unit.uid - 100)); }),
+    setup: (b) => {
+      // Synthetic open-board geometry has no asymmetric real-player deployment half.
+      b.onFieldBoard = (r, c) => b.grid.inRect(r, c);
+      b.onOwnBoard = (_ps, r, c) => b.grid.inRect(r, c);
+      b.on('deploy', ({ unit }) => { if (unit.uid >= 100) unit.hp = unit.s.maxHp * (0.3 + 0.1 * (unit.uid - 100)); });
+    },
   });
   h.run(secs);
   checkInvariants(h.b);
@@ -115,6 +120,7 @@ test('突袭 (raidShip): the landing tile beside the enemy turns with the member
   const rec = chessRec({ id: 'r_diag', bonds: ['raidShip'], profession: 'WARRIOR', skill: null, rangeGrid: [[1, 1], [-1, 1]] });
   const land = (dir) => {
     const h = makeBattle({
+      setup: (b) => { b.onFieldBoard = (r, c) => b.grid.inRect(r, c); },
       stage: OPEN, rect: RECT, routes: FAR_ROUTE, defs: { chess: { r_diag: rec }, enemies: { e_d: enemyRec({ key: 'e_d', hp: 1e6, speed: 0 }) } },
       bonds: { raidShip: { count: 1, active: true, tier: 1, layers: 0 } },
       units: [{ chessId: 'r_diag', row: 15, col: 3, dir, abs: true }],

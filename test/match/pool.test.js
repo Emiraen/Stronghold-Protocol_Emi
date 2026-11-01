@@ -8,14 +8,16 @@ import { DATA, makeMatch, give, checkInvariants, chessOfTier } from './harness.j
 
 const gdOf = (modeId = 'mode_multi_normal') => new GameData(DATA, modeId);
 
-test('pool caps follow config (12/14/18/16/8/5, 缪尔赛思 4) and only visible, unbanned chess enter', () => {
+test('pool caps follow configured tier/overrides and cooperative multiplier; only visible unbanned chess enter', () => {
   const gd = gdOf();
   const pool = new SharedPool(gd, { banned: [] });
   const caps = { 1: 12, 2: 14, 3: 18, 4: 16, 5: 8, 6: 5 };
   assert.equal(pool.entries.size, gd.visibleChess.length);
   assert.equal(pool.entries.size, 112);
   for (const [id, e] of pool.entries) {
-    const expect = id === 'chess_char_6_11_a' ? 4 : caps[e.tier];
+    const economy = DATA.config.economy;
+    const base = economy.poolCopiesOverrides?.[id] ?? economy.poolCopies?.[e.tier] ?? caps[e.tier];
+    const expect = base * (DATA.chess[id].isDiy ? 1 : economy.coopPoolMultiplier);
     assert.equal(e.cap, expect, id);
     assert.equal(e.left, e.cap);
     assert.ok(DATA.chess[id].visible && !DATA.chess[id].isGolden);
@@ -24,6 +26,8 @@ test('pool caps follow config (12/14/18/16/8/5, 缪尔赛思 4) and only visible
   const p2 = new SharedPool(gd, { banned });
   assert.equal(p2.entries.size, 110);
   assert.ok(!p2.has(banned[0]) && p2.left(banned[0]) === 0 && p2.take(banned[0]) === 0);
+  const solo = new SharedPool(gdOf('mode_single_normal'));
+  for (const [id, e] of solo.entries) assert.equal(pool.cap(id), e.cap * (DATA.chess[id].isDiy ? 1 : DATA.config.economy.coopPoolMultiplier), id);
 });
 
 test('take/give never go below 0 or above the cap', () => {

@@ -1,7 +1,7 @@
 
 
 import { isRankedMatch } from "../../../shared/ranks.js";
-import { PHASE, layerGainRoom } from "../../../shared/constants.js";
+import { PHASE, layerGainRoom, canStackBond } from "../../../shared/constants.js";
 
 import { uniteSurvivors, plannedUniteSurvivors } from "../unite.js";
 import { isCyclopsBonusRound, cyclopsBonusReward, settleCyclopsHexes, cyclopsHooks } from "../cyclops.js";
@@ -117,7 +117,7 @@ export class MatchSettle {
         // IN_BATTLE layer gains (normal battles only), at most the room left under BOND_LAYER_CAP (999, as the battle's
         // live copy: Battle.addLayers); a bond at the cap gains nothing and dispatches nothing
         for (const [bondId, n] of Object.entries(r.layerGains || {})) {
-          if (!this.gd.bond(bondId) || !(n > 0)) continue;
+          if (!this.gd.bond(bondId) || !canStackBond(bondId) || !(n > 0)) continue;
           const before = ps.layers[bondId] || 0;
           const add = layerGainRoom(before, Math.floor(n), this.isEndless ? Infinity : undefined);
           if (!(add > 0)) continue;
@@ -189,7 +189,7 @@ export class MatchSettle {
   finish({ victory, hiddenCleared = false, reason = 'defeat' }) {
     if (this.ended || this.disposed) return;
     // hiddenReached 仅在普通Boss通关后记录；附加战斗失败不覆盖通关，提前退出规则不变。
-    if (this.hiddenReached && reason === 'defeat') { victory = true; reason = 'victory'; }
+    if (!this.isAnnihilation && this.hiddenReached && reason === 'defeat') { victory = true; reason = 'victory'; }
     this.ended = true;
     if (this.runner) { try { this.runner.stop(); } catch { /* ignore */ } this.runner = null; }
     this._stopClientCombat();

@@ -354,6 +354,7 @@ export class AudioManager {
     this.uiVoices = 0;
     this.wantBgm = null;      // desired key (kept while locked)
     this.bgm = null;          // { key, loopUrl, nodes: [{src, gain}], gain }
+    this.bgmPending = null;
     this.bgmToken = 0;
     this.units = new Map();   // battle unit id → defId
     this.pendingSkill = new Map();
@@ -588,11 +589,16 @@ export class AudioManager {
       if (!this.ctx) { this.wantBgm = key; return; }
       const track = resolveBgm(this.getManifest(), key);
       if (this.bgm && track && this.bgm.loopUrl === track.loop) { this.bgm.key = key; return; }
-      if (!track && !this.bgm) return;
+      if (track && this.bgmPending?.loopUrl === track.loop) return;
+      if (!track && !this.bgm && !this.bgmPending) return;
       const token = ++this.bgmToken;
+      this.bgmPending = null;
       this._fadeOutBgm();
       if (!track) return;
-      this._startBgm(key, track, token);
+      const pending = { loopUrl: track.loop };
+      this.bgmPending = pending;
+      Promise.resolve(this._startBgm(key, track, token)).catch(err => this._warn('bgm-start', err))
+        .finally(() => { if (this.bgmPending === pending) this.bgmPending = null; });
     } catch (err) { this._warn('bgm', err); }
   }
 
@@ -1024,8 +1030,8 @@ export function installAudio(deps) {
       });
       const offResources = resourceCache.subscribe(() => {
         const key = audio.lastBgmKey;
-        const track = key?.startsWith('battle:') ? resolveBgm(manifestGetter(), key) : null;
-        if (track && resourceCache.isCached(track.loop) && audio.bgm && audio.bgm.loopUrl !== track.loop) audio.refreshBgm();
+        const track = resolveBgm(manifestGetter(), key);
+        if (track && resourceCache.isCached(track.loop) && audio.bgm?.loopUrl !== track.loop) audio.refreshBgm();
       });
       return () => { offStore(); offResources(); };
     }

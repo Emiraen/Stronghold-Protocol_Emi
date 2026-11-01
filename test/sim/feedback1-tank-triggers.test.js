@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { makeBattle, checkInvariants } from '../helpers/battleHarness.js';
 import { getDefaultSource } from '../../server/sim/simdata.js';
-import { bodyInKeys } from '../../server/sim/body.js';
+import { bodyInRange } from '../../server/sim/body.js';
 import { absoluteRangeKeys } from '../../server/sim/targeting.js';
 
 const CHESS = JSON.parse(fs.readFileSync(new URL('../../data/chess.json', import.meta.url), 'utf8'));
@@ -59,9 +59,10 @@ function firstCast(chessId, skillId, { spawnAt = 0, seconds = 40 } = {}) {
     out.cast = h.b.time;
     out.reason = ctx.reason;
     const keys = new Set(u.baseRangeKeys || u.rangeKeys);
-    out.enemyInRange = h.b.enemies.some((e) => e.alive && e.deployed && bodyInKeys(e, keys));
-    const sk = u.skill.triggerGrid ? new Set(absoluteRangeKeys(u.skill.triggerGrid, u.tileR, u.tileC, u.dir, 0)) : null;
-    out.enemyInSkillRange = !!sk && h.b.enemies.some((e) => e.alive && e.deployed && bodyInKeys(e, sk));
+    out.enemyInRange = h.b.enemies.some((e) => e.alive && e.deployed && bodyInRange(e, keys));
+    const ext = u.skill.rule === 'ACTIVE_RANGE' && !u.skill.spec.targeting?.noRangeExtend ? (u.s.baseRangeExtend || 0) : 0;
+    const sk = u.skill.triggerGrid ? new Set(absoluteRangeKeys(u.skill.triggerGrid, u.tileR, u.tileC, u.dir, ext)) : null;
+    out.enemyInSkillRange = !!sk && h.b.enemies.some((e) => e.alive && e.deployed && bodyInRange(e, sk));
     out.blocking = u.blocking.length > 0;
   }, { priority: 1000 });
   h.runUntil(() => out.cast != null && out.hurt != null, seconds);
@@ -70,16 +71,17 @@ function firstCast(chessId, skillId, { spawnAt = 0, seconds = 40 } = {}) {
   return out;
 }
 
-test('data: the six deviated 重装 skills are DEFAULT and 余 S2 is SKILL_RANGE on its x-1, on the normal and the elite record, rawRule the official TAKE_DAMAGE', () => {
+test('data: five deviated 重装 skills are DEFAULT, 深巡 S2 is ACTIVE_RANGE and 余 S2 is SKILL_RANGE on its x-1, on the normal and the elite record, rawRule the official TAKE_DAMAGE', () => {
   let n = 0;
   for (const [normalId, skillId] of DEVIATED) {
     for (const id of both(normalId)) {
       const s = CHESS[id].skills.find((x) => x.skillId === skillId);
       assert.ok(s, `${id} ${skillId}`);
       assert.equal(CHESS[id].profession, 'TANK');
-      assert.deepEqual(s.trigger, { rule: 'DEFAULT', rawRule: 'TAKE_DAMAGE', customRangeGrid: null }, `${id} ${skillId}`);
+      const rule = skillId === 'skchr_udflow_2' ? 'ACTIVE_RANGE' : 'DEFAULT';
+      assert.deepEqual(s.trigger, { rule, rawRule: 'TAKE_DAMAGE', customRangeGrid: rule === 'ACTIVE_RANGE' ? s.rangeGrid : null }, `${id} ${skillId}`);
       // the sim's loadout def carries the data rule
-      assert.equal(ds.getChess(id, { skillIndex: s.index }).skill.trigger.rule, 'DEFAULT', `${id} ${skillId} loadout def`);
+      assert.equal(ds.getChess(id, { skillIndex: s.index }).skill.trigger.rule, rule, `${id} ${skillId} loadout def`);
       n++;
     }
   }
@@ -107,7 +109,14 @@ test('data: the six deviated 重装 skills are DEFAULT and 余 S2 is SKILL_RANGE
   for (const id of both('chess_char_1_04_a')) assert.equal(CHESS[id].skills.find((s) => s.skillId === 'skchr_udflow_1').trigger.rule, 'TAKE_DAMAGE', `${id} 深巡 S1`);
   const others = Object.values(CHESS).filter((c) => c.baseId !== 'chess_char_2_18_a' && c.skills?.some((s) => s.skillId === 'skcom_atk_up[3]'));
   assert.ok(others.length >= 10, 'skcom_atk_up[3] is shared');
-  for (const c of others) assert.deepEqual(c.skills.find((s) => s.skillId === 'skcom_atk_up[3]').trigger, { rule: 'DEFAULT', rawRule: 'DEFAULT', customRangeGrid: null }, c.chessId);
+  for (const c of others) {
+    const s = c.skills.find(s => s.skillId === 'skcom_atk_up[3]');
+    const base = new Set(c.rangeGrid.map(([r, col]) => `${r},${col}`));
+    const running = s.rangeGrid || c.rangeGrid;
+    const active = new Set(running.map(([r, col]) => `${r},${col}`));
+    const expanded = active.size > base.size && [...base].every(k => active.has(k));
+    assert.deepEqual(s.trigger, { rule: expanded ? 'ACTIVE_RANGE' : 'DEFAULT', rawRule: 'DEFAULT', customRangeGrid: expanded ? running : null }, c.chessId);
+  }
 });
 
 test('PR #12\'s kit lines agree with the data: 深巡 / 雷蛇 S2 specs say DEFAULT, the other deviated skills read the data', async () => {
@@ -121,7 +130,8 @@ test('PR #12\'s kit lines agree with the data: 深巡 / 雷蛇 S2 specs say DEFA
       const spec = s.isDefault ? kit?.skill : kit?.skills?.[skillId];
       const specRule = typeof spec?.trigger === 'string' ? spec.trigger : spec?.trigger?.rule;
       assert.ok(specRule == null || specRule === s.trigger.rule, `${id} ${skillId}: kit ${specRule} vs data ${s.trigger.rule}`);
-      if (skillId === 'skchr_udflow_2' || skillId === 'skchr_liskam_2') assert.equal(specRule, 'DEFAULT', `${id} ${skillId}: PR #12's trigger line`);
+      if (skillId === 'skchr_liskam_2') assert.equal(specRule, 'DEFAULT', `${id}: explicit DEFAULT`);
+      if (skillId === 'skchr_udflow_2') assert.equal(specRule, undefined, `${id}: current kit inherits ACTIVE_RANGE from data`);
     }
   }
 });
@@ -131,11 +141,12 @@ test('real battle: each deviated skill casts with an enemy in range before anyth
     for (const id of both(normalId)) {
       const r = firstCast(id, skillId, { spawnAt: 3 });
       const where = `${id} ${skillId}: ${JSON.stringify(r)}`;
-      assert.equal(r.rule, 'DEFAULT', where);
+      const rule = skillId === 'skchr_udflow_2' ? 'ACTIVE_RANGE' : 'DEFAULT';
+      assert.equal(r.rule, rule, where);
       assert.ok(r.cast != null, `never cast — ${where}`);
       assert.ok(r.cast >= 3, `no cast before an enemy is on the field — ${where}`);
-      assert.equal(r.reason, 'DEFAULT', where);
-      assert.ok(r.enemyInRange, `an enemy on its initial range at the cast — ${where}`);
+      assert.equal(r.reason, rule, where);
+      assert.ok(rule === 'ACTIVE_RANGE' ? r.enemyInSkillRange : r.enemyInRange, `an enemy inside the configured trigger range — ${where}`);
       assert.ok(r.hurt == null || r.hurt > r.cast, `cast before the first hit — ${where}`);
     }
   }

@@ -1,3 +1,7 @@
+import { isZhajing } from '../../../../shared/zhajing-constants.js';
+import { ZhajingActions, ZhajingEnemyReveal } from '../../ui/zhajingGameplay.js';
+import { AnnihilationRelicUi } from '../../ui/annihilationRelicUi.js';
+import { RelicCodexButton } from '../../ui/relics.js';
 import { t as trA } from '../../../../shared/i18n.js';
 import { deployedRecord, diyGetter, draftForPlayer, draftIntent, deviceInfo, deviceTipAt, noteDeviceUnits, deviceUnitsForEntry, fieldTile } from '../../ui/gameLogic.js';
 // 从 A 原正文按职责拆分；保持原有行为。
@@ -17,7 +21,8 @@ import { CyclopsHexOverlay } from '../../ui/cyclopsHexOverlay.js';
 import { CyclopsDraftOverlay } from '../../ui/cyclopsDraftOverlay.js';
 import { EnemyDrawer } from '../../ui/enemyDrawer.js';
 import { Ticker } from '../../ui/ticker.js';
-import { EmoteWheel } from '../../ui/emotes.js';
+import { EmoteWheel, EmoteDanmaku } from '../../ui/emotes.js';
+import { battleEmotes, battleChatDanmaku } from '../../ui/gameLogic/watch.js';
 import { EffectsList } from '../../ui/effectsList.js';
 import { CombatHud } from '../../ui/combatHud.js';
 import { SettingsModal, settingsStore } from '../../ui/settings.js';
@@ -35,14 +40,14 @@ import { toast, toastError } from '../../ui/toasts.js';
 import { net } from '../../net.js';
 import { store, useStore, shallowEqual, serverNow } from '../../store.js';
 import { battleRunner } from '../../battle/runner.js';
-import { isClientCombat, observeTarget, teammateProgress, cameraLayers, layerCamera, sidesOf, resumedWatch } from '../../battle/observe.js';
+import { isClientCombat, observeTarget, teammateProgress, cameraLayers, layerCamera, sidesOf, resumedWatch, displayedWatch } from '../../battle/observe.js';
 import { screenStrip, playerBonds, playerLayer, detailBondOwner, toggleBond, popupView } from '../../ui/watchBonds.js';
 import { data, getMode } from '../../data.js';
 import { audio, voiceKey, resultSpeaker, resultVoiceSlot } from '../../audio.js';
 import { useDocClass, FullscreenButton } from '../../ui/device.js';
 import { cx, HUD_HZ_MS, SEL_RANGE, MERGE_HL } from './marks.js';
 import { inspectRange } from './range.js';
-import { keepEarly } from './early.js';
+import { keepEarly, currentBattleField } from './early.js';
 import { PausedOverlay } from './overlays.js';
 import { RoundPopup, PhasePopup, phasePopupOf, roundsToBoss } from '../../ui/matchPopups.js';
 import { FinalAssaultPlate, HiddenCorePlate, DownedPlate, finalPlateRows, bossIconOf } from '../../ui/matchPlates.js';
@@ -73,6 +78,7 @@ export function MatchScreen() {
   const myId = useStore((s) => s.me.playerId);
   const conn = useStore((s) => s.connection, shallowEqual);
   const emotes = useStore((s) => s.emotes);
+  const matchChat = useStore((s) => s.matchChat);
   const spectator = useStore((s) => s.spectator);
   const roomSeats = useStore((s) => s.room?.seats || s.spectator?.seats);
   const roomSolo = useStore((s) => s.room?.mode === 'solo');
@@ -95,13 +101,14 @@ export function MatchScreen() {
         hud.parentElement.style.removeProperty('--battle-top');
         return;
       }
-      const unit = Math.sqrt(Math.max(1, width * height) / (844 * 390));
+      const controlScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control-scale')) || 1;
+      const unit = Math.sqrt(Math.max(1, width * height) / (844 * 390)) * controlScale;
       hud.parentElement.style.setProperty('--battle-ui-unit', `${unit}px`);
       hud.parentElement.style.setProperty('--battle-top', `${84 * unit}px`);
     };
     const observer = new ResizeObserver(measure);
-    observer.observe(hud); measure();
-    return () => { observer.disconnect(); hud.parentElement.style.removeProperty('--battle-ui-unit'); hud.parentElement.style.removeProperty('--battle-top'); };
+    observer.observe(hud); window.addEventListener('resize', measure); measure();
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); hud.parentElement.style.removeProperty('--battle-ui-unit'); hud.parentElement.style.removeProperty('--battle-top'); };
   }, []);
   const { view, kind: viewKind } = useFieldView(hostRef);
   useEffect(() => {
@@ -127,7 +134,6 @@ export function MatchScreen() {
   }, [pub?.variant]);
 
   const [localWatching, setWatching] = useState(null);
-  const watching = spectator ? (field?.fieldId || localWatching) : localWatching;        // fieldId the player chose to watch (null = home)
   const [watchWho, setWatchWho] = useState(null);        // { fieldId, playerId }: the teammate picked with 前往查看
   const [watchBusy, setWatchBusy] = useState(false);
   const watchBusyRef = useRef(false);
@@ -138,6 +144,7 @@ export function MatchScreen() {
   const [rewardMin, setRewardMin] = useState(false);
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [relicCodexOpen, setRelicCodexOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [drag, setDrag] = useState(null);                // { uid, kind, id } while dragging a piece
   const [facing, setFacing] = useState(null);            // direction step: { uid, piece, row, col, grid, name }
@@ -178,9 +185,10 @@ export function MatchScreen() {
   const players = sortedPlayers(pub);
   const meP = players.find((p) => p.playerId === myId) || null;
   const alive = !spectator && (priv ? priv.alive !== false : meP?.alive !== false);
+  const watching = displayedWatch(field, { alive, spectator: !!spectator, watching: localWatching });
   const home = homeFieldId(pub, myId);
   const watchingOther = !!watching && watching !== home && watching !== ownFieldId(myId);
-  const readOnlyPrep = !!spectator || watchingOther;
+  const readOnlyPrep = !!spectator || !alive || watchingOther;
   const bench = readOnlyPrep && watchBench?.phase === phase && watchBench?.fieldId === field?.fieldId
     && (spectator || watchBench.fieldId === watching)
     && players.some((p) => p.playerId === watchBench.playerId && p.alive && p.status !== 'left')
@@ -201,22 +209,24 @@ export function MatchScreen() {
     };
   }, [readOnlyPrep, priv, bench, field, watching, prepOwnerId, pub]);
   const [tempPage, setTempPage] = useState(0);
-  const tempPages = Math.max(1, Math.ceil((prepState?.temp?.length || GEO.TEMP_SIZE) / GEO.TEMP_SIZE));
+  const tempPageSize = isZhajing(pub) ? 6 : GEO.TEMP_SIZE;
+  const tempPages = Math.max(1, Math.ceil((prepState?.temp?.length || tempPageSize) / tempPageSize));
   const shownTempPage = Math.min(tempPage, tempPages - 1);
-  const pagedPrep = useMemo(() => prepState ? { ...prepState, temp: prepState.temp?.slice(shownTempPage * GEO.TEMP_SIZE, (shownTempPage + 1) * GEO.TEMP_SIZE) } : null, [prepState, shownTempPage]);
+  const pagedPrep = useMemo(() => prepState ? { ...prepState, temp: prepState.temp?.slice(shownTempPage * tempPageSize, (shownTempPage + 1) * tempPageSize) } : null, [prepState, shownTempPage, tempPageSize]);
   const personalChoice = !spectator && alive ? normalizePersonalChoice(pub, priv, myId) : null;
-  const editable = phase === PHASE.PREP && !!priv && alive && !priv.ready && !watchingOther && !personalChoice;
+  const editable = phase === PHASE.PREP && !!priv && alive && !priv.ready && !watchingOther && !personalChoice && !(pub?.difficulty === 'ANNIHILATION' && priv?.relics?.draft);
   const showShop = !!priv && alive && (phase === PHASE.PREP || phase === PHASE.SP_DRAFT || phase === PHASE.ROUND_START) && !watchingOther;
   const layersDisabled = phase === PHASE.UNITE || isBossPhase(phase);
-  const localSp = draftForPlayer(pub?.sp, myId);
-  const sp = !spectator && phase === PHASE.SP_DRAFT ? normalizeSp(localSp, pub?.sp?.groups?.length ? players.filter((p) => (localSp?.playerIds || localSp?.order || []).includes(p.playerId)) : players) : null;
-  if (sp && pub?.sp?.groups?.length) {
+  const zhajing = isZhajing(pub);
+  const localSp = zhajing ? priv?.sp : draftForPlayer(pub?.sp, myId);
+  const sp = !spectator && phase === PHASE.SP_DRAFT && (!zhajing || !!localSp) ? normalizeSp(localSp, pub?.sp?.groups?.length ? players.filter((p) => (localSp?.playerIds || localSp?.order || []).includes(p.playerId)) : players) : null;
+  if (sp && (pub?.sp?.groups?.length || zhajing)) {
     sp.turnDeadline = localSp.done ? 0 : localSp.turnDeadline;
     sp.turnSeconds = localSp.turnSeconds;
     sp.untimed = localSp.untimed || localSp.done;
   }
   const total = phaseTotalSeconds(pub, gd.config, myId);
-  const clockPub = phase === PHASE.SP_DRAFT && pub?.sp?.groups?.length
+  const clockPub = phase === PHASE.SP_DRAFT && (pub?.sp?.groups?.length || zhajing && localSp)
     ? { ...pub, deadline: localSp.done || localSp.untimed ? 0 : localSp.turnDeadline }
     : pub;
   // solo pause: offered in the own battle; while m.public.paused every HUD clock stops at the pause moment
@@ -398,7 +408,7 @@ export function MatchScreen() {
       return;
     }
     const wanted = combat || mode === 'settle' || watchingOther;
-    if (!wanted || !field || !field.fieldId || field === staleFieldRef.current || field === enteredFieldRef.current) return;
+    if (!wanted || !field?.fieldId || (field === staleFieldRef.current && !currentBattleField(field, pub, staleFieldRef.current)) || field === enteredFieldRef.current) return;
     if (watchingOther && !combat && field.fieldId !== watching) return; // an older push while switching
     if (deviceUnitsRef.current.fieldId && deviceUnitsRef.current.fieldId !== field.fieldId) setDetail((d) => (d?.kind === 'unit' || d?.kind === 'device' ? null : d));
     enteredFieldRef.current = field;
@@ -713,8 +723,13 @@ export function MatchScreen() {
 
   // emote bubbles (and a sound for teammates' emotes)
   const bubbleMs = (gd.config?.timers?.chatBubble ?? 3) * 1000;
-  const bubbles = activeBubbles(emotes, Date.now(), bubbleMs);
-  useTicker(bubbles.size ? 500 : 0); // re-render only while a bubble is showing (to expire it)
+  const nowEmote = Date.now();
+  const bubbles = activeBubbles(emotes, nowEmote, bubbleMs);
+  const danmaku = [
+    ...battleEmotes(emotes, pub, myId, nowEmote),
+    ...battleChatDanmaku(matchChat?.items, pub, myId, nowEmote),
+  ].sort((a, b) => a.seq - b.seq);
+  useTicker(bubbles.size || danmaku.length ? 250 : 0);
   const lastEmote = useRef(emotes.length ? emotes[emotes.length - 1].seq : 0);
   useEffect(() => {
     const e = emotes[emotes.length - 1];
@@ -726,21 +741,40 @@ export function MatchScreen() {
   // 准备 with funds left asks first: the prep's end wipes them (community report #4; not 坎诺特, not at 0 funds, not
   // under AI 托管 — gameLogic.readyFundsPrompt). The button and Space both come here.
   const askingReady = useRef(false);
+  const readyPending = useRef(false);
   const toggleReady = useCallback(async (r) => {
-    const L = live.current;
-    const me = Array.isArray(L.pub?.players) ? L.pub.players.find((p) => p && p.playerId === L.myId) : null;
-    const ask = r && L.pub?.modeId !== 'mode_cyclops' ? readyFundsPrompt(L.priv, { keptBands: data.get('config')?.economy?.leftoverFundsKeptByBands, autoplay: !!me?.autoplay }) : null;
-    if (ask) {
-      if (askingReady.current) return;
-      askingReady.current = true;
-      const ok = await confirmDialog(ask);
-      askingReady.current = false;
-      const now = live.current;
-      if (!ok || now.pub?.phase !== PHASE.PREP || now.priv?.ready) return;
-    }
+    // The synchronous gate also covers Space and clicks before Preact disables the button.
+    if (readyPending.current) return false;
+    const start = store.get(), socket = net.ws;
+    const L = { pub: start.match.public, priv: start.match.private, myId: start.me.playerId };
+    if (start.connection.status !== 'online' || start.spectator || L.pub?.phase !== PHASE.PREP
+        || !L.priv || L.priv.alive === false || !!L.priv.ready === !!r) return false;
+    readyPending.current = true;
     setReadyBusy(true);
-    await actions.ready(r);
-    setReadyBusy(false);
+    try {
+      const me = Array.isArray(L.pub?.players) ? L.pub.players.find((p) => p && p.playerId === L.myId) : null;
+      const ask = r && L.pub?.modeId !== 'mode_cyclops' ? readyFundsPrompt(L.priv, { keptBands: data.get('config')?.economy?.leftoverFundsKeptByBands, autoplay: !!me?.autoplay }) : null;
+      if (ask) {
+        askingReady.current = true;
+        const ok = await confirmDialog(ask);
+        askingReady.current = false;
+        if (!ok) return false;
+      }
+      // A delayed confirmation must not ready a later round, another room or a restored session.
+      const now = store.get(), pub = now.match.public, priv = now.match.private;
+      if (now.connection.status !== 'online' || net.ws !== socket || now.spectator || now.me.playerId !== L.myId
+          || now.room?.code !== start.room?.code || now.room?.serverId !== start.room?.serverId
+          || pub?.phase !== PHASE.PREP || pub.round !== L.pub.round || pub.deadline !== L.pub.deadline
+          || !priv || priv.alive === false || !!priv.ready === !!r) return false;
+      return await actions.ready(r);
+    } catch (err) {
+      toastError(err);
+      return false;
+    } finally {
+      askingReady.current = false;
+      readyPending.current = false;
+      setReadyBusy(false);
+    }
   }, []);
   // the prep ended (timer) while the question was open: drop it — the funds are gone either way
   useEffect(() => { if (phase !== PHASE.PREP && askingReady.current) closeAllDialogs(); }, [phase]);
@@ -1406,6 +1440,9 @@ export function MatchScreen() {
     <div class="gm__field" ref=${hostRef} onContextMenu=${(e) => e.preventDefault()}></div>
     ${viewKind === 'loading' ? html`<div class="gm__loading"><${Spinner} label="LOADING FIELD" /></div>` : null}
     <div class="gm__vignette" aria-hidden="true"></div>
+    ${danmaku.length ? html`<div class="gm__danmaku">
+      ${danmaku.map(e => html`<${EmoteDanmaku} key=${e.seq} emote=${e} name=${e.name} lane=${e.seq % 5} />`)}
+    </div>` : null}
     ${tempNotice ? html`<${TempRowNotice} view=${view} count=${temp.count} items=${temp.items} label=${!drag && !facing} unlimitedItems=${unlimitedItems}
       ready=${phase === PHASE.PREP && (spectator ? !!players.find((p) => p.playerId === prepOwnerId)?.ready : !!priv?.ready)} />` : null}
 
@@ -1422,7 +1459,9 @@ export function MatchScreen() {
         readyBusy=${readyBusy} readyCount=${readyCount} playerCount=${solo ? 1 : aliveCount}
         pen=${pen} penAvail=${penAvail} onPen=${togglePen} config=${gd.config} frozenAt=${frozenAt}
         pause=${canPause || paused ? { show: canPause, paused, busy: pauseBusy, onToggle: () => togglePause(!paused) } : null}
-        live=${liveLpNow} />`}
+        live=${liveLpNow} beforeReady=${pub?.difficulty === 'ANNIHILATION' && priv?.relics ? html`<${RelicCodexButton}
+          count=${priv.relics.owned?.length || 0} revealSeq=${priv.relics.reveal?.seq || 0}
+          escalation=${priv.relics.endless?.escalation || 0} onClick=${() => setRelicCodexOpen(true)} />` : null} />`}
 
       <div class="gm__bonds">
         <${BondStrip} bonds=${stripBonds} layersDisabled=${layersDisabled} openId=${bondPop && bondPop.ownerId === strip.ownerId ? bondPop.bondId : null}
@@ -1441,6 +1480,7 @@ export function MatchScreen() {
       </div>` : null}
 
       ${showShop ? html`<${ShopBar} refreshBusy=${refreshBusy} priv=${priv} editable=${editable} collapsed=${barCollapsed} onCollapse=${setCollapsed}
+        extraActions=${zhajing ? html`<${ZhajingActions} priv=${priv} editable=${editable} />` : null}
         barRef=${barRef} offBonds=${offBonds} inventoryPager=${showInventoryPager ? inventoryPager : null}
         onBuy=${buy} onLevel=${() => actions.levelUp()} onRefresh=${refresh} onFreeze=${() => actions.freeze()}
         onRisk=${(uid) => act('g.cyclopsRisk', uid == null ? {} : { uid })}
@@ -1488,7 +1528,9 @@ export function MatchScreen() {
         onClose=${() => { setSel(null); setDetail(null); }} onRetreat=${retreatSel} onSell=${sellSel} onDestroy=${sellSel} />` : null}
     </div>
 
+    ${zhajing ? html`<${ZhajingEnemyReveal} pub=${pub} />` : null}
     ${sp ? html`<${ChoiceOverlay} pub=${pub} sp=${sp} myId=${myId} solo=${solo} busyIdx=${spBusy} total=${total}
+      onReroll=${zhajing && localSp?.family === 'jibian' ? async i => { await act('g.spReroll', { idx: i }); } : null}
       onPick=${async (i) => { setSpBusy(i); await actions.choice(i, draftIntent(localSp)); setSpBusy(null); }} />` : null}
 
     ${personalChoice ? html`<${ChoiceOverlay} key=${personalChoice.id} pub=${pub} sp=${personalChoice} myId=${myId} solo=${solo} personal=${true}
@@ -1525,6 +1567,8 @@ export function MatchScreen() {
 
     <${RoundDamageModal} open=${damageOpen} onClose=${() => setDamageOpen(false)} round=${pub?.round || 0}
       ownerIds=${shownMembers?.length ? shownMembers : [spectator ? bench?.playerId || field?.units?.find((u) => u.ownerId)?.ownerId : watchingOther ? watchWho?.playerId || field?.units?.find((u) => u.ownerId)?.ownerId : myId].filter(Boolean)} />
+    ${pub?.difficulty === 'ANNIHILATION' ? html`<${AnnihilationRelicUi} pub=${pub} priv=${priv} myId=${myId} spectator=${spectator}
+      codexOpen=${relicCodexOpen} onCodexClose=${() => setRelicCodexOpen(false)} />` : null}
     <${SettingsModal} open=${settingsOpen} onClose=${() => setSettingsOpen(false)} />
     <${ExitModal} open=${exitOpen} onClose=${() => setExitOpen(false)} solo=${solo} />
 

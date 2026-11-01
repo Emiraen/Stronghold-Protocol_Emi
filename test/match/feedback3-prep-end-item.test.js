@@ -86,8 +86,9 @@ test('维多利亚 pays a 战栗维式重锤 at prep end: the equipped copy stay
   assert.ok(unit && unit.items.includes(HAMMER), 'the fight is built with the hammer still equipped');
   h.toPrep(2);
   assert.equal(h.m.phase, 'PREP');
-  assert.equal(copies(ps, GOLDEN), 1, 'the pair merged when the next prep started');
-  assert.equal(copies(ps, HAMMER), 0);
+  assert.equal(copies(ps, GOLDEN), 0, 'equipped items are not auto-merge candidates');
+  assert.equal(copies(ps, HAMMER), 2);
+  assert.equal(carrier.items[0].uid, equipped.uid);
   h.invariants();
   h.m.dispose();
 });
@@ -149,8 +150,9 @@ test('a grant after the prep has ended (onLayers during combat) still merges at 
   assert.equal(h.m.phase, 'COMBAT');
   assert.equal(carrier.items[0].uid, equipped.uid);
   assert.equal(ps.addLayers('victoriaShip', 25), 25);
-  assert.equal(copies(ps, HAMMER), 0, 'the equipped copy was merged immediately');
-  assert.equal(copies(ps, GOLDEN), 1);
+  assert.equal(copies(ps, HAMMER), 2, 'grant does not strip equipped copy');
+  assert.equal(copies(ps, GOLDEN), 0);
+  assert.equal(carrier.items[0].uid, equipped.uid);
   assert.equal(h.m.phase, 'COMBAT');
   h.m.dispose();
 });

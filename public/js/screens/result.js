@@ -18,10 +18,11 @@ import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.
 import { html, Button, Icon, MicroLabel, DifficultyTag } from '../ui/components.js';
 import { useGameData, Img, UnitThumb, BandIcon, PlayerAvatar, BondGlyph, LpTower, Sprite } from '../ui/gameComponents.js';
 import { normalizeResult, fmtNum } from '../ui/gameLogic.js';
-import { rankIconUrl, rankOf, normalizeRankLabel } from '../../../shared/ranks.js';
+import { rankIconUrl, rankOf, inactiveRank, normalizeRankLabel } from '../../../shared/ranks.js';
 import { enemyIconUrl, titleIconUrl, uiUrl } from '../ui/assetUrls.js';
 import { store, useStore, emptyMatch } from '../store.js';
 import { audio } from '../audio.js';
+import { isZhajing } from '../../../shared/zhajing-constants.js';
 import { data } from '../data.js';
 import { useResourceUrl } from '../ui/cachedImage.js';
 
@@ -122,9 +123,9 @@ export function RankSettlement({ rank, onClose }) {
   useEffect(() => { if (finished) confirmRef.current?.focus(); }, [finished]);
 
   const cur = Math.round(from + (to - from) * t);
-  const view = rankOf(cur, rank.globalRank);
+  const view = rank.inactive ? inactiveRank(cur) : rankOf(cur, rank.globalRank);
   const globalNo = view.globalRanked && Number.isFinite(rank.globalRank) && rank.globalRank > 0 ? rank.globalRank : null;
-  const bar = done ? tierBar(cur) : null;
+  const bar = done && !rank.inactive ? tierBar(cur) : null;
   const delta = settledRankDelta(rank);
   const tone = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : '';
   const isPlaceFinal = done && rank.kind === 'placement'; // 这一场完成定级
@@ -166,6 +167,24 @@ export function detailResultBonds(bonds, bondRec = () => null) {
     .sort((a, b) => activeCore(b) - activeCore(a) || (b.layers || 0) - (a.layers || 0));
 }
 
+/** A final receipt may replace a pending one; never infer credit from phase or matchId alone. */
+export function settlementReady(result) {
+  return !!result && Array.isArray(result.players) && result.players.length > 0
+    && !result.settlementPending && !result.incomplete && !result.settlementErrors?.length
+    && !result.players?.some?.((p) => p?.settlementError || p?.stats === null);
+}
+
+/** Compute the report leaders only when the normalized player rows actually change. */
+export function bestResultStats(players) {
+  const best = {};
+  for (const [k] of STAT_ROWS) {
+    let top = null;
+    for (const p of players) if (Number.isFinite(p.stats[k]) && p.stats[k] > 0 && (top == null || p.stats[k] > top.v)) top = { v: p.stats[k], id: p.playerId };
+    if (top && players.length > 1) best[k] = top.id;
+  }
+  return best;
+}
+
 /** Preserve explicit unavailable fields instead of the legacy normalizer's defaults. */
 export function reportResult(result, pub = null) {
   const r = normalizeResult(result, pub);
@@ -186,8 +205,8 @@ export function reportResult(result, pub = null) {
   return r;
 }
 
-function PlayerCard({ p, myId, titles, best, solo = false }) {
-  const gd = useGameData();
+function PlayerCard({ p, myId, titles, best, solo = false, gd }) {
+  const data = gd.source;
   const titleRec = p.title ? titles.find((t) => t.id === p.title.id) || null : null;
   const titleName = p.title?.name || titleRec?.name || null;
   const stats = STAT_ROWS.filter(([k]) => Number.isFinite(p.stats[k])).slice(0, 7);
@@ -196,18 +215,18 @@ function PlayerCard({ p, myId, titles, best, solo = false }) {
   const bonds = detailResultBonds(p.bonds, (id) => gd.bond(id));
   return html`<article class=${cx('rcard', p.playerId === myId && 'is-self', p.alive === false && 'is-dead')}>
     <header class="rcard__head">
-      <${PlayerAvatar} player=${p} self=${p.playerId === myId} />
+      <${PlayerAvatar} source=${data} player=${p} self=${p.playerId === myId} />
       <div class="rcard__who">
         <b class="rcard__name">${p.name}${p.isBot ? html`<span class="rcard__ai">AI</span>` : null}${p.playerId === myId ? html`<span class="rcard__you">${trA("你")}</span>` : null}</b>
-        <span class="rcard__band">${band ? html`<${BandIcon} bandId=${band.bandId} size="xs" />${band.name}` : '—'}</span>
+        <span class="rcard__band">${band ? html`<${BandIcon} source=${data} bandId=${band.bandId} size="xs" />${band.name}` : '—'}</span>
       </div>
       <div class="rcard__mid">
         <div class="rcard__lineup">
-          ${lineup.length ? lineup.map((u, i) => html`<${LineupThumb} u=${u} key=${i} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} skin=${u.skin ?? null} rec=${cardDiy(data.lookup('chess', u.id), { unit: u, data: { chess: data.get('chess'), backups: data.get('backups') } }) || cardStandIn(data.lookup('chess', u.id), { unit: u, backups: data.get('backups') })} golden=${!!u.golden} tier=${u.tier} size="sm" />`)
+          ${lineup.length ? lineup.map((u, i) => html`<${LineupThumb} gd=${gd} u=${u} key=${i} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} skin=${u.skin ?? null} rec=${cardDiy(data.lookup('chess', u.id), { unit: u, data: { chess: data.get('chess'), backups: data.get('backups') } }) || cardStandIn(data.lookup('chess', u.id), { unit: u, backups: data.get('backups') })} golden=${!!u.golden} tier=${u.tier} size="sm" />`)
             : html`<span class="rcard__noinfo">${p.alive === false ? trA("阵容已撤离") : 'NO INFO'}</span>`}
         </div>
         ${bonds.length ? html`<div class="rcard__bonds">${bonds.map((b) => html`<span key=${b.bondId} class=${cx('rbond', b.active && 'is-on')} title=${gd.bond(b.bondId)?.name || b.bondId}>
-          <${BondGlyph} bondId=${b.bondId} /><b class="num">${b.layers ?? 0}</b></span>`)}</div>` : null}
+          <${BondGlyph} source=${data} bondId=${b.bondId} /><b class="num">${b.layers ?? 0}</b></span>`)}</div>` : null}
       </div>
       <div class="rcard__round"><${MicroLabel}>${p.settlementError ? trA('结算未完成') : 'ROUNDS'}</${MicroLabel}><b class="num">${p.settlementError ? '—' : p.roundsPassed}</b>
         ${p.reward > 0 ? html`<span class="rcard__gain"><span title=${trA("卫戍认证")}><${Icon} name="shield" /><b class="num">+${p.reward}</b></span></span>` : null}
@@ -239,15 +258,10 @@ export function ResultScreen() {
 
 /** Shared live/historical report. History passes its own callback; never touches match state or audio. */
 export function ResultView({ result, pub = null, myId, onBack, backLabel = '返回大厅', showSettlement = false }) {
-  const gd = useGameData();
+  const gd = useGameData(isZhajing(result) || isZhajing(pub) ? 'zhajing' : 'vanilla');
   const r = useMemo(() => reportResult(result, pub), [result, pub]);
   const titles = Array.isArray(gd.config?.titles) ? gd.config.titles : [];
-  const best = {};
-  for (const [k] of STAT_ROWS) {
-    let top = null;
-    for (const p of r.players) if (Number.isFinite(p.stats[k]) && p.stats[k] > 0 && (top == null || p.stats[k] > top.v)) top = { v: p.stats[k], id: p.playerId };
-    if (top && r.players.length > 1) best[k] = top.id;
-  }
+  const best = useMemo(() => bestResultStats(r.players), [r.players]);
   // Historical reports keep the static rank row, but never replay the rank settlement overlay.
   const meRow = r.players.find((p) => p.playerId === myId);
   const myRank = !r.incomplete && !r.settlementPending && showSettlement && meRow && meRow.rank && typeof meRow.rank === 'object' ? meRow.rank : null;
@@ -265,7 +279,7 @@ export function ResultView({ result, pub = null, myId, onBack, backLabel = '返�
     <main class="result__main" inert=${settleOpen && !!myRank ? true : undefined}>
       <section class="result__hero">
         <div class="result__summary">
-        <div class="result__logo"><${Sprite} k="entry/season_logo_settle" class="result__logoimg" fallback=${html`<${MicroLabel} tone="mint">STRONGHOLD PROTOCOL</${MicroLabel}>`} /></div>
+        <div class="result__logo"><${Sprite} source=${gd.source} k="entry/season_logo_settle" class="result__logoimg" fallback=${html`<${MicroLabel} tone="mint">STRONGHOLD PROTOCOL</${MicroLabel}>`} /></div>
         ${r.difficulty ? html`<${DifficultyTag} difficulty=${r.difficulty} size="lg" />` : null}
         ${result?.unofficial === true || pub?.unofficial === true ? html`<span class="modmark" data-testid="result-unofficial" title=${trA('非官方玩法插件对局，不计入统计总览')}>${trA('非官方')}</span>` : null}
         ${(result?.variant || pub?.variant) === 'entertainment_endless' ? html`<p class="t-mint">娱乐 · 无尽模式 · 不计排位</p>` : (result?.variant || pub?.variant) === 'entertainment_multi' ? html`<p class="t-mint">娱乐 · 多人同盟 · 不计排位</p>` : null}
@@ -292,7 +306,7 @@ export function ResultView({ result, pub = null, myId, onBack, backLabel = '返�
       </section>
       <section class="result__players">
         <h2 class="brief-h"><span>${trA("同盟成员")}</span><${MicroLabel}>ALLIANCE REPORT</${MicroLabel}></h2>
-        ${r.players.length ? r.players.map((p) => html`<${PlayerCard} key=${p.playerId} p=${p} myId=${myId} titles=${titles} best=${best} solo=${r.players.length < 2} />`)
+        ${r.players.length ? r.players.map((p) => html`<${PlayerCard} gd=${gd} key=${p.playerId} p=${p} myId=${myId} titles=${titles} best=${best} solo=${r.players.length < 2} />`)
           : html`<p class="t-dim">${trA("暂无结算数据")}</p>`}
       </section>
     </main>
@@ -301,10 +315,11 @@ export function ResultView({ result, pub = null, myId, onBack, backLabel = '返�
 }
 
 
-export function LineupThumb({ u, gd = { chess: id => data.lookup('chess', id), backups: data.get('backups') } }) {
+export function LineupThumb({ u, gd = { source: data, chess: id => data.lookup('chess', id), backups: data.get('backups') } }) {
+  const source = gd.source || data;
   const chess = u.kind === 'token' ? null : gd.chess(u.id);
-  const dr = u.diy && chess ? diyRecordFor(chess, u.diy, { chess: data.get('chess'), backups: data.get('backups') }) : null;
+  const dr = u.diy && chess ? diyRecordFor(chess, u.diy, { chess: source.get('chess'), backups: gd.backups }) : null;
   const si = !dr && chess ? cardStandIn(chess, { unit: u, backups: gd.backups }) : null;
-  return html`<${UnitThumb} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} golden=${!!u.golden} tier=${u.tier} size="sm" skin=${u.skin ?? null} rec=${dr || si}
+  return html`<${UnitThumb} source=${source} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} golden=${!!u.golden} tier=${u.tier} size="sm" skin=${u.skin ?? null} rec=${dr || si}
     title=${si ? t('{name}（{note}）', { name: si.name, note: standInForText(chess.name) }) : undefined} />`;
 }

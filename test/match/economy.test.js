@@ -105,7 +105,9 @@ test('shop slots per level (+ the item slot), buy prices by tier, SOLD_OUT, NO_F
   for (let i = 0; ps.hand.some((x) => x == null); i++) give(m, ps, fillers[i]);
   if (ps.countCopies(m.gd.baseIdOf(s1.id)) === 0) assert.deepEqual(m.handle('p_0', { t: 'g.buy', slot: 1 }), { error: ERR.HAND_FULL });
   const itemSlot = ps.shop.slots.findIndex((s) => s && s.kind === 'item');
-  assert.deepEqual(m.handle('p_0', { t: 'g.buy', slot: itemSlot }), { error: ERR.HAND_FULL });
+  const itemId = ps.shop.slots[itemSlot].id;
+  assert.deepEqual(m.handle('p_0', { t: 'g.buy', slot: itemSlot }), { ok: true });
+  assert.ok(ps.temp.some(p => p?.kind === 'item' && p.id === itemId), 'full hand allows item overflow into finite temp');
   checkInvariants(m);
   m.dispose();
 });
@@ -174,13 +176,13 @@ test('selling: +1 (normal and elite, board or hand), items return to the hand, i
   assert.ok(!ps.hand.some((p) => p && p.uid === it.uid));
   assert.equal(ps.funds, 1, 'destroying pays nothing');
   assert.deepEqual(m.handle('p_0', { t: 'g.sell', uid: 424242 }).error, ERR.BAD_TARGET);
-  // a board chess carrying equipment is not sold while neither the hand nor the temp slots can take the equipment back
+  // Finite ordinary temp must fit both returned items; a refused sale must be atomic.
   const b = give(m, ps, chessOfTier(4).find((x) => m.pool.has(x)), 'board', [10, 3]);
   b.items.push(ps.newPiece('item', 'chess_item_1_01_e_a'), ps.newPiece('item', 'chess_item_3_03_e_a'));
   const fill = chessOfTier(1).filter((x) => m.pool.has(x));
   for (let i = 0; ps.hand.some((p) => p == null); i++) give(m, ps, fill[i]);
   const fill2 = chessOfTier(2).filter((x) => m.pool.has(x));
-  for (let i = 0; i < 4; i++) give(m, ps, fill2[i], 'temp');
+  for (let i = 0; i < m.gd.tempSize - 1; i++) give(m, ps, fill2[i], 'temp', i);
   assert.equal(m.handle('p_0', { t: 'g.sell', uid: b.uid }).error, ERR.HAND_FULL, '2 items, 1 free temp slot');
   assert.ok(ps.find(b.uid) && b.items.length === 2, 'nothing lost');
   ps.resolveTemp();

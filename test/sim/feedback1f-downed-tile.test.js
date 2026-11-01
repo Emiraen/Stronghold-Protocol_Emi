@@ -211,11 +211,13 @@ test('F5 "若干员被击倒的位置为其他干员或召唤物的初始位置�
 // tile) off the field. Every board piece's 初始位置 counts now, on the field or not.
 test('F5 rule 3: a body on the home of a summon that has expired or been killed goes back to its own; the summon comes back', () => {
   for (const how of ['expired', 'killed']) {
+    const tokenId = how === 'expired' ? 'token_10017_skadi2_dedant' : 'token_10030_mlyss_wtrman';
+    const ownerId = how === 'expired' ? 'chess_char_6_04_a' : 'chess_char_6_11_a';
     const h = makeBattle({
       stageId: 'flat', autoFinish: false, timeLimit: 400, bonds: RAID,
       units: [
-        { chessId: 'chess_char_6_04_a', row: 10, col: 3, uid: 1 },
-        { kind: 'token', tokenId: 'token_10017_skadi2_dedant', row: 10, col: 5, uid: 2, ownerUid: 1 },
+        { chessId: ownerId, row: 10, col: 3, uid: 1 },
+        { kind: 'token', tokenId, row: 10, col: 5, uid: 2, ownerUid: 1 },
         { chessId: 'chess_char_1_18_a', row: 12, col: 3, uid: 3 },
       ],
     });

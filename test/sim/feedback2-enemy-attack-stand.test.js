@@ -116,8 +116,9 @@ test('no attack clip known: ATTACK_PAUSE after the strike and no wind-up stand; 
   });
   h.step();
   const e = h.enemy('enemy_slow');
-  assert.ok(e.lastAttackAt >= 0, 'attacked at once');
-  assert.ok(Math.abs(e.atkStandUntil - (h.b.time - TICK + 2.5)) < 1e-6, 'stands the 2.5 s after the strike');
+  assert.ok(e.lastAttackAt < 0, 'the first attack also has its 0.5 s wind-up');
+  assert.ok(h.runUntil(() => e.lastAttackAt >= 0, 0.5 + 2 * TICK), 'the first strike follows its wind-up');
+  assert.ok(Math.abs(e.atkStandUntil - (e.lastAttackAt + attackStand(e).rest)) < 1e-6, 'stands the rest of the actual attack clip after its strike');
   h.run(0.5);
   const x0 = e.x;
   h.b.applyStatus(e, 'stun', { duration: 0.5 });
@@ -142,22 +143,26 @@ function routeField(key, bat, dur, checkpoints, ally) {
 test('a ranged enemy with a target in range on a WAIT checkpoint leaves when the wait (and its current clip) is over, as without a target', () => {
   const leaves = (bat, dur, ally) => {
     const h = routeField('enemy_waiter', bat, dur, [{ type: 'WAIT', time: 3 }], ally);
-    let waited = null, moved = null, x0 = null;
+    let waited = null, moved = null, x0 = null, clipEndAtWait = null;
     for (let i = 0; i < Math.round(8 / TICK); i++) {
       h.step();
       const e = h.enemies()[0];
       x0 ??= e.x;
-      if (waited == null && e.route.legIdx >= 1) waited = h.b.time;
+      if (waited == null && e.route.legIdx >= 1) {
+        waited = h.b.time;
+        clipEndAtWait = e.swing ? h.b.time - TICK + e.atkCd + attackStand(e).rest : e.atkStandUntil;
+      }
       if (moved == null && Math.abs(e.x - x0) > 1e-6) moved = h.b.time;
     }
-    return { waited, moved, attacks: h.hooksOf('attack').length };
+    return { waited, moved, clipEndAtWait, attacks: h.hooksOf('attack').length };
   };
   const free = leaves(2.7, 1, false), sniper = leaves(2.7, 1, true), quick = leaves(1, 2, true);
   assert.equal(free.attacks, 0);
   assert.ok(sniper.attacks >= 2 && quick.attacks >= 5);
   assert.ok(Math.abs(sniper.waited - free.waited) < 1e-9 && Math.abs(quick.waited - free.waited) < 1e-9, `the wait ends at ${free.waited.toFixed(2)} s for all three`);
-  // it walks on once the attack clip running at the end of the wait is over (the attack at 2.7 s: until 3.2 s)
-  assert.ok(sniper.moved > free.moved && sniper.moved <= 3.2 + 2 * TICK, `leaves at ${sniper.moved?.toFixed(2)} s (no target: ${free.moved.toFixed(2)} s)`);
+  // Initial wind-up also shifts later strikes: derive departure from the clip active when WAIT ends.
+  assert.ok(Number.isFinite(sniper.clipEndAtWait) && sniper.clipEndAtWait > sniper.waited);
+  assert.ok(sniper.moved > free.moved && Math.abs(sniper.moved - sniper.clipEndAtWait) <= 2 * TICK, `leaves after its actual clip (${sniper.clipEndAtWait}), at ${sniper.moved?.toFixed(2)} s`);
   assert.equal(quick.moved, null, 'an enemy attacking quicker than its clip stands while the target stays in range');
 });
 

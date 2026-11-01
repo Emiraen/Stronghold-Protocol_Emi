@@ -91,7 +91,15 @@ export function makeMatch(o = {}) {
     assert.ok(ok && m.phase === phase && (round == null || m.round === round), `expected ${phase}${round != null ? ' R' + round : ''}, got ${m.phase} R${m.round}${h.ended ? ' (ended)' : ''}`);
     return h;
   };
-  h.runToEnd = (opts = {}) => { h.run(() => h.ended != null, opts); assert.ok(h.ended, `match did not end (phase ${m.phase} R${m.round})`); return h.ended; };
+  h.waitForEnd = async () => {
+    await m.finishPromise;
+    assert.ok(h.ended, `match did not end (phase ${m.phase} R${m.round})`);
+    return h.ended;
+  };
+  h.runToEnd = async (opts = {}) => {
+    h.run(() => m.ended, opts);
+    return h.waitForEnd();
+  };
   /** last message of a type sent to a player (unicast) */
   h.lastTo = (id, type) => { for (let i = h.sent.length - 1; i >= 0; i--) if (h.sent[i][0] === id && h.sent[i][1].t === type) return h.sent[i][1]; return null; };
   h.lastBc = (type) => { for (let i = h.bc.length - 1; i >= 0; i--) if (h.bc[i].t === type) return h.bc[i]; return null; };
@@ -116,7 +124,10 @@ export function makeMatch(o = {}) {
       for (const ps of m.players.values()) {
         if (ps.isBot || ps.left) continue;
         if (m.phase === 'INFO_CHECK' && !ps.infoReady) m.handle(ps.playerId, { t: 'g.infoReady' });
-        if (m.phase === 'BAND_DRAFT' && m.draftTurn() === ps.playerId) m.handle(ps.playerId, { t: 'g.band', bandId: band });
+        if (m.phase === 'BAND_DRAFT' && m.draftTurn() === ps.playerId) {
+          const pick = m.order.some((p) => p !== ps && p.bandId === band) ? m.timeoutBand(ps.playerId) : band;
+          m.handle(ps.playerId, { t: 'g.band', bandId: pick });
+        }
         if (m.phase === 'SP_DRAFT' && m.spTurn() === ps.playerId) {
           const idx = m.sp.cards.map((c) => c.idx).find((k) => m.sp.taken[k] == null);
           if (idx != null) m.handle(ps.playerId, { t: 'g.choice', idx });

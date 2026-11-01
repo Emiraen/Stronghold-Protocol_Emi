@@ -186,20 +186,22 @@ test('经济馈赠银金效果削弱且金阶明显更强', (t) => {
   assert.ok(ps.effects.every((e) => e.iconKind === 'cyclops'));
 
   applyCyclopsHex(m, ps, card('cyc_refresh', 'silver'));
-  const silverRefresh = ps.effects.at(-1).params.freeChance;
+  const silverRefresh = ps.effects.at(-1).params;
   applyCyclopsHex(m, ps, card('cyc_refresh', 'gold'));
-  assert.deepEqual([silverRefresh, ps.effects.at(-1).params.freeChance], [0.1, 0.25]);
+  const goldRefresh = ps.effects.at(-1).params;
+  assert.equal(silverRefresh.rebateEvery, 3, 'silver rebates one fund per three paid refreshes');
+  assert.deepEqual([goldRefresh.recruitEvery, goldRefresh.recruitLimit], [5, 2], 'gold grants recruitment after five paid refreshes, twice per round');
 
   applyCyclopsHex(m, ps, card('cyc_bounty', 'silver'));
   const silverBounty = ps.effects.at(-1).params.killChance;
   applyCyclopsHex(m, ps, card('cyc_bounty', 'gold'));
   assert.equal(silverBounty, 0.1);
-  assert.equal(ps.effects.at(-1).params.winPerEnemy, 1);
+  assert.deepEqual(ps.effects.at(-1).params, { quality: 'gold', giftRules: 3, winBase: 4, winEvery: 5, winCap: 8 });
 
   applyCyclopsHex(m, ps, card('cyc_streak', 'silver'));
-  const silverStreak = ps.effects.at(-1).params.win;
+  const silverStreak = ps.effects.at(-1).params.lose;
   applyCyclopsHex(m, ps, card('cyc_streak', 'gold'));
-  assert.deepEqual([silverStreak, ps.effects.at(-1).params.win], [1, 2]);
+  assert.deepEqual([silverStreak, ps.effects.at(-1).params.comeback], [1, 8], 'silver pays a loss streak; gold pays the comeback, not each win');
 });
 
 test('银阶盟约馈赠只赠送1–3阶干员，彩阶仍可赠送高阶', (t) => {
@@ -222,7 +224,7 @@ test('银阶盟约馈赠只赠送1–3阶干员，彩阶仍可赠送高阶', (t)
   ps.acquireItem = () => null;
   for (const family of families) {
     const hex = DATA.cyclops.hexes.find((h) => h.family === family);
-    assert.match(hex.levels.silver.desc, /1名随机三阶及以下/);
+    assert.match(hex.levels.silver.desc, /1名随机一至三阶/);
     applyCyclopsHex(m, ps, { id: hex.id, family, quality: 'silver', name: hex.name, levelName: hex.levels.silver.name });
   }
   assert.equal(awarded.length, families.length);
@@ -239,8 +241,9 @@ test('舟铲铲连胜连败：2/4/6场升档、切换重计、下次备战到账
   ps.lp = 100;
   const outcomes = [true, true, true, true, true, true, true, false, false, false, false, false, false, true];
   const bonuses = [0, 1, 1, 2, 2, 3, 3, 0, 1, 1, 2, 2, 3, 0];
+  const rounds = Array.from({ length: 21 }, (_, i) => i + 1).filter(r => !isCyclopsBonusRound(r));
   for (let i = 0; i < outcomes.length; i++) {
-    m.round = i + 1;
+    m.round = rounds[i];
     const won = outcomes[i];
     ps.pendingFunds = 0;
     m.lastResults.set(ps.playerId, { perfect: won, leaked: won ? [] : [{ counted: true }], killed: 0, total: 10, coins: 0, layerGains: {} });
@@ -251,8 +254,8 @@ test('舟铲铲连胜连败：2/4/6场升档、切换重计、下次备战到账
     assert.equal(ps.pendingFunds, bonuses[i], '重复结算不重复发奖');
     const before = ps.funds;
     const interest = cyclopsInterest(before);
-    ps.startRound(i + 2);
-    assert.equal(ps.funds - before, m.gd.income(i + 2) + interest + bonuses[i]);
+    ps.startRound(m.round + 1);
+    assert.equal(ps.funds - before, m.gd.income(m.round + 1) + interest + bonuses[i]);
     assert.equal(ps.pendingFunds, 0);
   }
   m.round++;
@@ -331,9 +334,15 @@ test('完整流程：21 回合（R21 最终攻势）、5/10/15 海克斯、R10 �
   // 注：VirtualScheduler 一次 advance 可能跨过整个 CYCLOPS_HEX / CYCLOPS_DRAFT 阶段，故以结果状态为准。
   const m = fixture(t, { count: 4, humans: 0, seed: 42 });
   const scheduler = m.sched;
-  m.start();
   let sawFinalAssault = false;
   let sawDraft = false;
+  const markPublic = m.markPublic.bind(m);
+  m.markPublic = (...args) => {
+    if (m.phase === PHASE.FINAL_ASSAULT) sawFinalAssault = true;
+    if (m.phase === PHASE.CYCLOPS_DRAFT) sawDraft = true;
+    return markPublic(...args);
+  };
+  m.start();
   for (let guard = 0; guard < 60000 && !m.ended; guard++) {
     if (m.phase === PHASE.FINAL_ASSAULT) sawFinalAssault = true;
     if (m.phase === PHASE.CYCLOPS_DRAFT) sawDraft = true;
@@ -477,8 +486,8 @@ test('真人海克斯交互：选择与单槽刷新', (t) => {
   }
   assert.equal(m.phase, PHASE.CYCLOPS_HEX);
   assert.equal(m.round, 5);
-  assert.equal(m.cyclops.turnSeconds, 25, '馈赠选择固定 25 秒，不占用备战时长');
-  assert.equal(m.cyclops.deadline - scheduler.now(), 25_000, '馈赠阶段独立计时 25 秒');
+  assert.equal(m.cyclops.turnSeconds, 35, '馈赠选择固定 35 秒，不占用备战时长');
+  assert.equal(m.cyclops.deadline - scheduler.now(), 35_000, '馈赠阶段独立计时 35 秒');
   const p0 = m.players.get('p0');
   const st = m.cyclops.state.get('p0');
   const before = st.slots[0] && st.slots[0].id;

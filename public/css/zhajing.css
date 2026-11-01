@@ -1,0 +1,20 @@
+.zj-tools { display:flex; gap:4px; flex-wrap:wrap; grid-column:1 / -1; pointer-events:auto; }
+.zj-tools .btn { font-size:max(11px,.11rem); min-height:max(28px,.26rem); padding:max(4px,.04rem) max(8px,.08rem); touch-action:manipulation; }
+.zj-effects { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; max-height:60vh; overflow:auto; }
+.zj-effects article { padding:12px; background:var(--surface,#182327); border:1px solid #77939555; }
+.zj-effects b { display:block; margin-bottom:8px; }
+.zj-effects p { margin:4px 0; }
+.zj-loadout { display:flex; flex-wrap:wrap; gap:12px; }
+.zj-loadout select { max-width:220px; color:inherit; background:#182327; padding:6px; }
+.zj-card-grid { display:flex; flex-wrap:wrap; gap:10px; }
+.zj-choice { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.zj-choice > .spcard { flex:1; width:100%; }
+/* Keep the reroll hit area separate from the selection card on touchscreens. */
+@media (pointer:coarse) {
+  .spov--jibian .zj-choice { gap:12px; }
+  .spov--jibian .zj-choice__reroll { min-height:36px; touch-action:manipulation; }
+  .spov--jibian .spov__confirm { min-height:40px; min-width:88px; touch-action:manipulation; }
+  .spov--jibian .spcard { touch-action:pan-y; user-select:none; -webkit-user-select:none; }
+  .spov--jibian .spcard.is-armed, .spov--jibian .spcard.is-pickable:hover { transform:none; }
+}
+@media (pointer:coarse) and (max-height:600px) { .zj-effects { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); } .zj-tools .btn { font-size:max(12px,.10rem); min-height:32px; } }

@@ -56,7 +56,7 @@ test('unitStatsEntry: effective stats next to the base, rounded for display; the
   const plain = unitStatsEntry(u);
   assert.equal(plain.atk, 300, 'no aggregated stats: the base');
   assert.equal(plain.interval, 1.2);
-  assert.equal(unitStatsEntry(null).maxHp, 0, 'never throws');
+  assert.equal(unitStatsEntry(null).maxHp, 1, 'never throws');
   assert.equal(unitStatsEntry({ base: { bat: 0 } }).interval, null, 'no attack');
 });
 

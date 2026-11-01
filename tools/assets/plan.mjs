@@ -21,6 +21,14 @@ import { RAW, joinUrl, safeName, urlBase, urlDir } from './sources.mjs';
 import { kindOf } from './formats.mjs';
 import { pickUnitSfx, UI_SFX, BATTLE_SFX, resolveSpec } from './audio.mjs';
 import { literal } from './manifest.mjs';
+import { EMOTE_CATALOG } from '../../shared/constants.js';
+
+/** The official guide pages, in the same chapter order as ui/guide.js. */
+export const GUIDE_PAGES = Object.freeze([
+  ...Array.from({ length: 9 }, (_, i) => `autochess_home_${i + 1}`),
+  ...Array.from({ length: 6 }, (_, i) => `autochess_shop_${i + 1}`),
+  ...Array.from({ length: 4 }, (_, i) => `autochess_handbook_${i + 1}`),
+]);
 
 /**
  * Enemies whose Spine no community dump carries: the web model is another enemy's (research 07 §5.6). Their official
@@ -39,7 +47,7 @@ const LOADING_USED = new Set(['loading_ac_core', 'loading_ac_prototype', 'loadin
 const PROFESSIONS = ['caster', 'medic', 'pioneer', 'sniper', 'special', 'support', 'tank', 'warrior'];
 
 /** Extra UI sprites (not in 07-assets.json groups): [group, key, path under ArknightsAssets2 cn assets/dyn]. */
-const UI_EXTRAS = (() => {
+export const UI_EXTRAS = (() => {
   const L = [];
   const mc = 'ui/autochess/[uc]autochessouter/modechoice/auto_chess_mode_choice_state/';
   for (const m of ['normal', 'hard', 'abyss', 'funny']) L.push(['modeChoice', `${m}_rhodes_island`, `${mc}${m}_rhodes_island.png`]);
@@ -67,7 +75,12 @@ const UI_EXTRAS = (() => {
   L.push(['prepReady', 'countdown_arrow', `${pr}countdown_arrow.png`]);
   const si = 'ui/autochess/[uc]autochessouter/stageinfo/auto_chess_stage_info_state/';
   for (const k of ['img_title_mode_abyss', 'img_title_mode_funny', 'img_title_mode_hard', 'img_title_mode_normal', 'btn_confirm', 'btn_confirmed']) L.push(['stageInfo', k, `${si}${k}.png`]);
-  return L;
+  for (const e of EMOTE_CATALOG) {
+    const folder = `ui/emoticon/theme/[uc]${e.themeId}`;
+    L.push(['emoticon/' + e.dir, e.picId, folder + '/icon/' + e.picId + '.png']);
+  }
+  for (const key of GUIDE_PAGES) L.push(['guide', key, 'arts/guidebookpages/[pack]autochess/' + key + '.png']);
+  return Object.freeze(L.map(Object.freeze));
 })();
 
 /** Renames of research 07 `arts` groups to manifest UI groups. */

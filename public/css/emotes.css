@@ -156,3 +156,33 @@
   .ewheel__panel, .ewheel__page, .ewheel__page.is-from-right, .ewheel__page.is-from-left { animation: none; }
   .ebubble { animation: emo-bubble-out 1ms linear calc(var(--ebubble-ttl) - 1ms - var(--ebubble-age)) forwards; }
 }
+.gm__danmaku { position: absolute; inset: 0; z-index: 7; overflow: hidden; pointer-events: none; }
+.edanmaku {
+  position: absolute; right: 0; top: calc(8% + var(--lane, 0) * 9%);
+  display: flex; align-items: center; gap: .06rem; padding: .04rem .1rem .04rem .12rem;
+  background: rgba(8, 12, 11, .72); border: 1px solid rgba(23, 249, 183, .25); border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .45); white-space: nowrap;
+  animation: edanmaku-fly 6s linear forwards; animation-delay: calc(0ms - var(--edanmaku-age, 0ms));
+}
+/* Independent of the interface text root: changing either preference keeps the other unchanged. */
+:root { --danmaku-font-size: .12rem; }
+:root[data-danmaku-text="xxs"] { --danmaku-font-size: .084rem; }
+:root[data-danmaku-text="xs"] { --danmaku-font-size: .102rem; }
+:root[data-danmaku-text="md"] { --danmaku-font-size: .138rem; }
+:root[data-danmaku-text="lg"] { --danmaku-font-size: .156rem; }
+:root[data-danmaku-text="xl"] { --danmaku-font-size: .18rem; }
+.edanmaku__name { max-width: 1.3rem; overflow: hidden; text-overflow: ellipsis; color: var(--mint-400); font-size: var(--danmaku-font-size, .12rem); line-height: 1; }
+.edanmaku__icon { display: block; flex: none; width: .34rem; height: .34rem; }
+.edanmaku__icon .eart { width: 100%; height: 100%; }
+.edanmaku--text { max-width: min(80vw, 10rem); align-items: baseline; border-radius: .08rem; }
+.edanmaku--text .edanmaku__name { flex: none; }
+.edanmaku__text { min-width: 0; max-width: min(60vw, 8rem); color: var(--text-hi); font-size: var(--danmaku-font-size, .12rem); line-height: 1.4; white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
+@keyframes edanmaku-fly {
+  0% { transform: translateX(100%); opacity: 0; }
+  6%, 92% { opacity: 1; }
+  100% { transform: translateX(calc(-100vw - 100%)); opacity: 0; }
+}
+@keyframes edanmaku-fade { 0%, 92% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .edanmaku { right: .2rem; animation-name: edanmaku-fade; }
+}

@@ -5,6 +5,7 @@ export const SPECIAL_PAINTBRUSH_TACTICS_CARD = 'special_paintbrush_tactics';
 export const SPECIAL_SOFT_AND_DEADLY_CARD = 'special_soft_and_deadly';
 export const SPECIAL_HATCHBUDZ_QUACKED_CARD = 'special_hatchbudz_quacked';
 export const SPECIAL_COMMANDER_BRUNO_CARD = 'special_commander_bruno';
+export const SPECIAL_GHOSTY_CARD = 'special_ghosty';
 /** Each rank milestone grants its card and matching avatar permanently. */
 export const EVORI_RANK_NAME_CARDS = Object.freeze([
   Object.freeze({ card: 'special_evori_solari', minimumDivision: 'gold', name: '太阳鼠', directory: 'evori-solari', description: '段位纪念' }),
@@ -15,7 +16,7 @@ export const EVORI_RANK_NAME_CARDS = Object.freeze([
 ]);
 const OPEN_SPECIAL_NAME_CARDS = Object.freeze([
   'special_duck_burnard', 'special_duck_flower', 'special_duck_brioche',
-  SPECIAL_SOFT_AND_DEADLY_CARD, SPECIAL_HATCHBUDZ_QUACKED_CARD, SPECIAL_COMMANDER_BRUNO_CARD,
+  SPECIAL_SOFT_AND_DEADLY_CARD, SPECIAL_HATCHBUDZ_QUACKED_CARD, SPECIAL_COMMANDER_BRUNO_CARD, SPECIAL_GHOSTY_CARD,
 ]);
 export const isSpecialNameCard = (card) => card === SPECIAL_GOOD_BOY_CARD || card === SPECIAL_TRICKSTER_CARD
   || card === SPECIAL_PAINTBRUSH_TACTICS_CARD || OPEN_SPECIAL_NAME_CARDS.includes(card)

@@ -60,7 +60,7 @@ test('源石溶剂: the data is the official pair (upgradeNum 2 → the golden _
   assert.deepEqual([w.params.atk, g.params.atk, w.params.damage, g.params.damage], [0.4, 0.6, 60, 60]);
 });
 
-test('源石溶剂: every way to get a second white merges the pair into ONE golden and leaves no white (the player report)', () => {
+test('源石溶剂: loose pairs and same-carrier equips merge; equipped copies on separate carriers stay attached', () => {
   const cases = {
     'buy with a white in the hand': ({ m, ps }) => { giveItem(m, ps, WHITE); return m.handle('p_0', { t: 'g.buy', slot: stockItem(ps) }); },
     'buy twice from the shop': ({ m, ps }) => { m.handle('p_0', { t: 'g.buy', slot: stockItem(ps) }); return m.handle('p_0', { t: 'g.buy', slot: stockItem(ps) }); },
@@ -114,7 +114,9 @@ test('源石溶剂: every way to get a second white merges the pair into ONE gol
     const s = prep();
     const res = run(s);
     assert.equal(res.ok, true, `${name}: ${JSON.stringify(res)}`);
-    assert.deepEqual(count(s.ps), { white: 0, gold: 1 }, name);
+    const keepsEquipped = ['buy with a white equipped', 'equip the second on another operator', '画卷 copy of a white carrier'].includes(name);
+    assert.deepEqual(count(s.ps), keepsEquipped ? { white: 2, gold: 0 } : { white: 0, gold: 1 }, name);
+    if (keepsEquipped) assert.ok([...s.ps.board.values()].some(p => p.items?.some(it => it.id === WHITE)), `${name}: the original white remains equipped`);
     checkInvariants(s.m);
     s.m.dispose();
   }
@@ -151,7 +153,7 @@ test('an effect that removes an operator (ctx.destroyPiece) merges a returned pa
   m.dispose();
 });
 
-test('random intents around 源石溶剂 (buy, equip / replace, sell, move, destroy) conserve W + 2·G and never leave a pair', () => {
+test('random intents around 源石溶剂 conserve W + 2·G and never leave an unmerged loose pair', () => {
   let seed = 11;
   const rnd = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; };
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
@@ -167,11 +169,12 @@ test('random intents around 源石溶剂 (buy, equip / replace, sell, move, dest
       const chess = [...loose, ...ps.board.values()].filter((p) => p.kind === 'chess');
       const items = loose.filter((p) => p.kind === 'item');
       const r = rnd();
-      let msg = null, expect = 0, rep = null;
+      let msg = null, expect = 0, rep = null, mergesOnCarrier = false;
       if (r < 0.35) { msg = { t: 'g.buy', slot: stockItem(ps) }; expect = 1; }
       else if (r < 0.5) msg = { t: 'g.buy', slot: stockChess(ps, pick(ops)) };
       else if (r < 0.8 && items.length && chess.length) {
         const it = pick(items), tg = pick(chess);
+        mergesOnCarrier = it.id === WHITE && (tg.items || []).some((x) => x.id === WHITE);
         rep = (tg.items || []).length >= 2 ? pick(tg.items) : null;
         msg = { t: 'g.equip', itemUid: it.uid, targetUid: tg.uid, ...(rep ? { replaceUid: rep.uid } : {}) };
       }
@@ -181,10 +184,11 @@ test('random intents around 源石溶剂 (buy, equip / replace, sell, move, dest
       const res = m.handle('p_0', msg);
       if (!res.ok) continue;
       // a replacement destroys the replaced item unless the equip merged instead (the replaced one is still owned)
-      if (rep && !ps.find(rep.uid)) expect = rep.id === WHITE ? -1 : rep.id === GOLD ? -2 : 0;
+      if (rep && !mergesOnCarrier && !ps.find(rep.uid)) expect = rep.id === WHITE ? -1 : rep.id === GOLD ? -2 : 0;
       const after = worth(ps);
       assert.equal(after.e - before.e, expect, `run ${run} step ${step} ${JSON.stringify(msg)}: ${JSON.stringify(before)} → ${JSON.stringify(after)}`);
-      assert.ok(after.white <= 1, `run ${run} step ${step}: an unmerged pair`);
+      const looseWhite = [...ps.hand, ...ps.temp].filter(p => p?.kind === 'item' && p.id === WHITE && !p.deferMerge).length;
+      assert.ok(looseWhite <= 1, `run ${run} step ${step}: an unmerged loose pair`);
       checked++;
     }
     checkInvariants(m);

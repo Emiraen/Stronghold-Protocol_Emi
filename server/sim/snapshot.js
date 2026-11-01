@@ -32,6 +32,7 @@ export function unitInfo(u) {
     kind: u.kind,
     side: u.side,
     ownerId: u.ownerId ?? null,
+    ...(u.kind === 'token' && u.ownerUnit?.id != null ? { ownerUnitId: u.ownerUnit.id } : {}),
     defId: u.defId,
     name: u.name,
     tier: d.tier ?? (d.rank === 'BOSS' ? 3 : d.rank === 'ELITE' ? 2 : 1),
@@ -94,7 +95,8 @@ export function flagsOf(u) {
   if (f.invulnerable) bits |= UF.INVULN;
   if (f.cold) bits |= UF.COLD;
   if (f.sleep) bits |= UF.SLEEP;
-  if (u.motion === 'FLY') bits |= UF.FLYING;
+  // Current targeting state includes near-ground hovering, levitation and grounding; motion stays the route type.
+  if (u.isFlying) bits |= UF.FLYING;
   return bits;
 }
 

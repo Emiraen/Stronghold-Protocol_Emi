@@ -361,7 +361,7 @@ test('2_13 蒂比 S1 专业喷绘技巧: DEFAULT trigger, takes off (skill range
     h.step();
     const range0 = u.baseRangeKeys.length;
     h.runUntil(() => u.skill.active, 3);
-    assert.equal(started(h, u)[0].reason, 'DEFAULT');
+    assert.equal(started(h, u)[0].reason, 'ACTIVE_RANGE');
     assert.equal(u.s.flags.liftoff, true, 'airborne (起飞)');
     assert.equal(u.ground, true, 'still a ground unit on her low tile');
     approx(u.s.atk, u.base.atk * (1 + bb.atk));
@@ -416,12 +416,17 @@ test('2_16 拉普兰德 S1 日晷: toggle (持续时间无限) ATK +atk; blocks 
         setup: (b) => { b.rng.chance = (p) => { seen.push(p); return roll; }; },
       });
       const u = h.unit(id);
+      h.step(); // deploy first: deployment resets non-persistent pre-battle buffs
+      // Keep the operator alive for the duration assertion without changing any combat rule.
+      h.b.addBuff(u, { key: 'test:duration-hp', mods: { hpFlat: 1e6 } });
+      u.hp = u.s.maxHp;
       usesAlt(u, id);
       h.runUntil(() => u.skill.active, 3);
       assert.equal(u.skill.kind, 'toggle');
       approx(u.s.atk, u.base.atk * (1 + bb.atk));
       const taken0 = u.stats.taken;
       h.run(60);
+      assert.ok(u.alive && u.deployed, 'the duration fixture survives the full observation window');
       assert.ok(u.skill.active, 'still active after 60 s');
       assert.ok(seen.includes(bb.prob), 'rolls prob');
       if (roll) assert.equal(u.stats.taken, taken0, 'every blocked roll negates the physical hit');
@@ -648,9 +653,9 @@ test('modules: removing the elite module changes the trait / talent behaviour th
     const id = 'chess_char_2_10_b';
     const [a, b] = withAndWithout((m) => {
       const h = run({ defs: { enemies: { e: dummy('e') } }, units: [{ chessId: id, row: 10, col: 4, carryState: IDLE, ...mod(m) }], enemies: [{ key: 'e', pos: [10, 6] }] });
-      h.runUntil(() => dealt(h, h.unit(id)).length > 0, 5);
+      h.runUntil(() => dealt(h, h.unit(id), c => c.dmg?.tags?.includes('funnel')).length > 0, 5);
       const u = h.unit(id);
-      const r = dealt(h, u)[0].amount / u.s.atk;
+      const r = dealt(h, u, c => c.dmg?.tags?.includes('funnel'))[0].amount / u.s.atk;
       done(h);
       return r;
     });

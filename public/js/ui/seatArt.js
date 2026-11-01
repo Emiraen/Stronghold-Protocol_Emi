@@ -3,7 +3,7 @@
 // This appearance-only roster includes hidden and all reserve/selection operators, regardless of ownership or picks.
 import { t as trA } from '../../../shared/i18n.js';
 import { useEffect, useMemo, useState } from '../../vendor/hooks.module.js';
-import { SPECIAL_GOOD_BOY_CARD, SPECIAL_TRICKSTER_CARD, canUseSpecialNameCard } from '../../../shared/nameCards.js';
+import { SPECIAL_GOOD_BOY_CARD, SPECIAL_TRICKSTER_CARD, SPECIAL_GHOSTY_CARD, canUseSpecialNameCard } from '../../../shared/nameCards.js';
 import { useStore } from '../store.js';
 import { html, Icon, Modal } from './components.js';
 import { chessAvatarUrl, chessOwnPortraitUrl, shopPortraitUrl } from './assetUrls.js';
@@ -22,8 +22,12 @@ export const DUCK_BURNARD_ANIMATION = '/assets/local/playercards/duck-burnard/ca
 export const DUCK_FLOWER_ANIMATION = '/assets/local/playercards/duck-flower/card.gif';
 export const DUCK_BRIOCHE_ANIMATION = '/assets/local/playercards/duck-brioche/card.gif';
 export const HATCHBUDZ_ANIMATION = '/assets/local/playercards/hatchbudz-quacked/card.gif';
+export const GHOSTY_AVATAR = '/assets/local/playercards/ghosty/avatar.png';
+export const GHOSTY_POSTER = '/assets/local/playercards/ghosty/poster.png';
+export const GHOSTY_ANIMATION = '/assets/local/playercards/ghosty/card.gif';
 
 const SPECIAL_CARD_ART = [
+  { id: SPECIAL_GHOSTY_CARD, name: '小幽祟祟', description: '', search: ['ghosty', '惊叫幽灵', '小幽灵'], avatar: GHOSTY_AVATAR, poster: GHOSTY_POSTER, animation: GHOSTY_ANIMATION },
   { id: SPECIAL_GOOD_BOY_CARD, name: '晴雨同汪', description: '段位纪念', search: ['good boy', 'dog days'], avatar: GOOD_BOY_AVATAR, poster: GOOD_BOY_POSTER, animation: GOOD_BOY_ANIMATION },
   { id: SPECIAL_TRICKSTER_CARD, name: '捣蛋鬼出没', description: '玩家纪念', search: ['捣蛋鬼', 'trickster'], avatar: TRICKSTER_AVATAR, poster: TRICKSTER_POSTER, animation: TRICKSTER_ANIMATION },
   { id: 'special_duck_burnard', name: '烈烈', description: '', search: ['烈烈', 'burnard'], avatar: '/assets/local/playercards/duck-burnard/avatar.png', poster: '/assets/local/playercards/duck-burnard/poster.png', animation: DUCK_BURNARD_ANIMATION },

@@ -97,6 +97,8 @@ describe('#8 深池逐火: a knock-out is a walking 隐匿 ember that a blocker 
     });
     const ember = new Map();   // id → { u, at, x, y, attacks } of its current ember
     let walked = 0;            // the longest walk of an ember past its 重生
+    let walkingProbe = null;
+    let releasedProbe = false;
     const deaths = new Map();
     const bad = new Set();     // rule details that did not hold (asserted after the outcome)
     const check = (ok, what) => { if (!ok) bad.add(what); };
@@ -109,6 +111,12 @@ describe('#8 深池逐火: a knock-out is a walking 隐匿 ember that a blocker 
           check(u && u.alive, 'a knock-out never removes the unit');
           check(ev[4].form === 'husk', 'the ember fx carries the clip set of the model (form: husk)');
           ember.set(u.id, { u, at: b.time, x: u.x, y: u.y, attacks: u.stats.attacks });
+          // The upgraded lineup may kill every ember on its original tile. Temporarily stand down the real
+          // operators for one ember, then restore them after it walks: exercise recovery, not incidental deaths.
+          if (!walkingProbe) {
+            walkingProbe = u;
+            for (const ally of b.allyUnits) b.addBuff(ally, { key: 'test:emberWalk', persist: true, flags: { noBlock: true, disarm: true } });
+          }
         }
         if (ev[0] === 'die') {
           const u = b.units.find((x) => x.id === ev[1]);
@@ -130,6 +138,10 @@ describe('#8 深池逐火: a knock-out is a walking 隐匿 ember that a blocker 
         } else {
           check(u.s.flags.stealth && u.s.flags.disarm && !u.s.flags.unblockable, '余烬: 隐匿 + 缴械, blockable');
           walked = Math.max(walked, Math.hypot(u.x - m.x, u.y - m.y));
+          if (u === walkingProbe && !releasedProbe && Math.hypot(u.x - m.x, u.y - m.y) > 1) {
+            releasedProbe = true;
+            for (const ally of b.allyUnits) b.removeBuff(ally, 'test:emberWalk');
+          }
         }
         check(u.stats.attacks === m.attacks, 'an ember never attacks');
         if (n % 30 === 0) check(b.fieldMeta().units.find((x) => x.id === u.id)?.form === 'husk', 'a view built now (fieldMeta) shows the ember');
@@ -143,7 +155,7 @@ describe('#8 深池逐火: a knock-out is a walking 隐匿 ember that a blocker 
     for (const u of dusk) assert.equal(deaths.get(u.id), 1, `${u.defId} #${u.id} dies exactly once`);
     assert.equal(ember.size, dusk.length, 'every 逐火 went through its ember');
     assert.deepEqual([...bad], [], 'ember rules');
-    assert.ok(walked > 1, `an ember whose blocker fell walks on (${walked.toFixed(2)} tiles)`);
+    assert.ok(releasedProbe && walked > 1, `an ember walks before the lineup resumes blocking (${walked.toFixed(2)} tiles)`);
   });
 
   for (const key of EMBERS) {
@@ -289,6 +301,10 @@ describe('#5 转译基底·α: damage is cancelled until its form change; only t
         chess(3, 'chess_char_4_02_b', 11, 4),  // 莫斯提马 (arts)
       ],
     });
+    // Isolate the physical-first branch; the caster joins after the form is selected.
+    b.start();
+    const caster = b.allyUnits.find((u) => u.uid === 3);
+    b.addBuff(caster, { key: 'test:physical-first', flags: { disarm: true }, persist: true });
     let tr = null, phaseAt = null, kind = null, diedAt = null, formAt = null, maxBefore = null, firstFormLoss = null, earlyAttack = false;
     let lateForm;               // UnitInfo.form of the translator in fieldMeta() 1 s after its change began
     let n = 0;
@@ -298,7 +314,10 @@ describe('#5 转译基底·α: damage is cancelled until its form change; only t
       if (tr && tr.alive && phaseAt != null && lateForm === undefined && b.time >= phaseAt + 1) lateForm = b.fieldMeta().units.find((u) => u.id === tr.id)?.form ?? null;
       for (const ev of b.drainEvents()) {
         if (!tr) continue;
-        if (ev[0] === 'fx' && ev[1] === 'phase' && ev[4].id === tr.id) { phaseAt = b.time; kind = ev[4].kind; }
+        if (ev[0] === 'fx' && ev[1] === 'phase' && ev[4].id === tr.id) {
+          phaseAt = b.time; kind = ev[4].kind;
+          b.removeBuff(caster, 'test:physical-first');
+        }
         if (ev[0] === 'die' && ev[1] === tr.id) { diedAt = b.time; assert.equal(ev[2], 'killed'); }
         if (ev[0] === 'atk' && ev[1] === tr.id && formAt == null) earlyAttack = true;
       }

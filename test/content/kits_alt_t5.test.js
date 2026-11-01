@@ -963,7 +963,12 @@ test('引星棘刺 S1 度算浪波: an alchemy unit on the lowest-HP ally: DEF +
     h.run(1.1);
     for (const a of [low, near]) assert.equal(a.s.def, 100 + bb.def, a.defId);
     assert.equal(far.s.def, 100);
-    approx(heals(h, u, (c) => c.target === near)[0].amount, u.s.atk * bb.hp_recovery_per_sec_ratio);
+    const rate = u.s.atk * bb.hp_recovery_per_sec_ratio;
+    approx(near.findBuff(z.key).mods.hpRegen, rate, 'alchemy unit regeneration rate');
+    const hp0 = near.hp, pending0 = near._regenAcc ?? 0, regenAt = h.b.time;
+    h.run(0.5);
+    approx(near.hp - hp0 + (near._regenAcc ?? 0) - pending0, rate * (h.b.time - regenAt), 'continuous recovery integral');
+    assert.equal(heals(h, u, (c) => c.target === near).length, 0, 'regen is not a caster heal');
     mute(h, u);
     h.run(z.dur);
     assert.ok(!u.mem.zones.includes(z), 'expired');

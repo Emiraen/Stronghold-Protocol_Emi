@@ -505,7 +505,7 @@ describe('RankedStore', () => {
   });
 
   test('summary label：神话以上小分后带 #全服排名；未定级带进度；2100 以下不带 #', () => {
-    const store = new RankedStore({ file: null });
+    const store = new RankedStore({ file: null, now: () => 3 });
     const p1 = store.ensure(AID1, '甲'); p1.placementDone = true; p1.points = 2160; p1.lastActive = 1;
     const p2 = store.ensure(AID2, '乙'); p2.placementDone = true; p2.points = 2400; p2.lastActive = 2;
     assert.equal(store.summary(AID1).rank.label, '神话一 60分 #2');

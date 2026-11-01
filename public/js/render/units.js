@@ -100,6 +100,13 @@ export function enemyModelScaleY(rec) {
   const k = Number(rec && rec.modelScaleY);
   return Number.isFinite(k) && k > 0.2 && k < 5 ? k : 1;
 }
+// 假想敌：管's Idle mesh spans x=-317.066345..842.400024 in skeleton units (both variants).
+// Its asymmetric cape puts the visual centre away from the origin. Keep a fixed origin across clips;
+// recentering animated bounds every frame would make attacks and deaths slide. Visual only: no unit/hitArea edits.
+export function enemyModelOriginX(info) {
+  const key = info?.spine || info?.defId;
+  return key === 'enemy_9021_acduml' || key === 'enemy_9021_acduml_2' ? 262.6668395996094 : 0;
+}
 /**
  * Seconds of the death clip of a manifest Spine entry (`anims.die`, else a 'Die' clip, as SpineActor.dieClip; its
  * `animations` duration), 0 when it has none — 131 of the 135 operator Back models (GitHub issue #25).
@@ -254,6 +261,10 @@ export const FORMS = Object.freeze({
   }),
   enemy_2025_syufo: Object.freeze({
     crawl: Object.freeze({ change: 'Change', roles: clipSet('Idle_02', 'Move_02', 'Die_02', 'Attack_02') }),
+  }),
+  enemy_2037_sygirl: Object.freeze({
+    ...rebirth('C1_Die', 'C1_Revive1', 'C1_Revive2', clipSet('C2_Idle', 'C2_Move', 'C2_Die', 'C2_Attack')),
+    ground: Object.freeze({ change: null, roles: clipSet('C1_Idle', 'C1_Move', 'C1_Die', 'C1_Attack') }),
   }),
   enemy_10081_mpplai: Object.freeze({
     translator_fuchou: Object.freeze({ change: 'A_Die_B', roles: clipSet('B_Idle', 'B_Move', 'B_Die', 'B_Attack') }),
@@ -467,6 +478,11 @@ export class UnitView {
     const visualDef = this.isEnemy && ctx.lookupDef ? ctx.lookupDef(info) : null;
     this.modelK = this.isEnemy ? enemyModelScale(visualDef) : 1;
     this.modelKY = this.isEnemy ? enemyModelScaleY(visualDef) : 1;
+    this.modelOriginX = this.isEnemy ? enemyModelOriginX(info) : 0;
+    // Hidden Core spawns one column left with hitArea.dx=1. Its complete visual/picking anchor must follow
+    // that same centre, not the route pivot. Leave the authoritative position and rectangle untouched.
+    this.modelAnchorX = this.modelOriginX
+      ? Number(visualDef?.hitArea?.dx ?? (info.defId === 'enemy_9021_acduml_2' ? 1 : 0)) || 0 : 0;
     this.moveFast = this.isEnemy && Number(visualDef?.stats?.moveSpeed) > 1;
     this.isToken = info.kind === 'token';
     this.golden = !!info.golden;
@@ -831,7 +847,8 @@ export class UnitView {
     const sl = this.slide;
     if (!sl) { this.x = s.x; this.y = s.y; }
     else if (!(t < sl.at)) { sl.lx = s.x; sl.ly = s.y; sl.live = true; }
-    this.flying = !!(s.flags & UF.FLYING) || this.info.motion === 'FLY';
+    // A cleared flight bit is an explicit landing. Static motion is only a fallback before dynamic flags arrive.
+    this.flying = Number.isInteger(s.flags) ? !!(s.flags & UF.FLYING) : this.info.motion === 'FLY';
     // ground enemies only ever walk low tiles (a rounding step onto a block edge must not pop them up)
     const gz = this.isEnemy && !this.flying ? 0 : groundZ(this.ctx, s.x, s.y);
     if (this.zTarget == null) this.z = gz;
@@ -943,7 +960,7 @@ export class UnitView {
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
     const flip = this.modelFlip();
     const k = UNIT.modelScale * this.modelK;
-    out.x = tx * k * flip;
+    out.x = this.modelAnchorX + (tx - this.modelOriginX) * k * flip;
     out.up = -ty * k * this.modelKY;
     out.angle = m ? Math.atan2(-m.b, m.a) * (180 / Math.PI) : (typeof b.getWorldRotationX === 'function' ? -b.getWorldRotationX() : 0);
     out.flip = flip;
@@ -1207,7 +1224,7 @@ export class UnitView {
     }
     const hoverTo = this.flying && this.alive ? FLY_HOVER : 0;
     if (this.hover !== hoverTo) this.hover = Math.abs(hoverTo - this.hover) < 1e-3 ? hoverTo : this.hover + (hoverTo - this.hover) * Math.min(1, dt * 6);
-    const p = cam.project(this.x, this.y, this.z + this.hover + this.lift, this.screen);
+    const p = cam.project(this.x + this.modelAnchorX, this.y, this.z + this.hover + this.lift, this.screen);
     const s = p.s;
     // fades
     if (this.fadeIn < 1) this.fadeIn = Math.min(1, this.fadeIn + dt * 4);
@@ -1243,7 +1260,7 @@ export class UnitView {
 
     // shadow (on a raised top it is drawn with that block row, else in the shadow layer under everything)
     placeOnGround(this.ctx, this.shadow, this.ctx.layers.shadow, this.y, this.z);
-    const sh = cam.project(this.x, this.y, this.z, SH_P);
+    const sh = cam.project(this.x + this.modelAnchorX, this.y, this.z, SH_P);
     this.shadow.position.set(sh.x, sh.y);
     const shw = s * (this.isBoss ? 1.6 : 0.95) / this.shadow.texture.width;
     this.shadow.scale.set(shw, shw * (this.shadow.texture === shadowTexture() ? 1 : 1.05));
@@ -1805,6 +1822,7 @@ export class UnitView {
     const sp = this.actor.spine;
     sp.alpha = this.swapT;
     sp.scale.set(sc * flip, sc * this.modelKY);
+    sp.position.set(-this.modelOriginX * sc * flip, 0);
     if (!posed) {
       if (held) this.actor.clock += animDt;
       else this.actor.update(animDt);
@@ -1861,6 +1879,7 @@ export class UnitView {
     }
     const k = imp.sc > 0 ? sc / imp.sc : 1;
     imp.sprite.scale.set(k * flip, k);
+    imp.sprite.position.set(-this.modelOriginX * sc * flip, 0);
     imp.sprite.alpha = this.swapT;
     imp.sprite.tint = tint;
   }

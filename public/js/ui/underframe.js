@@ -159,9 +159,9 @@ export function tempRowRule(ready, unlimitedItems = false) {
  * `label` false (a piece is being dragged / placed): the frame only, nothing over the pieces the player is moving.
  * @param {{ view: any, count: number, items?: number, label?: boolean, ready?: boolean, unlimitedItems?: boolean }} props
  */
-export function TempRowNotice({ view, count, items = 0, label = true, ready = false, unlimitedItems = false }) {
-  const a = useTileScreen(view, GEO.TEMP_ROW, GEO.TEMP_C0);
-  const b = useTileScreen(view, GEO.TEMP_ROW, GEO.TEMP_C0 + GEO.TEMP_SIZE - 1);
+export function TempRowNotice({ view, count, items = 0, label = true, ready = false, unlimitedItems = false, geometry = GEO, rule = null }) {
+  const a = useTileScreen(view, geometry.TEMP_ROW, geometry.TEMP_C0);
+  const b = useTileScreen(view, geometry.TEMP_ROW, geometry.TEMP_C0 + geometry.TEMP_SIZE - 1);
   let rem = 100;
   try { rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 100; } catch { /* default */ }
   const vw = globalThis.innerWidth || 1920;
@@ -175,7 +175,7 @@ export function TempRowNotice({ view, count, items = 0, label = true, ready = fa
     <svg class="tempnote__frame" aria-hidden="true"><polygon points=${pts} /></svg>
     ${label ? html`<div class=${`tempnote__label is-${f.side}`} style=${style} role="status">
       <b class="tempnote__title"><${Icon} name="warn" />${trA("临时整备区")} <span class="num">${count}</span> ${what}${trA("待处理")}</b>
-      <span class="tempnote__rule">${tempRowRule(ready, unlimitedItems)}</span>
+      <span class="tempnote__rule">${rule ?? tempRowRule(ready, unlimitedItems)}</span>
     </div>` : null}
   </div>`;
 }

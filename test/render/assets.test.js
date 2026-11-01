@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resourceCache } from '../../public/js/resourceCache.js';
 import {
   avatarUrl, portraitUrl, enemyIconUrl, tokenAvatarUrl, bondIconUrl, bandIconUrl, itemIconUrl, skillIconUrl, uiUrl,
   profIconUrl, subProfIconUrl, spineEntry, hasBackSpine, unitPictureUrl, bgmEntry, sfxUrl, unitSfxUrl, baseCharId,
@@ -380,7 +381,7 @@ describe('Spine store: unload / reload of the same skeleton (user playtest #3 it
       },
     };
     const Assets = {
-      loader,
+      loader: { ...loader, parsers: [{ name: 'loadTextures', config: {}, load() {} }] },
       load(url) {
         if (!cache.has(url)) cache.set(url, Promise.resolve({ url, id: ++seq, destroyed: false, animations: [] }));
         return cache.get(url);
@@ -388,8 +389,10 @@ describe('Spine store: unload / reload of the same skeleton (user playtest #3 it
       unload(url) { return loader.unload(url); },
     };
     const prev = globalThis.PIXI;
-    globalThis.PIXI = { Assets, spine: {} };
-    return { Assets, restore: () => { if (prev === undefined) delete globalThis.PIXI; else globalThis.PIXI = prev; } };
+    const previousPrefetch = resourceCache.prefetchRequired;
+    resourceCache.prefetchRequired = async () => true;
+    globalThis.PIXI = { Assets, spine: {}, settings: { ADAPTER: { fetch: globalThis.fetch } } };
+    return { Assets, restore: () => { resourceCache.prefetchRequired = previousPrefetch; if (prev === undefined) delete globalThis.PIXI; else globalThis.PIXI = prev; } };
   }
 
   test('the hazard: PIXI.Assets hands out an asset whose unload is in flight', async () => {

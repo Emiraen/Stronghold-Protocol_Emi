@@ -1,9 +1,10 @@
 // Shared in-match building blocks (Preact + htm): data hook, images with fallbacks, rich text,
 // unit thumbnails, LP tower, coin badge, official UI sprites. Styles: css/screens/game*.css.
 
+import { useStore } from '../store.js';
 import { useState, useMemo, useEffect } from '../../vendor/hooks.module.js';
 import { html, Icon, TierChip, Tooltip } from './components.js';
-import { data, useData, localAsset } from '../data.js';
+import { data, useData, useDataSource, getDataSource, dataModeKey, localAsset } from '../data.js';
 import { parseRichText, rtClassName } from './richText.js';
 import { t as tr } from '../../../shared/i18n.js';
 import {
@@ -22,10 +23,12 @@ export const GAME_FILES = ['config', 'assets', 'chess', 'bonds', 'items', 'bands
  *   band: (id:string)=>any, enemy: (k:string)=>any, boss: (id:string)=>any, stage: (id:string)=>any, token: (id:string)=>any,
  *   effect: (id:string)=>any, garrison: (id:string)=>any, factions: any, choices: any, backups: any, list: (name:string)=>any[] }}
  */
-export function useGameData() {
-  const ready = useData(...GAME_FILES);
+export function useGameData(mode = null) {
+  const activeMode = useStore(dataModeKey);
+  const source = getDataSource(mode || activeMode);
+  const ready = useDataSource(source, ...GAME_FILES);
   // (config / factions / choices are read once per memo: a language switch reads them again in the new locale)
-  return useMemo(() => makeLookups(ready), [ready, data.locale()]);
+  return useMemo(() => makeLookups(ready, source), [ready, source.locale(), source]);
 }
 
 /** A 自选 operator's summon record (data/backups.json `tokens`, 0.2.0), or null. */
@@ -35,8 +38,10 @@ export function diyToken(id) {
 }
 
 /** Non-hook lookups (for event handlers). */
-export function makeLookups(ready = true) {
+export function makeLookups(ready = true, source = data) {
+  const data = source;
   return {
+    source,
     ready,
     m: data.get('assets'),
     config: data.get('config'),
@@ -70,8 +75,8 @@ export function Img({ src, class: cls, alt = '', fallback = null, style, portrai
 }
 
 /** Official UI sprite by 'group/key' with a fallback. */
-export function Sprite({ k, class: cls, fallback = null }) {
-  return html`<${Img} src=${uiUrl(data.get('assets'), k)} class=${cx('sprite', cls)} fallback=${fallback} />`;
+export function Sprite({ k, class: cls, fallback = null, source = data }) {
+  return html`<${Img} src=${uiUrl(source.get('assets'), k)} class=${cx('sprite', cls)} fallback=${fallback} />`;
 }
 
 /**
@@ -107,7 +112,8 @@ export const isGoldenPiece = (piece, chess) => !!(piece?.golden || chess?.isGold
  *   `rec`: the chess record to draw instead of the data's (a 自选 piece's composed record — 0.2.0, gameLogic/diy.js; a
  *   补位 stand-in's — gameLogic/standIn.js: drawn with a small 「替补」 mark in the corner)
  */
-export function UnitThumb({ kind = 'chess', id, skin = null, golden, size = 'md', tier, showTier = true, class: cls, dim = false, badge = null, title, rec = null }) {
+export function UnitThumb({ kind = 'chess', id, skin = null, golden, size = 'md', tier, showTier = true, class: cls, dim = false, badge = null, title, rec = null, source = data }) {
+  const data = source;
   const m = data.get('assets');
   let src = null;
   let name = '';
@@ -226,7 +232,8 @@ export function CoinGlyph({ class: cls }) {
 }
 
 /** Bond glyph image (white mask tinted by CSS) or first-letter fallback. */
-export function BondGlyph({ bondId, class: cls }) {
+export function BondGlyph({ bondId, class: cls, source = data }) {
+  const data = source;
   const b = data.lookup('bonds', bondId);
   const src = bondIconUrl(data.get('assets'), bondId);
   return html`<span class=${cx('bglyph', cls)} title=${b?.name || bondId}>
@@ -235,7 +242,8 @@ export function BondGlyph({ bondId, class: cls }) {
 }
 
 /** Band (strategy) icon. */
-export function BandIcon({ bandId, class: cls, size = 'md' }) {
+export function BandIcon({ bandId, class: cls, size = 'md', source = data }) {
+  const data = source;
   const b = data.lookup('bands', bandId);
   return html`<span class=${cx('bandicon', `bandicon--${size}`, cls)} title=${b?.name || ''}>
     <${Img} src=${bandIconUrl(data.get('assets'), bandId)} fallback=${html`<span class="bandicon__txt">${[...(b?.name || '?')][0]}</span>`} />
@@ -257,7 +265,8 @@ export function RichTip({ text, children, placement = 'top' }) {
  * profile image / glyph fallback; older callers retain the strategy-icon fallback.
  * @param {{ player: any, size?: 'sm'|'md', self?: boolean, class?: string, avatarSrc?: string|null }} props
  */
-export function PlayerAvatar({ player, size = 'md', self = false, class: cls, avatarSrc }) {
+export function PlayerAvatar({ player, size = 'md', self = false, class: cls, avatarSrc, source = data }) {
+  const data = source;
   const src = avatarSrc === undefined && player?.bandId
     ? bandIconUrl(data.get('assets'), player.bandId) : avatarSrc;
   const glyph = [...(player?.name || '').trim()][0] || '?';

@@ -124,7 +124,7 @@ test('server presentation authority enforces each rank milestone rather than tru
 });
 
 test('leaderboard score floor uses at least 450 mythic points until 50th entry exceeds it', () => {
-  const store = new RankedStore();
+  const store = new RankedStore({ now: () => 1000 });
   assert.deepEqual(store.radiantThreshold(), { points: 2550, mythicPoints: 450, cutoffRank: 50, cutoffPoints: null, minimumPoints: 2550 });
   for (let index = 0; index < 49; index++) seed(store, 4000 - index, {}, index.toString(16).padStart(16, '0'));
   assert.equal(store.radiantThreshold().mythicPoints, 450);

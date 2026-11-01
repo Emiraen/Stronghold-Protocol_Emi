@@ -553,10 +553,12 @@ export class ProfileReplication {
     });
   }
   async sync(exchange, drain = true, active = null) {
-    return this.run(async () => {
-      if (!this.state.initialized) throw new Error('档案复制尚未初始化');
-      let response, releaseAdded;
-      do {
+    let response, releaseAdded;
+    do {
+      // Each durable batch is atomic, but a catch-up must yield the serial lane between batches.
+      // Targeted logins can then observe their own versions without waiting for a moving global head.
+      response = await this.run(async () => {
+        if (!this.state.initialized) throw new Error('档案复制尚未初始化');
         if (active) this.updateReleases(active);
         const releases = clone(this.state.releases.slice(0, 1024));
         response = await exchange({ id: this.state.id, cursor: this.state.cursor,
@@ -614,8 +616,9 @@ export class ProfileReplication {
         if (this.dirty) { this.state.commit = { patches }; this.save(); await this.recover(); }
         if (active) this.updateReleases(active);
         releaseAdded = active && this.state.releases.some((item) => !releases.some((sent) => sent.aid === item.aid && sent.token === item.token));
-      } while (drain && (this.state.pending.length || this.state.cursor < response.replication.head || releaseAdded));
-      return response;
-    });
+        return response;
+      });
+    } while (drain && (this.state.pending.length || this.state.cursor < response.replication.head || releaseAdded));
+    return response;
   }
 }

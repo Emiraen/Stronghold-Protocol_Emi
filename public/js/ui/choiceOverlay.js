@@ -192,15 +192,35 @@ export function armedCard(armed, sp, o) {
 export function ChoiceOverlay(props) {
   const { sp, myId, solo, personal = false, busyIdx = null, onPick } = props;
   const [sel, setSel] = useState(null);
+  const [touchSelected, setTouchSelected] = useState(false);
+  const [rerollArmed, setRerollArmed] = useState(null);
+  const gesture = useRef(null);
+  const guarded = sp?.family === 'jibian';
+  const pointerDown = (e) => {
+    gesture.current = { id: e.pointerId, x: e.clientX, y: e.clientY,
+      touch: e.pointerType === 'touch' || e.pointerType === 'pen', moved: false };
+  };
+  const pointerMove = (e) => {
+    const g = gesture.current;
+    if (g?.id === e.pointerId && Math.hypot(e.clientX - g.x, e.clientY - g.y) > 10) g.moved = true;
+  };
+  const clickCapture = (e) => {
+    // Native scroll cancellation is not consistent on all mobile browsers. A drag must never select or reroll.
+    if (e.detail !== 0 && gesture.current?.moved) { e.preventDefault(); e.stopPropagation(); }
+  };
   const armed = armedCard(sel, sp, { myId, solo, busyIdx });
+  useEffect(() => {
+    const card = sp?.cards?.find(c => c.idx === rerollArmed);
+    if (rerollArmed != null && (!cardPickable(sp, card, { myId, solo, busyIdx }) || card?.rerolled)) setRerollArmed(null);
+  }, [sp, myId, solo, busyIdx, rerollArmed]);
   // a selection whose card cannot be picked any more (taken, the turn moved on, a pick in flight) is dropped
   useEffect(() => { if (sel != null && armed == null) setSel(null); }, [sel, armed]);
   useEffect(() => {
-    if (armed == null) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setSel(null); };
+    if (armed == null && rerollArmed == null) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') { setSel(null); setRerollArmed(null); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [armed]);
+  }, [armed, rerollArmed]);
   // 轮到你选 (the event's video 10:08): the disc drops in each time the pick order comes round to the player
   const [turnPop, setTurnPop] = useState(0);
   const turnNow = turnPopupDue(sp, { myId, solo, personal });
@@ -210,14 +230,31 @@ export function ChoiceOverlay(props) {
     turnSeen.current = turnNow;
   }, [turnNow]);
   if (!sp) return null;
-  const tap = (idx) => {
+  const tap = (idx, e) => {
+    setRerollArmed(null);
     const card = sp.cards.find((c) => c && c.idx === idx);
-    const r = spTap(armed, idx, cardPickable(sp, card, { myId, solo, busyIdx }));
+    const can = cardPickable(sp, card, { myId, solo, busyIdx });
+    const touch = guarded && (e?.pointerType === 'touch' || e?.pointerType === 'pen'
+      || (e?.detail !== 0 && gesture.current?.touch));
+    if (touch) { if (can) { setSel(idx); setTouchSelected(true); } return; }
+    setTouchSelected(false);
+    const r = spTap(armed, idx, can);
     setSel(r.armed);
     if (r.pick != null) onPick(r.pick);
   };
-  return html`<${ChoiceView} ...${props} armed=${armed} onTap=${tap}
-    onConfirm=${() => { if (armed != null) tap(armed); }} onDisarm=${() => setSel(null)} />
+  const disarm = () => { setSel(null); setRerollArmed(null); };
+  const reroll = (idx, e) => {
+    setSel(null);
+    if (guarded && (e?.pointerType === 'touch' || e?.pointerType === 'pen' || (e?.detail !== 0 && gesture.current?.touch))) {
+      setRerollArmed(idx);
+    } else { setRerollArmed(null); props.onReroll?.(idx); }
+  };
+  return html`<${ChoiceView} ...${props} armed=${armed} onTap=${tap} touchSelected=${touchSelected} rerollArmed=${rerollArmed}
+    onReroll=${props.onReroll ? reroll : null}
+    inputHandlers=${guarded ? { onPointerDownCapture: pointerDown, onPointerMoveCapture: pointerMove,
+      onPointerUpCapture: pointerMove, onPointerCancelCapture: () => { if (gesture.current) gesture.current.moved = true; }, onClickCapture: clickCapture } : {}}
+    onConfirm=${() => { if (rerollArmed != null) { props.onReroll?.(rerollArmed); setRerollArmed(null); }
+      else if (armed != null) { setSel(null); onPick(armed); } }} onDisarm=${disarm} />
     ${turnPop ? html`<${TurnPopup} key=${turnPop} onDone=${() => setTurnPop(0)} />` : null}`;
 }
 
@@ -251,7 +288,7 @@ export function spMarks(sp, { solo }) {
  * @param {{ pub:any, sp:any, myId:string, solo:boolean, personal?:boolean, busyIdx?:number|null, total?:number|null, armed?:number|null,
  *   onTap?:(idx:number)=>void, onConfirm?:()=>void, onDisarm?:()=>void }} props
  */
-export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = null, total = null, armed = null, onTap = () => {}, onConfirm = () => {}, onDisarm = () => {} }) {
+export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = null, total = null, armed = null, onTap = () => {}, onConfirm = () => {}, onDisarm = () => {}, onReroll = null, touchSelected = false, rerollArmed = null, inputHandlers = {} }) {
   if (!sp) return null;
   const fam = data.get('choices')?.families?.[sp.family] || null;
   const rawFam = data.getRaw('choices')?.families?.[sp.family] || null;
@@ -265,29 +302,30 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
   const armedName = armedCardRec ? resolveSpCard(armedCardRec, sp.family).name : null;
   // a press anywhere but a card or the confirm button drops the selection
   const onDown = (e) => {
-    if (armed == null) return;
+    if (armed == null && rerollArmed == null) return;
     const t = e.target;
-    if (t && typeof t.closest === 'function' && t.closest('.spcard, .spov__confirm')) return;
+    if (t && typeof t.closest === 'function' && t.closest('.spcard, .spov__confirm, .zj-choice__reroll')) return;
     onDisarm();
   };
   // the official header (the event's 悬赏决策, video 9:59): 「悬赏决策 |」 with the description and the timing line stacked
   // beside the bar; on the right the player deciding (name over 正在决策…, an hourglass) or 当前轮到你决策, then the
   // countdown. The pick order lives on the team panel (✓ / ••• on the portraits, ui/teamPanel.js spMarks).
-  return html`<div class=${cx('spov', !personal && pub?.sp?.groups?.length && 'spov--multi', armed != null && 'has-armed', personal && 'spov--personal')} role="dialog" aria-label=${personal ? t('教鞭选择') : t('机变阶段')} onPointerDown=${onDown}>
+  return html`<div ...${inputHandlers} class=${cx('spov', sp.family === 'jibian' && 'spov--jibian', !personal && pub?.sp?.groups?.length && 'spov--multi', armed != null && 'has-armed', personal && 'spov--personal')} role="dialog" aria-label=${personal ? t('教鞭选择') : t('机变阶段')} onPointerDown=${onDown}>
     <div class="spov__veil" aria-hidden="true"></div>
     <div class="spov__inner">
       <header class="spov__head">
         <div class="spov__titles">
           <i class="spov__deco" aria-hidden="true"></i>
           <h2 class=${cx('spov__title', special && 'is-special')}><span class="spov__name">${sentText(sp.name, rawFam?.name, fam?.name) || fam?.name || t('机变')}</span><span class="spov__bar">|</span><span class="spov__desc"><${RichText} text=${sentText(sp.desc, rawFam?.desc, fam?.desc) || fam?.desc || t('选择一项')} /></span></h2>
-          <p class="spov__sub">${timed ? (personal ? t('休整期结束时未选择将自动选定') : t('倒计时结束后仍未选定将自动分配')) : t('选择一项（无时间限制）')}${mine == null && myTurn ? t(' · 点击卡牌选中，再次点击确认') : ''}</p>
+          <p class="spov__sub">${timed ? (personal ? t('休整期结束时未选择将自动选定') : t('倒计时结束后仍未选定将自动分配')) : t('选择一项（无时间限制）')}${mine == null && myTurn && sp.family !== 'jibian' ? t(' · 点击卡牌选中，再次点击确认') : ''}</p>
         </div>
         <div class="spov__turn">
           ${personal ? html`<span class="spov__turntxt is-mine">${t('从候选中选择一项战术特训')}</span>`
             : mine != null ? html`<span class="spov__turntxt is-done"><${Icon} name="check" />${t('已完成选择')}</span>`
             : myTurn ? html`<span class="spov__turntxt is-mine">${t('当前轮到你决策')}</span>`
             : html`<span class="spov__turntxt is-other"><span class="spov__tw"><b>${turnName}</b><small>${t('正在决策…')}</small></span><${Icon} name="hourglass" /></span>`}
-          ${armed != null ? html`<${Button} variant="primary" size="lg" icon="check" class="spov__confirm" data-testid="sp-confirm"
+          ${rerollArmed != null ? html`<${Button} variant="primary" size="lg" icon="refresh" class="spov__confirm" onClick=${onConfirm}>${t('确认重投')}<//>`
+            : armed != null ? html`<${Button} variant="primary" size="lg" icon="check" class="spov__confirm" data-testid="sp-confirm"
               title=${armedName ? t('确认选择「{armedName}」（再次点击卡牌亦可）', { armedName }) : t('确认选择')} onClick=${onConfirm}>${t('确认选择')}<//>` : null}
           ${timed ? html`<${Countdown} deadline=${sp.turnDeadline ?? pub?.deadline} total=${sp.turnSeconds ?? total ?? undefined} size="md" />` : null}
         </div>
@@ -301,8 +339,8 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
           const busy = pickBusy(busyIdx, card, mine);
           const isArmed = can && armed === card.idx;
           const takerName = taker ? (card.takenBy === myId ? t('你') : taker.name) : null;
-          return html`<button key=${card.idx} type="button" class=${cx('spcard', `spcard--${r.kind}`, (card.takenBy || card.soldOut) && 'is-taken', card.takenBy === myId && 'is-mine', can && 'is-pickable', isArmed && 'is-armed', busy && 'is-busy')}
-              aria-busy=${busy ? 'true' : undefined} aria-pressed=${can ? String(isArmed) : undefined} disabled=${!can} onClick=${() => can && onTap(card.idx)}
+          const node = html`<button key=${card.idx} type="button" class=${cx('spcard', `spcard--${r.kind}`, (card.takenBy || card.soldOut) && 'is-taken', card.takenBy === myId && 'is-mine', can && 'is-pickable', isArmed && 'is-armed', busy && 'is-busy')}
+              aria-busy=${busy ? 'true' : undefined} aria-pressed=${can ? String(isArmed) : undefined} disabled=${!can} onClick=${e => can && onTap(card.idx, e)}
               aria-label=${isArmed ? t('{name}，已选中，再次点击确认', { name: r.name }) : takerName ? t('{name}，{takerName}已选择', { name: r.name, takerName }) : r.name} title=${`${r.name}\n${richTextPlain(r.desc)}`}>
             <span class="spcard__glow" aria-hidden="true"></span>
             <span class="spcard__head">
@@ -319,9 +357,10 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
             ${card.soldOut && !taker ? html`<span class="spcard__busy" role="status">${t('库存不足')}</span>` : null}
             ${r.tier ? html`<${TierChip} tier=${r.tier} size="md" class="spcard__tier" />` : null}
             ${taker ? html`<span class="spcard__taker" title=${t('{name} 已选择', { name: taker.name })}><${PlayerAvatar} player=${taker} size="sm" /></span>` : null}
-            ${isArmed ? html`<span class="spcard__confirm" role="status"><b>${t('确认选择')}</b><small>${t('再次点击')}</small></span>` : null}
+            ${isArmed ? html`<span class="spcard__confirm" role="status"><b>${t('确认选择')}</b>${!touchSelected ? html`<small>${t('再次点击')}</small>` : null}</span>` : null}
             ${busy ? html`<span class="spcard__busy" role="status">${t('选择中')}</span>` : null}
           </button>`;
+          return onReroll ? html`<div class="zj-choice" key=${card.idx}>${node}<${Button} class="zj-choice__reroll" size="sm" disabled=${!can || card.rerolled} onClick=${e => onReroll(card.idx, e)}>${card.rerolled ? '已重投' : '重投'}<//></div>` : node;
         })}
       </div>
     </div>

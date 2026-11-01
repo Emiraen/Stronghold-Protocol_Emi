@@ -398,7 +398,8 @@ export function normalizeRoute(r) {
   if (Array.isArray(r.steps) && r.steps.length) {
     for (const st of r.steps) {
       const t = String(st.t ?? st.type ?? 'move').toUpperCase();
-      cps.push({ type: normCpType(t), pos: pairOf(st.p ?? st.pos) ?? [0, 0], time: num(st.s ?? st.time, 0) });
+      cps.push({ type: normCpType(t), pos: pairOf(st.p ?? st.pos) ?? [0, 0], time: num(st.s ?? st.time, 0),
+        ...(Array.isArray(st.offset) ? { offset: st.offset.slice() } : {}) });
     }
     portalAppear(cps);
     return { motion, start, end, checkpoints: cps };
@@ -410,7 +411,8 @@ export function normalizeRoute(r) {
       const [type, a, b, t] = cp;
       cps.push({ type: normCpType(type), pos: [num(a), num(b)], time: num(t, 0) });
     } else if (cp && typeof cp === 'object') {
-      cps.push({ type: normCpType(cp.type), pos: pairOf(cp.pos ?? cp.position ?? [cp.row, cp.col]) ?? [0, 0], time: num(cp.time ?? cp.t, 0) });
+      cps.push({ type: normCpType(cp.type), pos: pairOf(cp.pos ?? cp.position ?? [cp.row, cp.col]) ?? [0, 0], time: num(cp.time ?? cp.t, 0),
+        ...(Array.isArray(cp.offset) ? { offset: cp.offset.slice() } : {}) });
     }
   }
   portalAppear(cps);

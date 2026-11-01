@@ -1,3 +1,7 @@
+import { MIZUKI_VARIANT } from '../shared/mizuki-constants.js';
+import { ZHAJING_VARIANT } from '../shared/zhajing-constants.js';
+import { mizukiEndingUnlocksAfter } from './modes/mizuki/EndingProgression.js';
+import { normalizeCognition, advanceCognition } from './modes/mizuki/Cognition.js';
 // Private match history keyed by the existing anonymous hello.aid (not authentication).
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'node:fs';
@@ -11,11 +15,37 @@ const MAX_RESULT_BYTES = 48 * 1024;
 const validAid = (aid) => typeof aid === 'string' && /^[0-9a-f]{8,64}$/.test(aid);
 const validMatchId = (id) => typeof id === 'string' && /^[0-9a-f]{32}$/.test(id);
 /** 娱乐系变体（多人同盟 / 独眼巨人冲锋）：非排位、扩容上限独立。 */
-const isEntertainmentVariant = (v) => v === 'entertainment_multi' || v === 'entertainment_cyclops' || v === ENDLESS_VARIANT;
+const isEntertainmentVariant = (v) => v === ZHAJING_VARIANT || v === MIZUKI_VARIANT || v === 'entertainment_annihilation' || v === 'entertainment_multi' || v === 'entertainment_cyclops' || v === ENDLESS_VARIANT;
 const seatsOf = (v) => v === 'entertainment_cyclops' ? CYCLOPS_MAX_SEATS : v === 'entertainment_multi' || v === ENDLESS_VARIANT ? ENTERTAINMENT_MAX_SEATS : MAX_SEATS;
 const text = (value, length = 64) => typeof value === 'string' ? value.slice(0, length) : '';
 const integer = (value) => Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const endingIds = (value) => [...new Set((Array.isArray(value) ? value : []).filter(id => /^ro2_ending_[1-4]$/.test(id)))];
+const cognitionResult = (result, playerId) => {
+  if (result?.variant !== MIZUKI_VARIANT || result?.mode !== 'coop') return null;
+  const value = result.players?.find(row => row?.playerId === playerId)?.mizuki || result.mizuki;
+  return Number.isSafeInteger(value?.explorationScore) && value.explorationScore >= 0 ? value : null;
+};
+const cognitionReceipt = (matchId, playerId) => validMatchId(matchId) && typeof playerId === 'string'
+  && playerId.length > 0 && playerId.length <= 64 ? matchId + ':' + playerId : null;
+// These receipts are permanent, unlike the ten-entry display history. Pruning
+// them would allow replayed completion jobs to award score and cells again.
+const cognitionReceipts = value => [...new Set((Array.isArray(value) ? value : [])
+  .filter(id => typeof id === 'string' && /^[0-9a-f]{32}:[\s\S]{1,64}$/.test(id)))];
+const totalCells = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
+const bankAccount = (value) => {
+  const current = Math.min(999, integer(value?.current));
+  return { current, record: Math.max(current, Math.min(999, integer(value?.record))),
+    totalPut: Math.min(Number.MAX_SAFE_INTEGER, integer(value?.totalPut)),
+    revision: Math.min(Number.MAX_SAFE_INTEGER, integer(value?.revision)) };
+};
+const completedMizukiEnding = (result, playerId) => {
+  const row = result?.players?.find(p => p?.playerId === playerId);
+  const grade = result?.difficultyGrade ?? result?.mizuki?.difficultyGrade;
+  const id = result?.endingId ?? result?.mizuki?.endingId ?? result?.ending?.id;
+  return result?.variant === MIZUKI_VARIANT && result.victory === true && row?.victory !== false && row?.left !== true
+    && Number.isInteger(grade) && grade >= 0 && endingIds([id]).length ? id : null;
+};
 
 function clean(value, depth = 0) {
   if (typeof value === 'string' || typeof value === 'boolean' || value === null) return value;
@@ -191,9 +221,17 @@ export class HistoryStore {
       const data = JSON.parse(readFileSync(this.file, 'utf8'));
       if (!Array.isArray(data?.profiles)) return;
       for (const profile of data.profiles) {
-        if (!validAid(profile?.aid) || !Array.isArray(profile.items)) continue;
-        const items = profile.items.map(sanitizeEntry).filter((entry) => entry && entry.aid === profile.aid).slice(0, MAX_MATCHES);
-        if (items.length) this.profiles.set(profile.aid, { name: text(profile.name), items });
+        if (!validAid(profile?.aid)) continue;
+        const items = (Array.isArray(profile.items) ? profile.items : []).map(sanitizeEntry).filter((entry) => entry && entry.aid === profile.aid).slice(0, MAX_MATCHES);
+        const completedEndings = endingIds([...(profile.mizuki?.completedEndings || []), ...items.map(item => completedMizukiEnding(item.result, item.playerId))]);
+        const cognition = normalizeCognition(profile.mizuki?.cognition);
+        const receipts = cognitionReceipts([...cognitionReceipts(profile.mizuki?.cognitionReceipts), ...items
+          .filter(item => cognitionResult(item.result, item.playerId) !== null).map(item => cognitionReceipt(item.matchId, item.playerId))]);
+        const cells = totalCells(profile.mizuki?.totalCells);
+        if (items.length || completedEndings.length || plain(profile.mizukiBank) || plain(profile.mizuki?.cognition) || receipts.length || cells) {
+          this.profiles.set(profile.aid, { name: text(profile.name), items,
+            mizuki: { completedEndings, cognition, totalCells: cells, cognitionReceipts: receipts }, mizukiBank: bankAccount(profile.mizukiBank) });
+        }
       }
     } catch (error) {
       if (error.code !== 'ENOENT') this.log?.warn?.(`[history] cannot read ${this.file}: ${error.message}`);
@@ -205,14 +243,52 @@ export class HistoryStore {
     return (this.profiles.get(aid)?.items || []).map(({ aid: _aid, result: _result, ...item }) => ({ ...item }));
   }
 
+  /** Permanent canonical clears survive the rolling ten-match display history. */
+  mizukiEndingUnlocks(aid) {
+    const profile = this.profiles.get(aid);
+    const completed = endingIds([...(profile?.mizuki?.completedEndings || []), ...(profile?.items || []).map(item => completedMizukiEnding(item.result, item.playerId))]);
+    return completed.reduce((known, id) => mizukiEndingUnlocksAfter(known, id, 0), ['ro2_ending_1']);
+  }
+
+  mizukiBank(aid) {
+    return bankAccount(this.profiles.get(aid)?.mizukiBank);
+  }
+
+  mizukiCognition(aid) {
+    const profile = validAid(aid) ? this.profiles.get(aid) : null;
+    return { ...normalizeCognition(profile?.mizuki?.cognition), totalCells: totalCells(profile?.mizuki?.totalCells) };
+  }
+
+  updateMizukiBank(aid, value) {
+    if (!validAid(aid) || !plain(value)) return false;
+    const previous = this.mizukiBank(aid);
+    const next = bankAccount(value);
+    next.revision = value.revision == null ? previous.revision + 1 : next.revision;
+    // Durable profile requests may be retried after a newer investment. A stale
+    // snapshot must never undo a later withdrawal or deposit.
+    if (next.revision <= previous.revision) return true;
+    next.record = Math.max(previous.record, next.record);
+    next.totalPut = Math.max(previous.totalPut, next.totalPut);
+    const profile = this.profiles.get(aid) || { name: '', items: [] };
+    profile.mizukiBank = next;
+    this.profiles.set(aid, profile);
+    this.save();
+    return true;
+  }
+
   detail(aid, matchId, playerId = null) {
     if (!validAid(aid) || !validMatchId(matchId)) return null;
     const entry = this.profiles.get(aid)?.items.find((item) => item.matchId === matchId && (!playerId || item.playerId === playerId));
     return entry ? { matchId: entry.matchId, at: entry.at, result: entry.result, playerId: entry.playerId } : null;
   }
 
-  record({ matchId, at = this.now(), seats, ranked, summary }) {
+  record({ matchId, at = this.now(), seats, ranked, summary, bankUpdates }) {
     if (!validMatchId(matchId) || !Array.isArray(seats)) return false;
+    if (bankUpdates !== undefined) {
+      if (!Array.isArray(bankUpdates) || !bankUpdates.length || bankUpdates.some(update => !validAid(update?.aid)
+        || !plain(update.account) || !seats.some(seat => !seat.isBot && seat.aid === update.aid))) return false;
+      return bankUpdates.every(update => this.updateMizukiBank(update.aid, update.account));
+    }
     const result = resultOf(summary);
     if (!result) {
       this.log?.warn?.(`[history] skipped invalid or oversized result for ${matchId}`);
@@ -223,6 +299,21 @@ export class HistoryStore {
       if (seat.isBot || !validAid(seat.aid) || !result.players.some((row) => row?.playerId === seat.playerId)) continue;
       let profile = this.profiles.get(seat.aid);
       if (!profile) { profile = { name: text(seat.name), items: [] }; this.profiles.set(seat.aid, profile); }
+      const endingId = completedMizukiEnding(result, seat.playerId);
+      if (endingId && !(profile.mizuki?.completedEndings || []).includes(endingId)) {
+        profile.mizuki = { ...profile.mizuki, completedEndings: endingIds([...(profile.mizuki?.completedEndings || []), endingId]) };
+        changed = true;
+      }
+      const settlement = cognitionResult(summary, seat.playerId), receipt = cognitionReceipt(matchId, seat.playerId);
+      const receipts = cognitionReceipts(profile.mizuki?.cognitionReceipts);
+      if (settlement && receipt && !receipts.includes(receipt)) {
+        const cells = totalCells(settlement.cellPoints);
+        profile.mizuki = { ...profile.mizuki, completedEndings: endingIds(profile.mizuki?.completedEndings),
+          cognition: advanceCognition(settlement.explorationScore, profile.mizuki?.cognition),
+          totalCells: Math.min(Number.MAX_SAFE_INTEGER, totalCells(profile.mizuki?.totalCells) + cells),
+          cognitionReceipts: [...receipts, receipt] };
+        changed = true;
+      }
       if (profile.items.some((item) => item.matchId === matchId && item.playerId === seat.playerId)) continue;
       profile.name = text(seat.name);
       const entry = sanitizeEntry({ aid: seat.aid, matchId, at, ranked, playerId: seat.playerId, name: seat.name, result });

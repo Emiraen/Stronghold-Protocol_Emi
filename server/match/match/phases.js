@@ -1,3 +1,4 @@
+import { scaleWaveCounts } from '../relics.js';
 
 
 import { PHASE, ERR, CYCLOPS_HEX_ROUNDS, CYCLOPS_HEX_QUALITIES } from "../../../shared/constants.js";
@@ -377,7 +378,7 @@ export class MatchPhases {
     // the boss pairing), so R14 → R15 never re-checks a boss-field board against the normal field (user playtest #5
     // item 7). rngWaves is used only here, so the order leaves every random stream unchanged.
     // 独眼巨人冲锋：R21 为 boss 战（最终攻势，无隐藏核心）；奖励关（4/8/12/16）为猎狗波次
-    const isBoss = this.isCyclops ? r === this.gd.bossRound : (this.isBossRound(r) || r === this.gd.hiddenRound);
+    const isBoss = this.isCyclops ? r === this.gd.bossRound : (this.isBossRound(r) || (this.isAnnihilation ? this.gd.isHiddenRound(r) : r === this.gd.hiddenRound));
     if (this.isCyclops && isCyclopsBonusRound(r)) {
       // 独眼巨人冲锋奖励关：10 只普通猎狗
       this.wave = buildCyclopsBonusWave(this.gd, r);
@@ -385,6 +386,7 @@ export class MatchPhases {
       this._planBossWaves();
     } else {
       this.wave = buildNormalWave(this.gd, this.rngWaves, this.factions, r);
+      if (this.isAnnihilation) scaleWaveCounts(this, this.wave);
     }
     // A player's partially applied income/shop refresh cannot be retried. Do not let it suppress the other
     // players' round hooks, and do not run that player's dependent hooks on an incomplete round start.
@@ -424,7 +426,7 @@ export class MatchPhases {
   afterRoundStart() {
     if (this.isCyclops && isCyclopsHexRound(this.round)) return this.enterCyclopsHex();
     if (this.isCyclops && isCyclopsDraftRound(this.round)) return this.enterCyclopsDraft();
-    if (this.gd.spRounds().includes(this.round)) this.enterSpDraft();
+    if (this.isAnnihilation ? this.gd.isSpRound(this.round) : this.gd.spRounds().includes(this.round)) this.enterSpDraft();
     else this.enterPrep();
   }
 

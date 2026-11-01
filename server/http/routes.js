@@ -1,9 +1,13 @@
 // HTTP 请求入口；保留原 index 的安全头、方法限制和健康检查。
-import { PROTOCOL_VERSION, APP_VERSION } from '../../shared/constants.js';
+import { localHealthCounts } from '../healthCounts.js';
+import { PROTOCOL_VERSION } from '../../shared/constants.js';
 import { buildTag } from './build.js';
 import { MAX_URL_LENGTH, splitUrl, sendError, sendJson } from './common.js';
 import { createPublicJsonResponder } from './publicJson.js';
 import { SIM_WORKER_CSP } from './csp.js';
+
+// Keep the health endpoint's application label fixed independently of runtime compatibility metadata.
+const HEALTHZ_APP_VERSION = '0.3.1';
 
 function trafficAllowed(req, trustProxy) {
   if (trustProxy === false) return true;
@@ -12,8 +16,13 @@ function trafficAllowed(req, trustProxy) {
   return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|100\.(6[4-9]|[78]\d|9\d|1[01]\d|12[0-7])\.|::1$|fc|fd|fe80)/i.test(raw);
 }
 
+function counts(network, registry, lobby) {
+  const local = localHealthCounts(network, registry, lobby);
+  return lobby.profiles?.healthCounters?.(local) || local;
+}
+
 export function healthReport({ startedAt, network, registry, lobby, content = null, traffic, assetIndex, views, trusted }, withTraffic = false) {
-  const report = { ok: true, version: PROTOCOL_VERSION, app: APP_VERSION, uptimeSec: Math.round((Date.now()-startedAt)/1000), build: buildTag(), sockets: network.connectionCount, sessions: registry.size, ...lobby.stats() };
+  const report = { ok: true, version: PROTOCOL_VERSION, app: HEALTHZ_APP_VERSION, uptimeSec: Math.round((Date.now()-startedAt)/1000), build: buildTag(), ...counts(network, registry, lobby) };
   if (content) report.content = { vanilla: content.cs, sets: contentSets(lobby), ...pluginCount(lobby) };
   if (trusted && Object.keys(trusted).length) report.plugins = trusted;
   if (withTraffic && traffic) report.traffic = traffic.snapshot();
@@ -61,9 +70,9 @@ export function createRequestHandler({ serveStatic, startedAt, network, registry
     }
     if (parts.rawPath === '/healthz') {
       sendJson(req, res, 200, {
-        ok: true, version: PROTOCOL_VERSION, app: APP_VERSION, uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+        ok: true, version: PROTOCOL_VERSION, app: HEALTHZ_APP_VERSION, uptimeSec: Math.round((Date.now() - startedAt) / 1000),
         build: buildTag(),
-        sockets: network.connectionCount, sessions: registry.size, ranked: lobby.ranked.size, ...lobby.stats(),
+        ranked: lobby.ranked.size, ...counts(network, registry, lobby),
         ...(new URLSearchParams(parts.query).get('traffic') === '1' && traffic && trafficAllowed(req, trustProxy) ? { traffic: traffic.snapshot() } : {}),
       });
       return;

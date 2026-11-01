@@ -74,7 +74,7 @@ export const HUD_REM = Object.freeze({
  * stays armed — less than under the unchanged official camera at 1920×1080 (13 px above the bar, ≈ 11 px over the pads).
  * @param {string} kind
  * @param {{ width: number, height: number }} size
- * @param {{ shop?: boolean }} [opts] `shop: false` = the folded shop's band
+ * @param {{ shop?: boolean, reserveFoldedShop?: boolean }} [opts] `reserveFoldedShop` keeps the same frame when the tab is omitted.
  * @returns {{ top: number, bottom: number, fit?: boolean, left?: number, right?: number }|null}
  */
 export function hudBands(kind, size, opts) {
@@ -132,6 +132,15 @@ export function hudBands(kind, size, opts) {
     for (const el of document.querySelectorAll(selectors)) {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) measuredBottom = Math.max(measuredBottom, h - r.top + gap);
+    }
+    if (folded && opts?.reserveFoldedShop && !measuredBottom) {
+      // Mizuki omits the shop UI, but uses precisely its folded camera frame.
+      // These are the existing .shopbar-tab padding/button/border and mobile scale,
+      // expressed in layout pixels (Chromium quantizes CSS layout to 1/64 px).
+      const layout = value => Math.floor(value * 64) / 64;
+      const height = phone ? (40 + 2 * layout(rem * .08) + HUD_REM.shopTabBorderPx) * .85
+        : layout(rem * .44) + 2 * layout(rem * .08) + HUD_REM.shopTabBorderPx;
+      measuredBottom = safeBottom + layout(rem * .2) + height + gap;
     }
     bottom = phone && measuredBottom > 0 ? measuredBottom : Math.max(bottom, measuredBottom);
     const cornerRect = document.querySelector('.gm__corner')?.getBoundingClientRect();
@@ -319,6 +328,48 @@ export async function mountFieldView(host, { signal } = {}) {
   return guardView(createFallbackView(host, { ...opts, assets: data.get('assets') }), 'fallback');
 }
 
+/** Re-read the camera's real HUD/host bounds after layout, including device rotations. */
+export function observeFieldGeometry(host, onResize) {
+  let frame = 0, dead = false;
+  const scheduleFit = () => {
+    if (dead) return;
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => { if (!dead) onResize(); });
+  };
+  const hud = host?.parentElement?.querySelector('.gm__hud');
+  const onShopAnimationEnd = event => {
+    if (event.animationName === 'shop-up' && event.target?.classList?.contains('shopbar')) scheduleFit();
+  };
+  hud?.addEventListener('animationend', onShopAnimationEnd);
+  const geometryObserver = new ResizeObserver(scheduleFit);
+  const observeHud = () => {
+    geometryObserver.disconnect();
+    if (hud) geometryObserver.observe(hud);
+    if (host) geometryObserver.observe(host);
+    for (const el of hud?.querySelectorAll('.shopbar, .shopbar__row, .shopbar__tools, .shopbar-tab, .shopbar__capacity, .gm__inventory-pages, .gm__corner') || []) geometryObserver.observe(el);
+    const chatToggle = document.querySelector('.sp-chat--match .sp-chat__toggle');
+    if (chatToggle) geometryObserver.observe(chatToggle);
+    scheduleFit();
+  };
+  const hudObserver = new MutationObserver(observeHud);
+  if (hud) hudObserver.observe(hud, { childList: true });
+  observeHud();
+  window.addEventListener('resize', scheduleFit);
+  window.visualViewport?.addEventListener('resize', scheduleFit);
+  window.visualViewport?.addEventListener('scroll', scheduleFit);
+  return {
+    refresh: scheduleFit,
+    destroy() {
+      dead = true; cancelAnimationFrame(frame);
+      geometryObserver.disconnect(); hudObserver.disconnect();
+      hud?.removeEventListener('animationend', onShopAnimationEnd);
+      window.removeEventListener('resize', scheduleFit);
+      window.visualViewport?.removeEventListener('resize', scheduleFit);
+      window.visualViewport?.removeEventListener('scroll', scheduleFit);
+    },
+  };
+}
+
 /**
  * Preact hook: 挂载战场视图，临时降级后自动有限重试，也响应重新联网/回到前台；返回 { view, kind }。
  * @param {{ current: HTMLElement|null }} hostRef
@@ -372,34 +423,7 @@ export function useFieldView(hostRef) {
       clearTimeout(retryTimer);
       retrying = true; retries.current++; setAttempt((n) => n + 1);
     };
-    // 商店挂载、收展及触控尺寸改变后，重新读取实测 HUD；不改变聊天布局或监听聊天内容。
-    let frame = 0;
-    const scheduleFit = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(onResize);
-    };
-    const hud = host?.parentElement?.querySelector('.gm__hud');
-    // 商店入场 transform 不触发尺寸观察；动画结束后按最终位置重新避让。
-    const onShopAnimationEnd = (e) => {
-      if (e.animationName === 'shop-up' && e.target?.classList?.contains('shopbar')) scheduleFit();
-    };
-    hud?.addEventListener('animationend', onShopAnimationEnd);
-    const geometryObserver = new ResizeObserver(scheduleFit);
-    const observeHud = () => {
-      geometryObserver.disconnect();
-      if (hud) geometryObserver.observe(hud);
-      if (host) geometryObserver.observe(host);
-      for (const el of hud?.querySelectorAll('.shopbar, .shopbar__row, .shopbar__tools, .shopbar-tab, .shopbar__capacity, .gm__inventory-pages, .gm__corner') || []) geometryObserver.observe(el);
-      const chatToggle = document.querySelector('.sp-chat--match .sp-chat__toggle');
-      if (chatToggle) geometryObserver.observe(chatToggle);
-      scheduleFit();
-    };
-    const hudObserver = new MutationObserver(observeHud);
-    if (hud) hudObserver.observe(hud, { childList: true });
-    observeHud();
-    window.addEventListener('resize', scheduleFit);
-    window.visualViewport?.addEventListener('resize', scheduleFit);
-    window.visualViewport?.addEventListener('scroll', scheduleFit);
+    const geometry = observeFieldGeometry(host, onResize);
     window.addEventListener('online', onRetry);
     document.addEventListener('visibilitychange', onRetry);
     return () => {
@@ -407,13 +431,7 @@ export function useFieldView(hostRef) {
       controller.abort();
       clearTimeout(retryTimer);
       unsub();
-      cancelAnimationFrame(frame);
-      geometryObserver.disconnect();
-      hudObserver.disconnect();
-      hud?.removeEventListener('animationend', onShopAnimationEnd);
-      window.removeEventListener('resize', scheduleFit);
-      window.visualViewport?.removeEventListener('resize', scheduleFit);
-      window.visualViewport?.removeEventListener('scroll', scheduleFit);
+      geometry.destroy();
       window.removeEventListener('online', onRetry);
       document.removeEventListener('visibilitychange', onRetry);
       // the dev hook must not keep the destroyed view — and through its host the whole detached match screen — alive

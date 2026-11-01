@@ -30,7 +30,7 @@ const lethal = (h, u) => h.b.dealDamage(null, u, { amount: 1e9, type: 'true', ca
 const waitOf = (u) => (u.def.raw.talents || []).find((t) => t.index === 1).bb['surtr_t_2[withdraw].interval'];
 
 describe('#52 史尔特尔 余烬: 禁疗 from the lethal blow until she leaves', () => {
-  test('a medic beside her heals the other injured operator instead — 0 heals reach her, she is never its target, she still leaves at 8 s; the 禁疗 status is shown', () => {
+  test('a medic beside her heals the other injured operator instead — 0 heals reach her, she is never its target, she leaves after the loadout talent duration; the 禁疗 status is shown', () => {
     const h = makeBattle({
       defs: { enemies: { enemy_dummy: DUMMY } }, autoFinish: false, timeLimit: 200, seed: 2,
       units: [
@@ -42,7 +42,7 @@ describe('#52 史尔特尔 余烬: 禁疗 from the lethal blow until she leaves'
     });
     const s = h.unit(SURTR), medic = h.unit(MEDIC), tank = h.unit(TANK);
     const wait = waitOf(s);
-    assert.equal(wait, 8, 'data: surtr_t_2[withdraw].interval');
+    assert.equal(wait, 9, 'default maximum-potential loadout: surtr_t_2[withdraw].interval (base potential: 8)');
     h.run(1);
     const healed = new Map();
     const picked = new Set();
@@ -57,18 +57,18 @@ describe('#52 史尔特尔 余烬: 禁疗 from the lethal blow until she leaves'
     assert.deepEqual(on.map((ev) => ev[3]), [1], 'the status 禁疗 is reported to the clients');
     assert.equal(statusIconKey('healFree'), 'healFree');
     assert.ok(STATUS_KEYS.includes('healFree'), 'and drawn in the status atlas');
-    // 不死: a second lethal blow inside the window changes nothing (and does not restart the 8 s)
+    // 不死: a second lethal blow inside the window changes nothing (and does not restart the resolved duration)
     h.run(3);
     lethal(h, s);
     assert.ok(s.alive && s.hp >= 1);
     h.run(wait - 3 - 0.2);
-    assert.ok(s.alive && s.deployed, 'still on the field just before 8 s');
+    assert.ok(s.alive && s.deployed, 'still on the field just before the resolved duration');
     assert.ok(s.hp < 2, 'nobody healed her');
     assert.equal(healed.get(s) ?? 0, 0, '0 heals to her');
     assert.ok(!picked.has(s), 'the medic never picks her');
     assert.ok((healed.get(tank) ?? 0) > 0 && picked.has(tank), 'the medic heals the other injured operator instead');
     h.run(0.4);
-    assert.equal(s.deployed, false, 'she leaves at 8 s');
+    assert.equal(s.deployed, false, 'she leaves at the resolved duration');
     assert.equal(s.removeReason, 'retreat', '"强制退出战场视为撤回干员"');
     assert.ok(h.b.time - t0 <= wait + 0.25);
     const ev = h.eventsOf('status').filter((e) => e[1] === s.id && e[2] === 'healFree').map((e) => e[3]);
@@ -172,9 +172,15 @@ describe('#43: a blocked 隐匿 enemy hides again only 3 s after the block ends 
     h.run(0.2);
     assert.equal(hidden(h, e), true, `+${STEALTH_RESTORE + 0.1} s: 隐匿 again`);
     assert.ok(Math.abs(h.b.time - t0 - STEALTH_RESTORE - 0.1) < 0.05);
+    const gun = h.unit('t_gun');
+    const locked = h.b.projectiles.list.filter((p) => p.source === gun && p.target === e);
+    const picks = [];
+    h.b.on('attack', (c) => { if (c.attacker === gun) picks.push(...c.targets); });
+    assert.ok(h.runUntil(() => !h.b.projectiles.list.some((p) => locked.includes(p)), 10), 'already-locked projectiles finish normally');
     const after = e.stats.taken;
     h.run(2);
-    assert.equal(e.stats.taken, after, 'no ranged hit once it hides');
+    assert.equal(picks.includes(e), false, 'no new target acquisition once it hides');
+    assert.equal(e.stats.taken, after, 'no damage after the pre-stealth projectiles finish');
     clean(h);
   });
 

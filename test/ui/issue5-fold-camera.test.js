@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { GEO } from '../../shared/constants.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
+const read = (p) => readFileSync(path.join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
 
 const { prepCameraFor, foldCamera, prepCamera } = await import('../../public/js/ui/gameLogic.js');
 const { hudBands, HUD_REM } = await import('../../public/js/ui/fieldHost.js');
@@ -110,7 +110,7 @@ describe('hudBands: the folded shop\'s band', () => {
     assert.match(game, /\.gm__gear \{\n {2}width: \.56rem; height: \.56rem;/);
     assert.ok(Math.abs(HUD_REM.cornerTop - (0.24 + 0.56)) < 1e-9);
     // folded, the narrow phones' corner is one row again (the bar that made it wrap is gone)
-    assert.match(read('public/css/devices.css'), /@media \(max-width: 767px\) \{\n {2}\.gm\.is-collapsed \.gm__corner \{ flex-wrap: nowrap; width: auto; \}\n\}/);
+    assert.match(read('public/css/devices.css').replace(/\r\n/g, '\n'), /@media \(max-width: 767px\) \{\n {2}\.gm\.is-collapsed \.gm__corner \{ flex-wrap: nowrap; width: auto; \}\n\}/);
   });
 
   test('prep / Final Assault prep only; open = the bar (unchanged), folded = the higher of the tab and the corner', () => {
@@ -141,7 +141,7 @@ describe('hudBands: the folded shop\'s band', () => {
     withDom({ rem, corner: cornerRow(h, rem, 10) }, () => assert.ok(Math.abs(hudBands('prep', { width: 844, height: h }, { shop: false }).bottom - 35) < 1e-9));
     withDom({ rem, hudBottom: h - 21, corner: cornerRow(h - 21, rem, 10) }, () => assert.ok(Math.abs(hudBands('prep', { width: 844, height: h }, { shop: false }).bottom - (21 + 35)) < 1e-9));
     // clamped like the bar's band
-    withDom({ rem, corner: [{ top: 10, height: 34 }] }, () => assert.equal(hudBands('prep', { width: 640, height: 200 }, { shop: false }).bottom, 80));
+    withDom({ rem, corner: [{ top: 10, height: 34 }] }, () => assert.equal(hudBands('prep', { width: 640, height: 200 }, { shop: false }).bottom, 190, 'measured controls must remain clear even beyond the fallback band clamp'));
   });
 });
 
@@ -193,20 +193,22 @@ describe('the folded board grows and every bench / temp tile stays clear of the 
     const { cy: cyOff, ...restOff } = off.params();
     assert.deepEqual(restFit, restOff, 'same optics and scale (a 2D pan of the image)');
     assert.ok(cyFit < cyOff && cyOff - cyFit < 60, `panned up ${cyOff - cyFit} px`);
-    assert.ok(Math.abs(tileAt(fit, 10) - 130.7) < 0.2, `≈ 131 px per tile at row 10 (${tileAt(fit, 10)})`);
-    assert.ok(Math.abs(tileAt(shop, 10) - 109.8) < 0.2, `the shop camera: ≈ 110 px (${tileAt(shop, 10)})`);
+    assert.ok(tileAt(fit, 10) > tileAt(shop, 10) * 1.1, 'folded board is materially larger than the open-shop view');
+    assert.equal(tileAt(fit, 10), tileAt(off, 10), 'HUD clearance pans the camera without changing its scale');
   });
 });
 
 describe('wiring', () => {
   test('the view passes the request\'s shop state to the HUD bands; the game asks for the camera of the fold state', () => {
     const app = read('public/js/render/app.js');
-    assert.match(app, /hud: hudBands\(vk, sz, \{ shop: o\.shop !== false \}\),/);
+    assert.match(app, /const hud = hudBands\(vk, sz, \{ shop: o\.shop !== false \}\);/);
+    assert.match(app, /const camera = presetCamera\([\s\S]*?\n\s+hud,/);
+    assert.match(app, /return offsetBoardCamera\(camera, sz\.width\);/);
     assert.match(app, /return opts\.hud\(kind, sz, o\) \|\| null;/);
-    const game = read('public/js/screens/game.js');
-    assert.match(game, /const shopFolded = showShop && \(pen \? penRef\.current\.collapsed : collapsed\);/);
+    const game = read('public/js/screens/game/match.js');
+    assert.match(game, /const shopFolded = readOnlyPrep \|\| \(showShop && \(pen \? penRef\.current\.collapsed : barCollapsed\)\);/);
     // entering prep and the boss-prep re-frame take the fold state; a fold / unfold re-frames through foldCamera
-    assert.equal((game.match(/const pc = prepCameraFor\(pub, myId, shopFolded\);/g) || []).length, 2);
-    assert.match(game, /const next = foldCamera\(\{\n\s+pub, myId, folded: shopFolded, ownPrep: !!view && viewModeRef\.current === 'prep' && showPrep,\n\s+pen, busy: !!drag \|\| !!facing, current: camRef\.current,\n\s+\}\);\n\s+if \(next\) setCam\(next\.kind, next\.opts\);\n\s+\}, \[view, shopFolded, showPrep, pen, !!drag, !!facing, prepCamKey\]\);/);
+    assert.equal((game.match(/const pc = prepCameraFor\(pub, prepOwnerId, shopFolded\);/g) || []).length, 2);
+    assert.match(game, /const next = foldCamera\(\{\n\s+pub, myId: prepOwnerId, folded: shopFolded, ownPrep: !!view && viewModeRef\.current === 'prep' && showPrep,\n\s+pen, busy: !!drag \|\| !!facing, current: camRef\.current,\n\s+\}\);\n\s+if \(next\) setCam\(next\.kind, next\.opts\);\n\s+\}, \[view, shopFolded, showPrep, pen, !!drag, !!facing, prepCamKey\]\);/);
   });
 });

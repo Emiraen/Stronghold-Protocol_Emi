@@ -9,9 +9,9 @@ export class PrioritySender {
   constructor({ buffered, send, now = () => Date.now(), timers = globalThis, interval = 250,
     hardBytes = 256 * 1024, lowBytes = 20 * 1024, mediumBytes = 50 * 1024,
     resumeBytes = 10 * 1024, resumeMs = 250, tickMs = 25, lowTtlMs = 2000,
-    maxEntries = 128, batchSize = 2 } = {}) {
+    maxEntries = 128, batchSize = 2, sizeOf = byteLength } = {}) {
     Object.assign(this, { buffered, send, now, timers, interval, hardBytes, lowBytes,
-      mediumBytes, resumeBytes, resumeMs, tickMs, lowTtlMs, maxEntries, batchSize });
+      mediumBytes, resumeBytes, resumeMs, tickMs, lowTtlMs, maxEntries, batchSize, sizeOf });
     this.queues = { high: [], medium: [], low: [] };
     this.queuedBytes = 0;
     this.timer = null;
@@ -53,7 +53,7 @@ export class PrioritySender {
     const priority = priorityOf(options.priority);
     const key = options.key ?? null;
     const entry = { data, options: { ...options, priority, key }, priority, key,
-      bytes: byteLength(data), at: this.now(), sent: false };
+      bytes: this.sizeOf(data), at: this.now(), sent: false };
     this._sample();
     this._expire();
     if (key != null && (priority === 'high' || priority === 'medium')) {

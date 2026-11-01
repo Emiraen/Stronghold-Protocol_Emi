@@ -1,3 +1,8 @@
+import { ZHAJING_VARIANT, ZHAJING_DIFFICULTY, ZHAJING_CAPACITIES } from './zhajing-constants.js';
+import { FRIEND_ACTIONS } from './friends.js';
+import { validFriendMessageText, validMessageSequence } from './friendMessages.js';
+import { MIZUKI_VARIANT, MIZUKI_CAPACITIES } from './mizuki-constants.js';
+import { ANNIHILATION_VARIANT, ANNIHILATION_CAPACITIES, EROSION_MAX } from './annihilation-constants.js';
 import { isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT, cultivatedStats } from './potential.js';
 import { isSpecialNameCard } from './nameCards.js';
 // Normative message catalogue (DESIGN §8). Used by server (validation) and client (building requests).
@@ -440,10 +445,12 @@ export const C2S = {
   hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6), aid: (v) => v == null || /^[0-9a-f]{8,64}$/.test(v), deviceId: (v) => v == null || (typeof v === 'string' && /^[0-9a-f]{32}$/.test(v)), auth: (v) => v == null || isAccountAuth(v), $optional: ['token', 'version', 'aid', 'deviceId', 'auth'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
   'session.probeAck': { nonce: (v) => typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) },
-  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), ranked: isBool,
-    variant: (v) => v === 'entertainment_multi' || v === 'entertainment_cyclops' || v === ENDLESS_VARIANT,
-    capacity: (v) => ENTERTAINMENT_CAPACITIES.includes(v) || CYCLOPS_CAPACITIES.includes(v), test: (v) => v === true, $optional: ['ranked', 'variant', 'capacity', 'test'] },
-  'room.setCapacity': { capacity: (v) => ENTERTAINMENT_CAPACITIES.includes(v) || CYCLOPS_CAPACITIES.includes(v) },
+  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) || v === ZHAJING_DIFFICULTY || v === 'ANNIHILATION', ranked: isBool,
+    variant: (v) => v === ZHAJING_VARIANT || v === MIZUKI_VARIANT || v === ANNIHILATION_VARIANT || v === 'entertainment_multi' || v === 'entertainment_cyclops' || v === ENDLESS_VARIANT,
+    capacity: (v) => ZHAJING_CAPACITIES.includes(v) || MIZUKI_CAPACITIES.includes(v) || ENTERTAINMENT_CAPACITIES.includes(v) || CYCLOPS_CAPACITIES.includes(v) || ANNIHILATION_CAPACITIES.includes(v), erosion: (v) => isInt(v, 1, EROSION_MAX),
+    mizukiDifficultyGrade: (v) => isInt(v, 0, 18), test: (v) => v === true, $optional: ['ranked', 'variant', 'capacity', 'test', 'erosion', 'mizukiDifficultyGrade'] },
+  'g.zhajing': { intent: (v) => isPlain(v) && typeof v.t === 'string' && v.t.startsWith('g.') && Object.keys(v).length <= 8 && JSON.stringify(v).length <= 4096 },
+  'room.setCapacity': { capacity: (v) => ZHAJING_CAPACITIES.includes(v) || MIZUKI_CAPACITIES.includes(v) || ENTERTAINMENT_CAPACITIES.includes(v) || CYCLOPS_CAPACITIES.includes(v) || ANNIHILATION_CAPACITIES.includes(v) },
   'room.cancelReady': { seat: (v) => isInt(v, 0, ENTERTAINMENT_MAX_SEATS - 1), playerId: isId },
   'session.release': {},
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v),
@@ -477,7 +484,7 @@ export const C2S = {
   'profile.presentation': { v: (v) => v === 1, profileId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
     editId: (v) => isInt(v, 1, Number.MAX_SAFE_INTEGER), value: isPresentation },
   'profile.loadout': { v: (v) => v === 1, profileId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
-    editId: (v) => isInt(v, 1, Number.MAX_SAFE_INTEGER), entries: isLoadoutEntries, ops: optional(isLoadoutOps) },
+    editId: (v) => isInt(v, 1, Number.MAX_SAFE_INTEGER), entries: isLoadoutEntries, ops: optional(isLoadoutOps), scope: optional(v => v === 'zhajing') },
   // Public channel: invitations are derived from the sender's server-side room, not client-supplied codes.
   'chat.send': { text: (v) => typeof v === 'string' && v.length <= 200 && /[^\s\p{Cf}]/u.test(v),
     channel: (v) => v === 'lobby' || v === 'match', matchId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
@@ -490,6 +497,13 @@ export const C2S = {
   'spectator.leave': {},
   'spectator.watch': { fieldId: isId, playerId: isId, $optional: ['playerId'] },
   'rank.list': {},
+  'friends.action': { action: (v) => FRIEND_ACTIONS.includes(v),
+    targetId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), query: (v) => typeof v === 'string' && v.length <= 64,
+    inviteId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), accept: isBool, mute: isBool,
+    matchId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), playerId: isId,
+    text: validFriendMessageText, clientId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
+    beforeSeq: validMessageSequence, afterSeq: validMessageSequence, throughSeq: validMessageSequence,
+    $optional: ['targetId', 'query', 'inviteId', 'accept', 'mute', 'matchId', 'playerId', 'text', 'clientId', 'beforeSeq', 'afterSeq', 'throughSeq'] },
   // Anonymous aid from hello selects the owner; no client-supplied aid is accepted.
   'history.list': {},
   'history.detail': { matchId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), playerId: isId, $optional: ['playerId'] },
@@ -527,6 +541,8 @@ export const C2S = {
   'g.cyclopsHexReroll': { slot: (v) => isInt(v, 0, 2) },
   // 独眼巨人选秀（R10）：idx 0..9 十组「干员+装备」
   'g.cyclopsDraft': { idx: (v) => isInt(v, 0, 9) },
+  'g.relic': { idx: (v) => isInt(v, 0, 2), start: (v) => v === true, $optional: ['idx', 'start'] },
+  'g.relicSeen': {},
   'g.ready': { ready: isBool },
   'g.emote': { id: (v) => EMOTES.includes(v) },
   'g.watch': { fieldId: (v) => isStr(v, 32), viewOnly: isBool, $optional: ['viewOnly'] },
@@ -537,6 +553,41 @@ export const C2S = {
   // the stats the own board's units start their next battle with (user playtest #4 item 7; prep phases): answered by
   // the push m.unitStats { seq, round, units: [unitStatsEntry] }; `seq` is echoed so the client keeps the newest answer
   'g.unitStats': { seq: (v) => isInt(v, 0, 2 ** 31), $optional: ['seq'] },
+  // Server-authoritative Mizuki decisions and manual battlefield commands.
+  'g.mizuki.squad': { squadId: isId },
+  'g.mizuki.difficulty': { grade: (v) => isInt(v, 0, 18) },
+  'g.mizuki.strategy': { bandId: isId },
+  'g.mizuki.initialSupply': { choiceId: isId },
+  'g.mizuki.sanVote': { id: isId, choice: (v) => v === 'accept' || v === 'reroll' },
+  'g.mizuki.route': { nodeId: isId },
+  'g.mizuki.routeStart': {},
+  'g.mizuki.splitRequest': { nodeId: isId },
+  'g.mizuki.splitDecide': { requestId: isId, approve: isBool },
+  'g.mizuki.recallPropose': { targetIds: (v) => isList(v, 3, isId) && v.length > 0 && new Set(v).size === v.length },
+  'g.mizuki.recallVote': { requestId: isId, agree: isBool },
+  'g.mizuki.recallRespond': { requestId: isId, accept: isBool },
+  'g.mizuki.importDungeon': { dungeon: (v) => isPlain(v) && Object.keys(v).length > 0,
+    sourceLabel: (v) => isStr(v, 160), $optional: ['sourceLabel'] },
+  'g.mizuki.archive': { on: isBool },
+  'g.mizuki.event': { choiceId: isId },
+  'g.mizuki.recruitGroup': { groupId: isId },
+  'g.mizuki.lineup': { uids: (v) => isList(v, 100, isUid) },
+  'g.mizuki.loadout': { uid: isUid, skillIndex: (v) => isInt(v, 0, LOADOUT_LIMITS.skillIndex), moduleId: isId },
+  'g.mizuki.move': { uid: isUid, to: (v) => isPlain(v) && (target(v)
+    || (v.area === 'hand' && v.idx === undefined)), dir: isDir, $optional: ['dir'] },
+  'g.mizuki.dismiss': { uid: isUid, requestId: isId, $optional: ['requestId'] },
+  'g.mizuki.equip': { itemUid: isUid, targetUid: isUid, replaceUid: isUid, requestId: isId, $optional: ['replaceUid', 'requestId'] },
+  'g.mizuki.equipmentPick': { offerId: isId, operatorId: isId, itemId: isId, requestId: isId, $optional: ['operatorId', 'itemId', 'requestId'] },
+  'g.mizuki.useItem': { itemId: (v) => v === 'rogue_2_pill' || v === 'rogue_2_bigpill' },
+  'g.mizuki.bank': { action: (v) => v === 'deposit' || v === 'withdraw', count: (v) => isInt(v, 1, 8), $optional: ['count'] },
+  'g.mizuki.recruit': { offerId: nullable(isId) },
+  'g.mizuki.buy': { offerId: isId },
+  'g.mizuki.shopRefresh': {},
+  'g.mizuki.ready': { on: isBool },
+  'g.mizuki.reward': { rewardId: isId },
+  'g.mizuki.deploy': { battleId: isId, uid: isUid, row: (v) => isInt(v, 0, GEO.ROWS - 1), col: (v) => isInt(v, 0, GEO.COLS - 1), dir: isDir },
+  'g.mizuki.retreat': { battleId: isId, uid: isUid },
+  'g.mizuki.skill': { battleId: isId, uid: isUid },
   'g.leave': {},
 
   // client-side combat (DESIGN §14): the authoritative client of a field reports its battle; a 联防 field adds
@@ -557,6 +608,8 @@ export const C2S = {
 // Server → client message types (documentation + client dispatch table keys).
 export const S2C = [
   'welcome', 'ok', 'error', 'pong', 'session.probe',
+  // session.lease {state:'recovering'|'active', retryMs?}; transport status only, never authorization.
+  'session.lease',
   'room.state', 'room.closed', 'room.matchCancelled',
   // loadout.state {v:1, profileId, initialized, entries, locked, editorId?, editId?}，无 aid。
   'loadout.state',
@@ -569,6 +622,7 @@ export const S2C = [
   'rank.me',
   // rank.list {rid?, items: [{position, name, points, wins, card?, cardSkin?, rank: {icon, label}}]}；另发标准 ok 回执。
   'rank.list',
+  'friends.state', 'friends.result',
   // history.list {items: summaries[], rid?}; history.detail {matchId,at,result,playerId,rid?}.
   // Requests with rid also get the usual independent ok/error acknowledgement.
   'history.list', 'history.detail',
@@ -591,6 +645,7 @@ export function validateC2S(msg) {
   if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return 'not an object';
   const spec = typeof msg.t === 'string' && Object.hasOwn(C2S, msg.t) ? C2S[msg.t] : null;
   if (!spec) return `unknown type ${String(msg.t).slice(0, 32)}`;
+  if (msg.t === 'friends.action' && Object.keys(msg).some(key => key !== 't' && key !== 'rid' && !Object.hasOwn(spec, key))) return 'bad friend field';
   if (msg.rid != null && !isInt(msg.rid, 0, 2 ** 31)) return 'bad rid';
   const optional = spec.$optional || [];
   for (const [k, check] of Object.entries(spec)) {
@@ -600,6 +655,8 @@ export function validateC2S(msg) {
     if (!check(v)) return `bad field ${k}`;
   }
   if (msg.t === 'chat.send' && (msg.channel === 'match' ? !msg.matchId : msg.matchId !== undefined)) return 'bad channel matchId';
+  if (msg.t === 'room.create' && ((msg.difficulty === ZHAJING_DIFFICULTY) !== (msg.variant === ZHAJING_VARIANT))) return 'bad zhajing mode';
+  if (msg.t === 'room.create' && msg.mizukiDifficultyGrade !== undefined && msg.variant !== MIZUKI_VARIANT) return 'bad field mizukiDifficultyGrade';
   return null;
 }
 

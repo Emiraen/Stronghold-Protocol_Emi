@@ -177,7 +177,7 @@ describe('10: a tap anywhere on the armed shop card buys (no inner target swallo
       assert.equal(cl.length, 1, 'one click handler: the card itself');
       assert.ok(hasClass(cl[0], 'scard') && hasClass(cl[0], 'is-armed'));
       assert.ok(nodes.some((n) => n.type?.name === 'ArmedTag'), 'the 确认购买 strip');
-      cl[0].props.onClick();
+      cl[0].props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) } });
       assert.deepEqual(taps, [['tap', 2]], 'the second tap goes to the two-tap handler (ShopBar buys)');
     });
 
@@ -185,14 +185,14 @@ describe('10: a tap anywhere on the armed shop card buys (no inner target swallo
       const taps = [];
       const idle = Card({ slot, idx: 1, priv, onTap: (i) => taps.push(['tap', i]), onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
       assert.equal(clickables(idle).length, 1);
-      clickables(idle)[0].props.onClick();
+      clickables(idle)[0].props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) } });
       // not editable (ready / round start): no two-tap, a reason — the tap shows the detail (the ⓘ did before)
       const locked = Card({ slot, idx: 1, priv, reason: '已准备就绪，取消准备后才能操作', onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
       const lockedNodes = [...walk(locked)];
       assert.ok(!lockedNodes.some((n) => hasClass(n, 'scard__detail')));
       const btn = lockedNodes.find((n) => hasClass(n, 'scard'));
       assert.notEqual(btn.props['aria-disabled'], 'true', 'its tap does something: not announced as disabled');
-      btn.props.onClick();
+      btn.props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) } });
       assert.deepEqual(taps, [['tap', 1], ['detail', slot.id]]);
     });
   }

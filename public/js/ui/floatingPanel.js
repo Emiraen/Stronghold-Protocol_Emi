@@ -92,8 +92,9 @@ function FloatingFrame({ as: Tag = 'aside', children, class: cls = '', onClose, 
       const sibling = target.closest('[data-floating-family]');
       if (sibling?.dataset.floatingFamily === p.family) return;
       p.onClose?.();
-      // A click to dismiss a card must not also buy, sell or ready behind it. The board remains directly selectable.
-      if (!target.closest('.gm__field, .uframe, .uframe__close, .effects__hit, .bslot, .bstrip__more, .dbond, [data-testid=check-player], .gm__metrics')) { e.preventDefault(); e.stopPropagation(); consumeDismissClick(target); }
+      // A click to dismiss a card must not also buy, sell or ready behind it.
+      // Board selections and view navigation still act on that same click.
+      if (!target.closest('.gm__field, .uframe, .uframe__close, .effects__hit, .bslot, .bstrip__more, .dbond, [data-testid=check-player], .gm__metrics, .team__btn, .team__back, .chud__back, .vswitch__arrow, .gm__watching .btn')) { e.preventDefault(); e.stopPropagation(); consumeDismissClick(target); }
     };
     const closeKey = e => { if (e.key === 'Escape' && isTopOverlay(panel)) { e.preventDefault(); e.stopImmediatePropagation(); current.current.onClose?.(); } };
     window.addEventListener('pointerdown', closeOutside, true);

@@ -20,7 +20,7 @@ import { makeMatch, checkInvariants } from './harness.js';
  * `hiddenDps` (a share of the hidden pool per game second). Every BOSS_HIT ticker is recorded with the phase and the
  * player's real share of the leader in play at that moment (the current pool).
  */
-function toHiddenCore({ mode = 'coop', difficulty = 'NORMAL', humans = 1, clientCombat = false, seed = 61, bossId, hiddenBossId, hiddenDps = 0.02, onHidden = null }) {
+async function toHiddenCore({ mode = 'coop', difficulty = 'NORMAL', humans = 1, clientCombat = false, seed = 61, bossId, hiddenBossId, hiddenDps = 0.02, onHidden = null }) {
   const h = makeMatch({ mode, difficulty, humans, seed, fake: true, clientCombat, instant: !clientCombat,
     script: (b) => (b.kind === 'boss' ? { bossDps: 1e9 } : b.kind === 'hidden' ? { bossDps: b.sharedBoss.maxHp * hiddenDps } : {}) }).start();
   const m = h.m;
@@ -41,7 +41,7 @@ function toHiddenCore({ mode = 'coop', difficulty = 'NORMAL', humans = 1, client
   h.drive(() => m.phase === PHASE.HIDDEN_CORE || h.ended != null);
   assert.equal(m.phase, PHASE.HIDDEN_CORE, 'reached the Hidden Core');
   if (onHidden) onHidden(h);
-  const end = h.runToEnd({ maxSteps: 6e6 });
+  const end = (await h.runToEnd({ maxSteps: 6e6 }));
   return { h, m, end, hits };
 }
 
@@ -62,10 +62,10 @@ function assertTruthful(hits, phase, players) {
   return inPhase;
 }
 
-test('C1 (solo 绝境, server-run fields): the Hidden Core\'s first hit announces nothing — the Final Assault\'s damage is not damage to the hidden leader', () => {
+test('C1 (solo 绝境, server-run fields): the Hidden Core\'s first hit announces nothing — the Final Assault\'s damage is not damage to the hidden leader', async () => {
   // the reported case: a Final Assault pool larger than half the hidden leader's — solo 绝境 (HARD): 盐风主教昆图斯 525000,
   // 75 % of 假想敌：铳's 700000, so the old share announced 超过50% at the hidden leader's first hit
-  const { m, end, hits } = toHiddenCore({ mode: 'solo', difficulty: 'HARD', bossId: 'boss_4', hiddenBossId: 'boss_9', hiddenDps: 0.01 });
+  const { m, end, hits } = (await toHiddenCore({ mode: 'solo', difficulty: 'HARD', bossId: 'boss_4', hiddenBossId: 'boss_9', hiddenDps: 0.01 }));
   assert.equal(end.hiddenReached, true);
   const fa = assertTruthful(hits, PHASE.FINAL_ASSAULT, ['p_0']);
   assert.deepEqual(fa.map(stepOf), [0.8], 'the Final Assault cleared by one hit: 80 %');
@@ -79,8 +79,8 @@ test('C1 (solo 绝境, server-run fields): the Hidden Core\'s first hit announce
 });
 
 for (const humans of [2, 4]) {
-  test(`C1 (${humans} players, client-side combat): every BOSS_HIT of the Hidden Core matches the player's damage to the hidden leader`, () => {
-    const { m, end, hits } = toHiddenCore({ mode: 'coop', difficulty: 'NORMAL', humans, clientCombat: true, seed: 62 + humans, bossId: 'boss_4', hiddenBossId: 'boss_8', hiddenDps: 0.02 });
+  test(`C1 (${humans} players, client-side combat): every BOSS_HIT of the Hidden Core matches the player's damage to the hidden leader`, async () => {
+    const { m, end, hits } = (await toHiddenCore({ mode: 'coop', difficulty: 'NORMAL', humans, clientCombat: true, seed: 62 + humans, bossId: 'boss_4', hiddenBossId: 'boss_8', hiddenDps: 0.02 }));
     assert.equal(end.hiddenReached, true);
     const ids = [...m.players.keys()];
     assertTruthful(hits, PHASE.FINAL_ASSAULT, ids);
@@ -94,8 +94,8 @@ for (const humans of [2, 4]) {
   });
 }
 
-test('C1 (2 players, server-run fields — SP_COMBAT=server): the hidden pool\'s tickers follow the hidden-core damage only', () => {
-  const { m, end, hits } = toHiddenCore({ mode: 'coop', difficulty: 'HARD', humans: 2, clientCombat: false, seed: 66, bossId: 'boss_4', hiddenBossId: 'boss_8', hiddenDps: 0.02 });
+test('C1 (2 players, server-run fields — SP_COMBAT=server): the hidden pool\'s tickers follow the hidden-core damage only', async () => {
+  const { m, end, hits } = (await toHiddenCore({ mode: 'coop', difficulty: 'HARD', humans: 2, clientCombat: false, seed: 66, bossId: 'boss_4', hiddenBossId: 'boss_8', hiddenDps: 0.02 }));
   assert.equal(end.hiddenReached, true);
   assertTruthful(hits, PHASE.FINAL_ASSAULT, ['p_0', 'p_1']);
   const hidden = assertTruthful(hits, PHASE.HIDDEN_CORE, ['p_0', 'p_1']);
@@ -105,15 +105,15 @@ test('C1 (2 players, server-run fields — SP_COMBAT=server): the hidden pool\'s
   m.dispose();
 });
 
-test('C1 (solo, client-side combat, server takeover mid-fight): the re-simulated hidden field\'s credits announce the hidden-core share only', () => {
+test('C1 (solo, client-side combat, server takeover mid-fight): the re-simulated hidden field\'s credits announce the hidden-core share only', async () => {
   let tookOver = false;
-  const { m, end, hits } = toHiddenCore({ mode: 'solo', difficulty: 'HARD', clientCombat: true, seed: 67, bossId: 'boss_4', hiddenBossId: 'boss_9', hiddenDps: 0.02,
+  const { m, end, hits } = (await toHiddenCore({ mode: 'solo', difficulty: 'HARD', clientCombat: true, seed: 67, bossId: 'boss_4', hiddenBossId: 'boss_9', hiddenDps: 0.02,
     onHidden: (h) => {
       h.sched.advance(3000); // the browser reported a few seconds of the fight
       h.m.onDisconnect('p_0');
       tookOver = h.m.fields[0].mode === 'server';
       h.m.onReconnect('p_0');
-    } });
+    } }));
   assert.ok(tookOver, 'the server took the hidden field over (CreditPool)');
   assert.equal(end.hiddenReached, true);
   assertTruthful(hits, PHASE.FINAL_ASSAULT, ['p_0']);

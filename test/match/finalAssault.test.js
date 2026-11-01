@@ -17,25 +17,25 @@ test('pairing by seat: (1,2), (3,4); an odd player alone', () => {
   assert.deepEqual(pairPlayers([p(3), p(1), p(0), p(2)]).map((g) => g.map((x) => x.seat)), [[0, 1], [2, 3]]);
 });
 
-test('boss pool = bloodPoint[difficulty] in co-op whatever the alive count (× alive / 4 only with aliveScaling; solo × 0.25) × tuning; shared and never negative', () => {
+test('boss pool: solo one share, co-op one share per alive seat, explicit legacy scaling; shared and never negative', () => {
   // research numbers (data/tuning.json left out); DESIGN §20.10: notice 5114's "敌方领袖的总生命值不变" is about the
   // mirrored copies, the one note on player count (巴哈姆特 12294 "聯機隊友(撤退/死掉)變少，最後boss血條也會變少") has no
   // proportion — config bossHpScale.aliveScaling (off) would apply × alive / 4
   const { tuning, ...RAW } = DATA; // eslint-disable-line no-unused-vars
   const gd = new GameData(RAW, 'mode_multi_hard');
-  for (const n of [4, 3, 2, 1, undefined, 9]) assert.equal(bossPoolHp(gd, 'boss_1', n), 1800000, `${n} alive`);
+  for (const n of [4, 3, 2, 1, undefined, 9]) assert.equal(bossPoolHp(gd, 'boss_1', n), 1800000 * (n === undefined ? 4 : Math.min(n, 4)), `${n} alive`);
   assert.equal(gd.bossPoolHp('boss_1', 2), bossPoolHp(gd, 'boss_1', 2), 'GameData agrees');
   // the flip: config bossHpScale.aliveScaling true scales the pool by alive / 4
-  const scaled = new GameData({ ...RAW, config: { ...RAW.config, bossHpScale: { ...RAW.config.bossHpScale, aliveScaling: true },
-    modes: { ...RAW.config.modes, mode_multi_hard: { ...RAW.config.modes.mode_multi_hard, bossHpScale: { ...RAW.config.modes.mode_multi_hard.bossHpScale, aliveScaling: true } } } } }, 'mode_multi_hard');
+  const scaled = new GameData({ ...RAW, config: { ...RAW.config, bossHpScale: { ...RAW.config.bossHpScale, perPlayer: false, aliveScaling: true },
+    modes: { ...RAW.config.modes, mode_multi_hard: { ...RAW.config.modes.mode_multi_hard, bossHpScale: { ...RAW.config.modes.mode_multi_hard.bossHpScale, perPlayer: false, aliveScaling: true } } } } }, 'mode_multi_hard');
   assert.equal(bossPoolHp(scaled, 'boss_1', 4), 1800000);
   assert.equal(bossPoolHp(scaled, 'boss_1', 3), 1350000);
   assert.equal(bossPoolHp(scaled, 'boss_1', 2), 900000);
   assert.equal(bossPoolHp(scaled, 'boss_1', 1), 450000);
   assert.equal(bossPoolHp(scaled, 'boss_1'), 1800000, 'no count given: a full team');
   assert.equal(bossPoolHp(scaled, 'boss_1', 9), 1800000, 'never above the data value');
-  assert.equal(bossPoolHp(new GameData(RAW, 'mode_single_abyss'), 'boss_5', 1), 750000);
-  assert.equal(bossPoolHp(new GameData(RAW, 'mode_single_funny'), 'boss_2', 1), 56250);
+  assert.equal(bossPoolHp(new GameData(RAW, 'mode_single_abyss'), 'boss_5', 1), 3000000);
+  assert.equal(bossPoolHp(new GameData(RAW, 'mode_single_funny'), 'boss_2', 1), 225000);
   // the balance layer multiplies the pool (docs/BALANCE.md)
   for (const modeId of ['mode_single_funny', 'mode_multi_hard']) {
     const tuned = new GameData(DATA, modeId);
@@ -52,7 +52,7 @@ test('boss pool = bloodPoint[difficulty] in co-op whatever the alive count (× a
 });
 
 for (const n of [1, 2, 3, 4]) {
-  test(`Final Assault with ${n} player(s): fields, sides, templates, merged LP, shared pool, victory`, () => {
+  test(`Final Assault with ${n} player(s): fields, sides, templates, merged LP, shared pool, victory`, async () => {
     const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: n, seed: 40 + n, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 1e9 } : {}) }).start();
     const m = h.m;
     h.drive(() => m.phase === PHASE.PREP && m.round === 14);
@@ -84,7 +84,7 @@ for (const n of [1, 2, 3, 4]) {
     const pub = m.publicView();
     assert.equal(pub.teamLp, m.teamLp);
     assert.deepEqual(pub.bossHp, { hp: Math.round(pool.hp), max: Math.round(pool.maxHp) });
-    const end = h.runToEnd();
+    const end = (await h.runToEnd());
     assert.equal(end.victory, true);
     assert.equal(end.roundsPassed, 14);
     assert.equal(end.hiddenReached, false, 'FUNNY has no hidden core');
@@ -98,7 +98,7 @@ for (const n of [1, 2, 3, 4]) {
   });
 }
 
-test('overtime: −1 team LP per REAL second after 150 real s (300 game s at 2×); team LP 0 ends every field → defeat (13 rounds passed)', () => {
+test('overtime: pure-human team uses the level countdown; −1 team LP per REAL second; team LP 0 ends every field → defeat (13 rounds passed)', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 50, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 1 } : {}) }).start();
   const m = h.m;
   h.drive(() => m.phase === PHASE.PREP && m.round === 14);
@@ -106,15 +106,17 @@ test('overtime: −1 team LP per REAL second after 150 real s (300 game s at 2×
   h.drive(() => m.phase === PHASE.FINAL_ASSAULT);
   assert.equal(m.teamLp, 20);
   const f = bossFields()[0];
-  const end = h.runToEnd();
+  assert.equal(m.bossOvertimeStartReal, m.gd.bossLevelTime(m.round));
+  const expectedEnd = (m.bossOvertimeStartReal + Math.ceil(m.teamLp / m.gd.bossOvertimeDrainReal)) * m.gd.combatTimeScale;
+  const end = (await h.runToEnd());
   assert.equal(end.victory, false);
   assert.equal(end.roundsPassed, 13);
-  assert.ok(Math.abs(f.time - 340) < 2.5, `ended ≈ 300 + 2 × 20 game s (${f.time})`);
+  assert.ok(Math.abs(f.time - expectedEnd) < 2.5, `ended at the configured pure-human overtime + LP drain game s (${f.time})`);
   assert.equal(m.teamLp, 0);
   m.dispose();
 });
 
-test('Final Assault leaks cost their lpr from the merged LP', () => {
+test('Final Assault leaks cost their lpr from the merged LP', async () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 51, fake: true, instant: false, script: (b) => (b.kind === 'boss' ? { bossDps: 1, leakEvents: [{ at: 5, lpr: 1 }, { at: 10, lpr: 30, boss: true }] } : {}) }).start();
   const m = h.m;
   assert.equal(m.gd.bossRound, 9, 'solo FUNNY: boss at R9');
@@ -126,19 +128,21 @@ test('Final Assault leaks cost their lpr from the merged LP', () => {
   assert.equal(m.teamLp, 39);
   h.run(() => bossFields()[0].time >= 11);
   assert.equal(m.teamLp, 9);
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, false);
   assert.equal(end.roundsPassed, 8);
   m.dispose();
 });
 
-test('Hidden Core: Σ activated layers (end of the boss prep) > 1200 and team LP > 1 after a win → R15 prep → HIDDEN_CORE', () => {
+test('Hidden Core: Σ activated layers (end of the boss prep) > 1200 and team LP > 1 after a win → R15 prep → HIDDEN_CORE', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 52, fake: true, script: (b) => (b.kind === 'boss' || b.kind === 'hidden' ? { bossDps: 1e9 } : {}) }).start();
   const m = h.m;
   assert.equal(m.gd.hiddenRound, 15);
   assert.ok(m.hiddenBossId && ['boss_8', 'boss_9', 'boss_10'].includes(m.hiddenBossId));
   h.drive(() => m.phase === PHASE.PREP && m.round === 14);
-  for (const p of m.players.values()) { p.bondCountBonus.yanShip = 3; p.layers.yanShip = 601; p.recompute(); }
+  const layerBond = m.gd.bondIds.find((id) => !m.gd.modeInactiveBonds.has(id) && m.gd.bond(id)?.isCore);
+  assert.ok(layerBond, 'an enabled stackable core bond');
+  for (const p of m.players.values()) { p.bondCountBonus[layerBond] = 3; p.layers[layerBond] = 601; p.recompute(); assert.ok(p.bonds[layerBond]?.active); }
   h.drive(() => m.phase === PHASE.FINAL_ASSAULT);
   assert.equal(m.hiddenLayerSum, 1202);
   h.drive(() => m.phase === PHASE.PREP && m.round === 15);
@@ -151,7 +155,7 @@ test('Hidden Core: Σ activated layers (end of the boss prep) > 1200 and team LP
   assert.ok(f, 'hidden field');
   assert.equal(f.opts.bossId, m.hiddenBossId);
   assert.equal(m.teamLp, lp, 'team LP carries over');
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   assert.equal(end.hiddenReached, true);
   assert.equal(end.hiddenCleared, true);
@@ -159,7 +163,7 @@ test('Hidden Core: Σ activated layers (end of the boss prep) > 1200 and team LP
   m.dispose();
 });
 
-test('Hidden Core is skipped at Σ layers ≤ threshold, on FUNNY, or with team LP ≤ 1; a failed hidden core keeps the clear', () => {
+test('Hidden Core is skipped at Σ layers ≤ threshold, on FUNNY, or with team LP ≤ 1; a failed hidden core keeps the clear', async () => {
   const gd = new GameData(DATA, 'mode_multi_normal');
   assert.equal(hiddenEligible(gd, { layerSum: 1200, teamLp: 50 }), false);
   assert.equal(hiddenEligible(gd, { layerSum: 1201, teamLp: 50 }), true);
@@ -172,9 +176,12 @@ test('Hidden Core is skipped at Σ layers ≤ threshold, on FUNNY, or with team 
   const m = h.m;
   h.drive(() => m.phase === PHASE.PREP && m.round === 14);
   const ps = h.ps('p_0');
-  ps.bondCountBonus.yanShip = 3; ps.layers.yanShip = 400; ps.lp = 5; ps.recompute();
-  h.drive(() => h.ended != null);
-  const end = h.ended;
+  const layerBond = m.gd.bondIds.find((id) => !m.gd.modeInactiveBonds.has(id) && m.gd.bond(id)?.isCore);
+  assert.ok(layerBond);
+  ps.bondCountBonus[layerBond] = 3; ps.layers[layerBond] = 400; ps.lp = 5; ps.recompute();
+  assert.ok(ps.bonds[layerBond]?.active);
+  h.drive(() => m.ended);
+  const end = await h.waitForEnd();
   assert.equal(end.hiddenReached, true);
   assert.equal(end.hiddenCleared, false);
   assert.equal(end.victory, true);
@@ -207,7 +214,7 @@ test('Final Assault: a fighting player may only watch its own boss field; elimin
   m.dispose();
 });
 
-test('Final Assault: stats reach m.private at the end; leader "扣除目标生命" effects (lpLoss) hit the team LP', () => {
+test('Final Assault: stats reach m.private at the end; leader "扣除目标生命" effects (lpLoss) hit the team LP', async () => {
   const h = makeMatch({
     mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 56, fake: true,
     script: (b) => (b.kind === 'boss' ? { bossDps: b.sharedBoss.maxHp / 10, damage: { p_0: 5000, p_1: 7000 }, lpLossEvents: [{ at: 2, amount: 7 }] } : {}),
@@ -217,7 +224,7 @@ test('Final Assault: stats reach m.private at the end; leader "扣除目标生�
   h.drive(() => m.phase === PHASE.PREP && m.round === 14);
   h.ps('p_0').lp = 20;
   h.ps('p_1').lp = 20;
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   assert.equal(m.teamLp, 40 - 7, 'lpLoss drains the merged pool');
   for (const id of ['p_0', 'p_1']) {

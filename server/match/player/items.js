@@ -6,6 +6,7 @@ import { offsetTile } from "../../sim/dir.js";
 
 import { itemKey } from "../gamedata.js";
 import { itemMergeRecipe } from '../../../shared/itemMerge.js';
+import { relicConsumableUsed } from '../relics.js';
 
 import { OK, fail } from "./common.js";
 export class PlayerItems {
@@ -51,6 +52,8 @@ export class PlayerItems {
         if (holder && holder.piece.kind === 'chess') this._attach(holder.piece, item, replaceUid);
       }
       this.stats.itemsEquipped++;
+      // Personal-choice equipment is consumed here too; retained/delayed equipment is not.
+      if (!ev.keep && ev.consumed !== false && !this.find(item.uid)) relicConsumableUsed(this.m, this, item);
       this.checkItemMerges();
       this.recompute();
       return OK;

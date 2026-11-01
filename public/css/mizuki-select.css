@@ -1,0 +1,54 @@
+/* Selection pages (选择分队 / 选择招募组合 / 初始招募) on the 1920x1080 stage. */
+.mzs-row{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.mzh-screen .mzs-card{position:absolute;top:374px;width:356px;height:592px;padding:0;background:url(/assets/mizuki/native-ui/init/init_item_bg.png) center/calc(100% + 56px) calc(100% + 54px) no-repeat;border:0;color:#fff;text-align:center;overflow:visible;transition:filter .15s}
+.mzh-screen .mzs-card.is-selected{filter:brightness(1.35) saturate(1.2);box-shadow:0 0 0 2px #cfe0ffaa}
+.mzs-scroll{position:absolute;left:0;top:254px;width:1920px;height:712px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.mzs-scroll::-webkit-scrollbar{display:none}
+.mzs-scroll>.mzs-card{position:absolute;top:120px}
+.mzs-more{position:absolute;right:12px;top:668px;width:0;height:0;border:28px solid #0000;border-left:44px solid #ffffffb0;border-right:0;z-index:5;pointer-events:none}
+.mzs-fan{position:relative;width:300px;height:260px}
+.mzs-fan img{position:absolute;width:190px;height:190px;object-fit:contain;filter:drop-shadow(0 6px 10px #0009)}
+.mzs-fan img:nth-child(1){left:12px;top:62px;transform:rotate(-14deg)}
+.mzs-fan img:nth-child(2){left:70px;top:36px;transform:rotate(-4deg)}
+.mzs-fan img:nth-child(3){left:128px;top:10px;transform:rotate(8deg)}
+.mzs-premium{position:absolute;left:6px;top:98px;padding:2px 10px;font:700 12px/16px "Bender",sans-serif;background:linear-gradient(90deg,#e8e8ea,#9ea3ab);color:#222;border-top:3px solid #c0272d}
+.mzs-card:disabled{cursor:default}
+.mzs-card.is-unavailable{filter:grayscale(.7) brightness(.7)}
+.mzs-card--group{top:374px}
+.mzs-card--group .mzs-card__art{top:48px;height:300px}
+.mzs-card__art{position:absolute;left:0;right:0;top:56px;height:290px;display:flex;align-items:center;justify-content:center}
+.mzs-card__icon{width:250px;height:250px;object-fit:contain;filter:drop-shadow(0 0 12px #8fb3ff66)}
+.mzs-card__title{position:absolute;left:0;right:0;top:336px;font-size:32px;line-height:46px;letter-spacing:.04em}
+.mzs-card__line{position:absolute;left:30px;right:30px;top:396px;height:2px;background:#aab4c8aa}
+.mzs-card__desc{position:absolute;left:30px;right:30px;top:410px;text-align:left;font-size:20px;line-height:1.45;color:#c9d0de;max-height:150px;overflow-y:auto;scrollbar-width:thin;padding-right:4px}
+.mzs-card__reason{position:absolute;left:30px;right:30px;bottom:12px;font-size:16px;color:#e7b0a8;text-align:left}
+.mzs-card__mark{display:none}
+.mzs-badges{position:absolute;left:16px;top:14px;display:flex;flex-direction:column;gap:6px}
+.mzs-badge{display:block;width:42px;height:46px;background:radial-gradient(circle,#7fa6e8 0 5px,#1b3566 6px 100%);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);opacity:.95}
+.mzs-actions{position:absolute;right:32px;bottom:22px;display:flex;align-items:center;gap:24px;z-index:21}
+.mzs-actions__text{font-size:22px;color:#cdd5e2;text-shadow:0 1px 3px #000}
+
+/* ticket cards on 初始招募 */
+.mzs-ticket{position:absolute;top:208px;width:330px;height:598px;background:linear-gradient(180deg,#0c1220e0,#101a30c0 70%,#16284bb0);box-shadow:inset 0 0 0 1px #4a68a255}
+.mzs-ticket.is-used{filter:grayscale(1) brightness(.6)}
+.mzs-ticket__art{position:absolute;left:0;right:0;top:20px;height:240px;display:flex;align-items:center;justify-content:center}
+.mzs-ticket__art img{width:240px;height:240px;object-fit:contain}
+.mzs-ticket__title{position:absolute;left:0;right:0;top:304px;text-align:center;font-size:32px;line-height:44px}
+.mzs-ticket__line{position:absolute;left:32px;right:32px;top:360px;height:2px;background:#aab4c8aa}
+.mzs-ticket__desc{position:absolute;left:32px;right:32px;top:376px;text-align:center;font-size:24px;line-height:1.5;color:#bfc7d6}
+.mzh-screen .mzs-ticket__btn{position:absolute;left:30px;right:30px;bottom:0;height:70px;font-size:34px;color:#4a525e;background:url(/assets/mizuki/native-ui/init/recruit_btn.png) center/100% 100% no-repeat;opacity:.95}
+.mzh-screen .mzs-ticket__btn:disabled{filter:grayscale(1) brightness(.6)}
+
+/* raised, selected card with the confirm prompt */
+.mzh-screen .mzs-card{transition:top .18s ease,height .18s ease,filter .15s}
+.mzh-screen .mzs-card.is-selected{height:652px;filter:brightness(1.18) saturate(1.15)}
+.mzh-screen .mzs-scroll>.mzs-card.is-selected{top:60px}
+.mzh-screen .mzs-card--group.is-selected{top:314px}
+.mzs-card__title{white-space:nowrap}
+.mzs-card__ask{position:absolute;left:0;right:0;bottom:16px;display:flex;flex-direction:column;align-items:center;gap:14px;z-index:6}
+.mzs-card__ask small{font-size:22px;line-height:28px;color:#e3e9f6;text-shadow:0 1px 3px #000}
+.mzs-card__check{position:relative;display:block;width:56px;height:56px;border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 0 14px #9cc4ffcc}
+.mzs-card__check:after{content:"";position:absolute;left:19px;top:10px;width:12px;height:24px;border:solid #1d5fb4;border-width:0 6px 6px 0;transform:rotate(40deg)}
+.mzs-card__check:hover{filter:brightness(.92)}
+.mzs-card__check.is-disabled{opacity:.5;cursor:not-allowed}
+.mzs-card.is-selected .mzs-card__desc{max-height:120px}

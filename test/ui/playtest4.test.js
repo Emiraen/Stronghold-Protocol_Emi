@@ -216,7 +216,7 @@ describe('7: the detail card shows live stats against the base', () => {
   });
 
   test('the game screen feeds it: g.unitStats for an own board unit in prep (newest answer only), the local sim in battle', () => {
-    const src = read('public/js/screens/game.js');
+    const src = read('public/js/screens/game/match.js');
     assert.match(src, /net\.on\('m\.unitStats'/);
     assert.match(src, /msg\.seq !== statsSeqRef\.current/, 'only the newest request\'s answer');
     assert.match(src, /net\.request\('g\.unitStats', \{ seq: statsSeqRef\.current \}\)/);

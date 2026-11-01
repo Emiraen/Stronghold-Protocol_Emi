@@ -1,3 +1,6 @@
+import { validHealthCounts } from './healthCounts.js';
+import { MIZUKI_VARIANT } from '../shared/mizuki-constants.js';
+import { ZHAJING_VARIANT, ZHAJING_DIFFICULTY } from '../shared/zhajing-constants.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { gzipSync } from 'node:zlib';
@@ -5,6 +8,7 @@ import { sanitizeName } from './net.js';
 import { ChatHub } from './chat.js';
 import { validateRecruitmentItems } from './recruitmentDirectory.js';
 import { DIFFICULTIES, PHASE, MAX_SEATS, ENTERTAINMENT_MAX_SEATS, CYCLOPS_MAX_SEATS, ENDLESS_VARIANT, NAME_MAX_LEN } from '../shared/constants.js';
+import { ANNIHILATION_VARIANT, ANNIHILATION_DIFFICULTY } from '../shared/annihilation-constants.js';
 
 export const LEASE_MS = 12_000;
 export const HEARTBEAT_MS = 3_000;
@@ -55,7 +59,9 @@ export function validateRuntime(value, serverId, copy = true) {
   for (const row of value.matches) {
     if (!object(row, ['code', 'mode', 'difficulty', 'ranked', 'round', 'phase', 'startedAt', 'players'])
       || !code(row.code) || codes.has(row.code) || !['solo', 'coop'].includes(row.mode)
-      || !DIFFICULTIES.includes(row.difficulty) || typeof row.ranked !== 'boolean'
+      || !(DIFFICULTIES.includes(row.difficulty)
+        || ([ANNIHILATION_DIFFICULTY, ZHAJING_DIFFICULTY].includes(row.difficulty) && row.ranked === false))
+      || typeof row.ranked !== 'boolean'
       || !Number.isSafeInteger(row.round) || row.round < 0 || row.round > 1_000_000
       || !(row.phase === '' || Object.values(PHASE).includes(row.phase))
       || !Number.isSafeInteger(row.startedAt) || row.startedAt < 0
@@ -80,9 +86,9 @@ export function validateSpectatorItems(value, serverId, copy = true) {
     if (!object(row, ['serverId', 'code', 'matchId', 'mode', 'variant', 'difficulty', 'ranked', 'startedAt', 'round', 'phase', 'spectators', 'players'])
       || row.serverId !== serverId || roomServer(row.code) !== serverId || codes.has(row.code)
       || typeof row.matchId !== 'string' || !/^[0-9a-f]{32}$/.test(row.matchId) || matches.has(row.matchId)
-      || !['solo', 'coop'].includes(row.mode) || ![null, 'entertainment_multi', 'entertainment_cyclops', ENDLESS_VARIANT].includes(row.variant)
-      || (row.variant !== null && (row.mode !== 'coop' || row.ranked !== false))
-      || !DIFFICULTIES.includes(row.difficulty) || typeof row.ranked !== 'boolean'
+       || !['solo', 'coop'].includes(row.mode) || ![null, MIZUKI_VARIANT, 'entertainment_multi', 'entertainment_cyclops', ENDLESS_VARIANT, ANNIHILATION_VARIANT, ZHAJING_VARIANT].includes(row.variant)
+       || (row.variant !== null && ((row.mode !== 'coop' && ![ANNIHILATION_VARIANT, ZHAJING_VARIANT].includes(row.variant)) || row.ranked !== false))
+       || !(row.variant === ZHAJING_VARIANT ? row.difficulty === ZHAJING_DIFFICULTY : row.variant === ANNIHILATION_VARIANT ? row.difficulty === 'ANNIHILATION' : DIFFICULTIES.includes(row.difficulty)) || typeof row.ranked !== 'boolean'
       || !integer(row.startedAt, Number.MAX_SAFE_INTEGER) || !integer(row.round, 1_000_000)
       || !Object.values(PHASE).includes(row.phase) || !integer(row.spectators, 64)
       || !Array.isArray(row.players) || row.players.length < 1
@@ -133,8 +139,9 @@ export function createSpectatorCache(serverId, now = () => performance.now()) {
 export function validateHeartbeat(value) {
   if (!value || !Object.hasOwn(SERVER_NAMES, value.serverId) || !Array.isArray(value.leases)
     || value.leases.length > 1024) throw new Error('心跳参数无效');
+  if (value.health !== undefined && !validHealthCounts(value.health)) throw new Error('健康统计无效');
   const sample = value.sample;
-  if (!sample || Object.keys(sample).length !== 2 || ![3, 5].includes(sample.bandwidthMbps)
+  if (!sample || Object.keys(sample).length !== 2 || !Number.isFinite(sample.bandwidthMbps) || sample.bandwidthMbps <= 0
     || !(sample.bytesPerSecond === null || (Number.isFinite(sample.bytesPerSecond)
       && sample.bytesPerSecond >= 0 && sample.bytesPerSecond <= Number.MAX_SAFE_INTEGER))) throw new Error('状态采样无效');
   if (value.kickResults !== undefined && (!Array.isArray(value.kickResults) || value.kickResults.length > 2000
@@ -298,7 +305,7 @@ export function createRegionAuthority({ now = () => performance.now(), startupGu
       pruneKicks();
       recordKickResults(value.serverId, value.kickResults);
       const at = now();
-      states.set(value.serverId, { bandwidthMbps: value.sample.bandwidthMbps, bytesPerSecond: value.sample.bytesPerSecond, at });
+      states.set(value.serverId, { bandwidthMbps: value.sample.bandwidthMbps, bytesPerSecond: value.sample.bytesPerSecond, ...(value.health ? { health: { ...value.health } } : {}), at });
       if (value.runtime !== undefined) runtimes.set(value.serverId, { at, value: validateRuntime(value.runtime, value.serverId) });
       if (value.spectatorItems !== undefined) {
         const items = validateSpectatorItems(value.spectatorItems, value.serverId);
@@ -337,7 +344,7 @@ export function createRegionAuthority({ now = () => performance.now(), startupGu
     recruitmentSnapshots() {
       return directorySnapshot(recruitment);
     },
-    states() { return Object.fromEntries([...states].map(([id, sample]) => [id, { ...sample, ageMs: now() - sample.at, load: loadLevel(sample, now()) }])); },
+    states() { return Object.fromEntries([...states].map(([id, sample]) => [id, { ...sample, ...(sample.health ? { health: { ...sample.health } } : {}), ageMs: now() - sample.at, load: loadLevel(sample, now()) }])); },
     adminRuntimes() {
       const at = now();
       return Object.fromEntries(Object.keys(SERVER_NAMES).map((id) => {

@@ -510,7 +510,13 @@
 .sp-overlay-layer .modal, .sp-overlay-layer .guide, .sp-overlay-layer .lo { z-index: 0; }
 .sp-overlay-layer .sp-chat { z-index: 0; }
 .sp-overlay-layer .modal__box .modal__head { position: relative; flex: none; padding-right: 48px; min-height: 40px; }
-.sp-overlay-layer .modal__body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.sp-overlay-layer .modal__body {
+  flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain;
+  touch-action: pan-y; -webkit-overflow-scrolling: touch;
+}
+/* Column-based secondary dialogs (match info/equipment) must overflow, not shrink and clip their
+   sections until scrollHeight equals clientHeight. Social screens own their inner flex scrollers. */
+.sp-overlay-layer .modal__box:not(.social-modal) > .modal__body > * { flex-shrink: 0; }
 .sp-overlay-layer .modal__close { position: absolute; top: 4px; right: 6px; }
 .sp-overlay-layer .sp-overlay-close {
   display: grid; place-items: center; flex: none; width: 32px; height: 32px; min-width: 32px; min-height: 32px;

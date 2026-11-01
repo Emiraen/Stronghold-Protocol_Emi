@@ -32,13 +32,12 @@ export function hFresh(type, props, ...children) {
   if (this && typeof this === 'object') this[0] = 3;
   // Small same-origin gift icons ship with the client, outside the bulk preload packs.
   const giftIcon = type === 'img' && /^\/assets\/local\/ui\/(?:cyclopsIcon|tftAugment)\/[A-Za-z0-9_-]+\.(?:svg|png)$/.test(props?.src || '');
-  const nameCardStatic = type === 'img' && (props?.src === '/assets/local/playercards/good-boy/avatar.png'
-    || props?.src === '/assets/local/playercards/good-boy/poster.webp'
+  // Required card previews use the selected-game-server route; avatars remain same-origin client files.
+  const nameCardAvatar = type === 'img' && (props?.src === '/assets/local/playercards/good-boy/avatar.png'
     || props?.src === '/assets/local/playercards/trickster-outbreak/avatar.png'
-    || props?.src === '/assets/local/playercards/trickster-outbreak/poster.png'
-    || /^\/assets\/local\/playercards\/(?:duck-(?:burnard|flower|brioche)|paintbrush-tactics|soft-and-deadly|hatchbudz-quacked|commander-bruno)\/(?:avatar|poster)\.png$/.test(props?.src || '')
-    || /^\/assets\/local\/playercards\/evori-(?:solari|lunari|amari|terrari|evori)\/(?:avatar|card)\.png$/.test(props?.src || ''));
-  return h(type === 'img' && !giftIcon && !nameCardStatic ? CachedImage : type, props, ...children);
+    || /^\/assets\/local\/playercards\/(?:duck-(?:burnard|flower|brioche)|paintbrush-tactics|soft-and-deadly|hatchbudz-quacked|commander-bruno|ghosty)\/avatar\.png$/.test(props?.src || '')
+    || /^\/assets\/local\/playercards\/evori-(?:solari|lunari|amari|terrari|evori)\/avatar\.png$/.test(props?.src || ''));
+  return h(type === 'img' && !giftIcon && !nameCardAvatar ? CachedImage : type, props, ...children);
 }
 
 /** Tagged-template JSX replacement bound to Preact's h() (no shared static vnodes, see hFresh). */

@@ -133,7 +133,7 @@ test('灵巧: aura on members + 4 neighbours (once), 8 tiles at ≥40 layers, fo
   assert.equal(a('k_n'), 100, 'relocated out of the aura');
   h.b.dealDamage(null, h.unit('k_1'), { amount: 1e9, type: 'true' });
   h.step(2);
-  assert.equal(a('k_d'), 100, 'aura source died');
+  assert.equal(a('k_d'), 150, 'knocked-down member keeps its aura at the downed tile');
   checkInvariants(h.b);
 });
 

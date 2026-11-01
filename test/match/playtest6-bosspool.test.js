@@ -19,6 +19,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PHASE } from '../../shared/constants.js';
 import { makeMatch } from './harness.js';
+import { prepareBossRound } from './bossFixture.js';
 
 /** A real client-combat match (real sim) of 2 humans to the Final Assault on the user's stage and difficulty. */
 function realFinalAssault({ bossId, seed, clientCombat = true }) {
@@ -29,15 +30,11 @@ function realFinalAssault({ bossId, seed, clientCombat = true }) {
   // the autoplay lineups cannot clear a full 绝境 pool: 5 % of it (the tuning knob GameData.bossHpMul) — the pool's
   // arithmetic, not its size, stalled the fight
   m.gd.bossHpMul = () => 0.05;
-  h.autoHumans();
   m.start();
-  let last = '';
-  h.run(() => {
-    const k = `${m.phase}:${m.round}`;
-    if (k !== last) { last = k; if (m.phase === PHASE.PREP && m.round === 1) for (const ps of m.players.values()) ps.lp = 300; }
-    return h.ended != null || m.phase === PHASE.FINAL_ASSAULT;
-  }, { maxSteps: 8e6 });
-  assert.equal(m.phase, PHASE.FINAL_ASSAULT, `${bossId} seed ${seed}: reached the Final Assault`);
+  prepareBossRound(h);
+  // This regression ends at the normal leader; Hidden Core eligibility has its own suite.
+  m.hiddenLayerSum = 0;
+  assert.equal(m.phase, PHASE.FINAL_ASSAULT);
   return h;
 }
 
@@ -46,7 +43,7 @@ function realFinalAssault({ bossId, seed, clientCombat = true }) {
 const STALLED = [['boss_1', 12], ['boss_2', 12], ['boss_3', 11], ['boss_10', 12]];
 
 for (const [bossId, seed] of STALLED) {
-  test(`#5 real match (client-side combat): ${bossId} seed ${seed} — the leader dies as soon as the shared pool is empty, victory, no overtime`, () => {
+  test(`#5 real match (client-side combat): ${bossId} seed ${seed} — the leader dies as soon as the shared pool is empty, victory, no overtime`, async () => {
     const h = realFinalAssault({ bossId, seed });
     const m = h.m;
     const f = m.fields[0];
@@ -77,7 +74,7 @@ for (const [bossId, seed] of STALLED) {
     m.flush(true);
     const pub = h.lastBc('m.public');
     assert.deepEqual(pub.bossHp, { hp: 0, max: m.bossPool.maxHp });
-    const end = h.runToEnd();
+    const end = (await h.runToEnd());
     assert.equal(end.victory, true);
     assert.equal(m.errorCount, 0);
     assert.equal(m.verifyStats.rejected, 0);
@@ -85,14 +82,14 @@ for (const [bossId, seed] of STALLED) {
   });
 }
 
-test('#5 real match (server-run combat, SP_COMBAT=server): the Final Assault ends when the pool empties, never on float dust', () => {
+test('#5 real match (server-run combat, SP_COMBAT=server): the Final Assault ends when the pool empties, never on float dust', async () => {
   const h = realFinalAssault({ bossId: 'boss_3', seed: 11, clientCombat: false });
   const m = h.m;
   const pool = m.bossPool;
   const seen = [];
   const orig = pool.damage.bind(pool);
   pool.damage = (pid, amount) => { const d = orig(pid, amount); seen.push(pool.hp); return d; };
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.ok(seen.length > 0);
   assert.ok(seen.every((hp) => hp === 0 || hp >= 1), 'the pool is 0 or at least 1 HP after every hit');
   assert.equal(pool.hp, 0);
@@ -103,7 +100,7 @@ test('#5 real match (server-run combat, SP_COMBAT=server): the Final Assault end
 
 // ---- the shared pool through the real crediting path (FakeBattle hits a real LocalBossPool; deterministic) ---------
 
-test('#5 client-side combat: a boss dps whose per-player credits used to leave 1.5e-11 in the pool ends the fight when the pool empties', () => {
+test('#5 client-side combat: a boss dps whose per-player credits used to leave 1.5e-11 in the pool ends the fight when the pool empties', async () => {
   for (const dps of [3456.789, 24680.13]) {
     const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 9110, fake: true, clientCombat: true, instant: false,
       script: (b) => (b.kind === 'boss' ? { bossDps: dps } : { duration: 2 }) }).start();
@@ -122,13 +119,13 @@ test('#5 client-side combat: a boss dps whose per-player credits used to leave 1
     assert.ok(endAt != null && endAt <= emptyAt, `dps ${dps}: b.end cleared went out with the empty pool (${emptyAt} / ${endAt} ms; v2.4.1 stalled until the drain at ~205 s)`);
     assert.equal(m._finalEnding, 'cleared');
     assert.equal(m.teamLp, lp0, 'no overtime drain');
-    const end = h.runToEnd();
+    const end = (await h.runToEnd());
     assert.equal(end.victory, true);
     m.dispose();
   }
 });
 
-test('#5 verdict: once the team LP runs out the run is lost — a boss field\'s final result can never credit damage or turn it into a victory', () => {
+test('#5 verdict: once the team LP runs out the run is lost — a boss field\'s final result can never credit damage or turn it into a victory', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 9109, fake: true, clientCombat: true, instant: false,
     script: (b) => (b.kind === 'boss' ? { bossDps: 0, leakEvents: [{ at: 4, lpr: 1 }] } : { duration: 2 }),
     // the authority's b.result after the forced end reports more boss damage than was ever credited (in flight / rounded)
@@ -147,7 +144,7 @@ test('#5 verdict: once the team LP runs out the run is lost — a boss field\'s 
   assert.equal(m._finalEnding, 'forced', 'the team LP ran out first');
   assert.ok(h.clients.get('p_0').log.some((x) => x.t === 'b.result'), 'the authority reported after b.end forced');
   assert.equal(m.bossPool.hp, 50, 'nothing reported after the forced end is credited');
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, false, 'defeat: the team LP reached 0 before the pool');
   assert.equal(end.reason, 'defeat');
   assert.equal(m.teamLp, 0);

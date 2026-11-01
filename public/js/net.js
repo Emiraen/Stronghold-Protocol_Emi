@@ -13,7 +13,8 @@
 //   rid), rejects with a NetError on `error` or after REQUEST_TIMEOUT_MS. Requests made while
 //   reconnecting are queued and flushed after `welcome` (still bound by their timeout).
 // - Every server push is emitted by its `t` (see shared/protocol.js S2C) and as '*'.
-//   Extra events: 'status', 'ping', 'clock', 'helloError', 'unhandledError', 'replaced'.
+//   Extra events: 'status', 'lease', 'ping', 'clock', 'helloError', 'unhandledError', 'replaced'.
+//   The independent 'lease' event never disconnects transport or replays queued game requests.
 // - Server close code 4001 ("session replaced": the same token connected from another tab) stops
 //   auto-reconnect (status 'closed', lastError REPLACED) so two tabs never fight over one session.
 // - Before a name is known (title screen) the socket only pings; the server closes such sockets
@@ -34,7 +35,10 @@
 
 import { PROTOCOL_VERSION, ERR_TEXT, NAME_MAX_LEN } from '../../shared/constants.js';
 import { validateC2S } from '../../shared/protocol.js';
+import { heavyFriendAction } from '../../shared/friends.js';
 import { PrioritySender, CongestionTrend } from '../../shared/sendFlow.js';
+import { MIZUKI_VARIANT } from '../../shared/mizuki-constants.js';
+import { mergeMizukiFieldData, mergeMizukiFieldEvents, mizukiFieldMetadata } from './mizukiSnapshots.js';
 
 export const REQUEST_TIMEOUT_MS = 8000;
 export const HELLO_TIMEOUT_MS = 8000;
@@ -148,9 +152,44 @@ const WS_OPEN = 1;
 const WS_CONNECTING = 0;
 const STATE_TYPES = new Set(['m.public', 'm.private', 'b.snap', 'b.pool']);
 const stateKey = (msg) => msg.t === 'b.snap' ? `b.snap:${msg.fieldId}` : msg.t;
+function expandCompactState(msg, bases, cachedFields, stream) {
+  if (msg.t !== 'm.public' || msg.variant !== MIZUKI_VARIANT || !Array.isArray(msg.mizuki?.fields)) throw new Error('invalid compact state');
+  const fields = msg.mizuki.fields.map(field => {
+    if (!Array.isArray(field)) return field;
+    if (field[0] === '$h') {
+      const overview = field[1];
+      if (!stream || field.length !== 2 || !overview || typeof overview !== 'object' || Array.isArray(overview)
+          || typeof overview.fieldId !== 'string' || typeof overview.battleId !== 'string' || !Number.isFinite(overview.t)) throw new Error('invalid field overview');
+      const snapshot = bases.get(`b.snap:${overview.fieldId}`)?.v;
+      const previous = cachedFields.get(overview.fieldId);
+      const retained = snapshot?.battleId === overview.battleId ? snapshot : previous?.battleId === overview.battleId ? previous : null;
+      const value = retained ? JSON.parse(JSON.stringify(retained)) : {};
+      delete value.time;
+      return { ...value, ...overview, __overview: true };
+    }
+    if (field.length !== 3 || field[0] !== '$b' || typeof field[1] !== 'string' || typeof field[2] !== 'string') throw new Error('invalid battle reference');
+    const snapshot = bases.get(`b.snap:${field[1]}`)?.v;
+    if (snapshot?.t !== 'b.snap' || snapshot.fieldId !== field[1] || snapshot.battleId !== field[2] || !Number.isFinite(snapshot.time)) throw new Error('missing battle reference');
+    // Never expose retained delta baselines to UI subscribers.
+    const value = JSON.parse(JSON.stringify(snapshot));
+    value.t = value.time; delete value.time;
+    return value;
+  });
+  return { ...msg, mizuki: { ...msg.mizuki, fields } };
+}
 function applyStatePatch(base, patch) {
-  let value = JSON.parse(JSON.stringify(base));
   if (!Array.isArray(patch)) throw new Error('invalid state patch');
+  // Only copy changed ancestors here. _decodeState keeps a separate deep copy as
+  // the next baseline, so consumers cannot change it through untouched branches.
+  // Deep-cloning both here and there stalls the main thread on large field views.
+  const owned = new WeakSet();
+  const copy = (value) => {
+    if (!value || typeof value !== 'object') return value;
+    const result = Array.isArray(value) ? value.slice() : { ...value };
+    owned.add(result);
+    return result;
+  };
+  let value = copy(base);
   for (const op of patch) {
     if (!Array.isArray(op) || ![1, 2].includes(op.length) || !Array.isArray(op[0])) throw new Error('invalid state operation');
     const path = op[0];
@@ -163,6 +202,7 @@ function applyStatePatch(base, patch) {
     let parent = value;
     for (const key of path.slice(0, -1)) {
       if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, key)) throw new Error('missing state path');
+      if (parent[key] && typeof parent[key] === 'object' && !owned.has(parent[key])) parent[key] = copy(parent[key]);
       parent = parent[key];
     }
     if (!parent || typeof parent !== 'object') throw new Error('invalid state parent');
@@ -216,6 +256,9 @@ export class Net {
 
     /** @type {'idle'|'connecting'|'connected'|'handshaking'|'online'|'reconnecting'|'closed'} */
     this.status = 'idle';
+    // Lease recovery is not a transport disconnect: retain the current route and match.
+    this.leaseState = 'active';
+    this.leaseRetryMs = 0;
     this.ws = null;
     this.name = null;          // desired player name (hello is sent when set)
     this.helloName = null;     // name we sent in the hello that got the last welcome
@@ -239,6 +282,7 @@ export class Net {
     this._reconnectTimer = null;
     this._connectTimer = null;
     this._resumeTimer = null;
+    this._silenceTimer = null;
     this._connectStartedAt = 0;
     this._pingTimer = null;
     this._helloTimer = null;
@@ -256,8 +300,13 @@ export class Net {
     this.trend = new CongestionTrend({ expiryMs: RTT_SAMPLE_MAX_AGE_MS, now: this.monotonicNow });
     this._flow = null;
     this._stateBases = new Map();
+    this._mizukiFieldBases = new Map();
+    this._mizukiFieldMetadata = new Map();
     this._stateEpoch = null;
     this._stateDelta = false;
+    this._stateCompact = false;
+    this._stateStream = false;
+    this._mizukiWatchRequest = null;
     this.serverProgressMs = 250;
   }
 
@@ -265,7 +314,7 @@ export class Net {
 
   /**
    * Subscribe to a message type (any S2C `t`), '*' (all messages) or a client event
-   * ('status' | 'ping' | 'clock' | 'helloError' | 'unhandledError').
+   * ('status' | 'lease' | 'ping' | 'clock' | 'helloError' | 'unhandledError').
    * @param {string} type
    * @param {(payload: any) => void} fn
    * @returns {() => void} unsubscribe
@@ -300,6 +349,16 @@ export class Net {
     };
   }
 
+  _setLeaseState(state, retryMs = 0) {
+    const delay = state === 'recovering' && Number.isFinite(retryMs)
+      ? Math.min(30_000, Math.max(0, Math.floor(retryMs))) : 0;
+    if (this.leaseState === state && this.leaseRetryMs === delay) return;
+    this.leaseState = state;
+    this.leaseRetryMs = delay;
+    // Do not emit 'status': online listeners can resubmit game progress after a reconnect.
+    this._emit('lease', { state, retryMs: delay });
+  }
+
   _setStatus(status) {
     this.status = status;
     this._emit('status', this.snapshot());
@@ -325,6 +384,7 @@ export class Net {
       this._scheduleReconnect();
       return;
     }
+    this._setLeaseState('active');
     this.ws = ws;
     this._connectStartedAt = this.now();
     if (!quiet) this._setStatus(this.attempt > 0 ? 'reconnecting' : 'connecting');
@@ -454,9 +514,15 @@ export class Net {
 
   _onOpen() {
     this._clearTimer('_resumeTimer', 'clearTimeout');
+    this._clearTimer('_silenceTimer', 'clearTimeout');
     this._stateBases.clear();
+    this._mizukiFieldBases.clear();
+    this._mizukiFieldMetadata.clear();
     this._stateEpoch = null;
     this._stateDelta = false;
+    this._stateCompact = false;
+    this._stateStream = false;
+    this._mizukiWatchRequest = null;
     this.serverProgressMs = 250;
     this._clearTimer('_connectTimer', 'clearTimeout');
     this._flow?.close();
@@ -564,10 +630,17 @@ export class Net {
   }
 
   _teardownSocket() {
+    this._setLeaseState('active');
     this._clearTimer('_resumeTimer', 'clearTimeout');
+    this._clearTimer('_silenceTimer', 'clearTimeout');
     this._stateBases.clear();
+    this._mizukiFieldBases.clear();
+    this._mizukiFieldMetadata.clear();
     this._stateEpoch = null;
     this._stateDelta = false;
+    this._stateCompact = false;
+    this._stateStream = false;
+    this._mizukiWatchRequest = null;
     this.serverProgressMs = 250;
     this._flow?.close();
     this._flow = null;
@@ -613,7 +686,7 @@ export class Net {
     this._clearTimer('_stableTimer', 'clearTimeout');
     this._clearTimer('_queueTimer', 'clearTimeout');
     const rid = this._nextRid();
-    const msg = { t: 'hello', rid, name: this.name, version: PROTOCOL_VERSION, stateDelta: 1, resumeProbe: 1 };
+    const msg = { t: 'hello', rid, name: this.name, version: PROTOCOL_VERSION, stateDelta: 1, stateCompact: 1, stateStream: 2, resumeProbe: 1 };
     let auth = this._loginAuth;
     if (!auth) {
       try { auth = this.getAuth(this.name); } catch { auth = null; }
@@ -651,9 +724,15 @@ export class Net {
   }
 
   _onWelcome(msg) {
+    this._setLeaseState('active');
     this._stateBases.clear();
+    this._mizukiFieldBases.clear();
+    this._mizukiFieldMetadata.clear();
     this._stateEpoch = null;
     this._stateDelta = msg.stateDelta === 1;
+    this._stateCompact = this._stateDelta && msg.stateCompact === 1;
+    this._stateStream = this._stateDelta && [1, 2].includes(msg.stateStream);
+    this._mizukiWatchRequest = null;
     this.serverProgressMs = Number.isFinite(msg.progressMs) ? Math.min(2000, Math.max(250, msg.progressMs)) : 250;
     this._clearTimer('_helloTimer', 'clearTimeout');
     this._helloRid = null;
@@ -678,6 +757,19 @@ export class Net {
   }
 
   // ---- requests --------------------------------------------------------------------------------
+
+  /** Request the full-rate Mizuki board currently rendered; older servers keep their full stream. */
+  watchMizukiField(fieldId, { spectator = false } = {}) {
+    if (!this._stateStream || this.status !== 'online' || typeof fieldId !== 'string' || !fieldId || fieldId.length > 32) return Promise.resolve(false);
+    const type = spectator ? 'spectator.watch' : 'g.watch';
+    if (this._mizukiWatchRequest?.fieldId === fieldId && this._mizukiWatchRequest.type === type) return this._mizukiWatchRequest.promise;
+    const pending = { fieldId, type, promise: null };
+    pending.promise = this.request(type, { fieldId, ...(!spectator ? { viewOnly: true } : {}) }).then(() => true, () => false).finally(() => {
+      if (this._mizukiWatchRequest === pending) this._mizukiWatchRequest = null;
+    });
+    this._mizukiWatchRequest = pending;
+    return pending.promise;
+  }
 
   _nextRid() {
     this._rid = (this._rid % 2147483000) + 1;
@@ -825,7 +917,7 @@ export class Net {
         if (this.status !== 'online') return;
         if (entry.sent || entry.queued || (entry.msg.t.startsWith('chat.') ? 'low' : 'high') !== priority) continue;
         const now = this.now();
-        const heavy = HEAVY_TYPES.has(entry.msg.t);
+        const heavy = HEAVY_TYPES.has(entry.msg.t) || heavyFriendAction(entry.msg);
         const wait = Math.max(0, count === 0 ? this._queueBatchAt - now : 0,
           heavy ? this._queueHeavyAt - now : 0);
         if (count >= QUEUE_BATCH_SIZE || wait > 0) {
@@ -886,6 +978,7 @@ export class Net {
     if (this._stateEpoch !== frame.e) {
       if (frame.t !== 'net.state') throw new Error('missing full state');
       this._stateBases.clear();
+      this._mizukiFieldBases.clear();
       this._stateEpoch = frame.e;
     }
     const previous = this._stateBases.get(frame.k);
@@ -897,15 +990,42 @@ export class Net {
     }
     if (!msg || typeof msg !== 'object' || Array.isArray(msg) || !STATE_TYPES.has(msg.t)
         || stateKey(msg) !== frame.k) throw new Error('invalid reconstructed state');
+    if (frame.c != null && frame.c !== 1) throw new Error('invalid compact version');
+    if (frame.c === 1 && !this._stateCompact) throw new Error('unnegotiated compact state');
+    const expanded = frame.c === 1 ? expandCompactState(msg, this._stateBases, this._mizukiFieldBases, this._stateStream) : msg;
     // 订阅消费者可能修改对象，基准必须持有独立副本。
     this._stateBases.delete(frame.k);
-    this._stateBases.set(frame.k, { n: frame.n, v: JSON.parse(JSON.stringify(msg)) });
+    const retained = JSON.parse(JSON.stringify(msg));
+    this._stateBases.set(frame.k, { n: frame.n, v: retained });
     if (this._stateBases.size > 64) this._stateBases.delete(this._stateBases.keys().next().value);
-    return msg;
+    if (msg.t === 'm.public' && Array.isArray(retained.mizuki?.fields)) for (const field of retained.mizuki.fields) {
+      if (!field || Array.isArray(field) || typeof field.fieldId !== 'string') continue;
+      this._mizukiFieldBases.delete(field.fieldId); this._mizukiFieldBases.set(field.fieldId, field);
+      if (this._mizukiFieldBases.size > 64) this._mizukiFieldBases.delete(this._mizukiFieldBases.keys().next().value);
+    }
+    return this._hydrateMizukiFields(expanded);
+  }
+
+  _hydrateMizukiFields(message) {
+    if (message?.t !== 'm.public' || message.variant !== MIZUKI_VARIANT || !Array.isArray(message.mizuki?.fields)) return message;
+    const fields = message.mizuki.fields.map(field => {
+      if (!field || Array.isArray(field)) return field;
+      const cached = this._mizukiFieldMetadata.get(field.fieldId);
+      const hydrated = mergeMizukiFieldData(cached ? JSON.parse(JSON.stringify(cached)) : null, field);
+      if (field.meta) {
+        const { fieldId, battleId, meta, stage, geometry } = field;
+        this._mizukiFieldMetadata.delete(fieldId);
+        this._mizukiFieldMetadata.set(fieldId, JSON.parse(JSON.stringify({ fieldId, battleId, meta, ...(stage ? { stage } : {}), ...(geometry ? { geometry } : {}) })));
+        if (this._mizukiFieldMetadata.size > 64) this._mizukiFieldMetadata.delete(this._mizukiFieldMetadata.keys().next().value);
+      }
+      return hydrated;
+    });
+    return { ...message, mizuki: { ...message.mizuki, fields } };
   }
 
   _onMessage(data) {
     let msg;
+    let decodedState = false;
     try {
       msg = JSON.parse(typeof data === 'string' ? data : String(data));
     } catch {
@@ -914,14 +1034,28 @@ export class Net {
     }
     if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.t !== 'string') return;
     if (msg.t === 'net.state' || msg.t === 'net.delta') {
-      try { msg = this._decodeState(msg); }
+      try { msg = this._decodeState(msg); decodedState = true; }
       catch {
         this._disconnectForRetry('state resync');
         return;
       }
     }
+    if (msg.t === 'm.field') {
+      const metadata = mizukiFieldMetadata(msg);
+      if (metadata) {
+        const previous = this._mizukiFieldMetadata.get(metadata.fieldId);
+        this._mizukiFieldMetadata.delete(metadata.fieldId);
+        this._mizukiFieldMetadata.set(metadata.fieldId, JSON.parse(JSON.stringify(mergeMizukiFieldData(previous, metadata))));
+        if (this._mizukiFieldMetadata.size > 64) this._mizukiFieldMetadata.delete(this._mizukiFieldMetadata.keys().next().value);
+      }
+    } else if (msg.t === 'b.ev') {
+      const previous = this._mizukiFieldMetadata.get(msg.fieldId);
+      const next = mergeMizukiFieldEvents(previous, JSON.parse(JSON.stringify(msg)));
+      if (next !== previous) this._mizukiFieldMetadata.set(msg.fieldId, next);
+    } else if (msg.t === 'm.public' && !decodedState) msg = this._hydrateMizukiFields(msg);
     this._lastRx = this.now();
     this._clearTimer('_resumeTimer', 'clearTimeout');
+    this._clearTimer('_silenceTimer', 'clearTimeout');
     this._unansweredSince = null;
     const { t } = msg;
     const rid = msg.rid;
@@ -939,7 +1073,10 @@ export class Net {
         this._sendRaw({ t: 'session.probeAck', nonce: msg.nonce });
       return;
     }
-    if (t === 'welcome') {
+    if (t === 'session.lease') {
+      if (this.status !== 'online' || !['recovering', 'active'].includes(msg.state)) return;
+      this._setLeaseState(msg.state, msg.retryMs);
+    } else if (t === 'welcome') {
       this._onWelcome(msg);
     } else if (t === 'pong') {
       this._onPong(msg);
@@ -983,11 +1120,26 @@ export class Net {
     const live = this.status === 'online' || this.status === 'connected';
     const timeout = this._background ? BACKGROUND_DEAD_AFTER_MS : DEAD_AFTER_MS;
     if (live && this._unansweredSince != null && this.monotonicNow() - this._unansweredSince > timeout) {
-      console.warn('[net] connection silent; reconnecting');
-      this._teardownSocket();
-      try { ws.close(4000, 'heartbeat timeout'); } catch { /* ignore */ }
-      this._failPending('DISCONNECTED', false);
-      this._scheduleReconnect();
+      if (this._silenceTimer == null) {
+        const since = this._unansweredSince;
+        // A delayed heartbeat may run before an already queued message after a long task.
+        // Yield one task only; never reset or extend the original silence deadline.
+        const timer = this.timers.setTimeout(() => {
+          if (ws !== this.ws || this._silenceTimer !== timer) return;
+          this._silenceTimer = null;
+          if (this._manualClose || ws.readyState !== WS_OPEN
+              || this._unansweredSince !== since || !['online', 'connected'].includes(this.status)) return;
+          this._syncVisibility();
+          const limit = this._background ? BACKGROUND_DEAD_AFTER_MS : DEAD_AFTER_MS;
+          if (this._unansweredSince == null || this.monotonicNow() - this._unansweredSince <= limit) return;
+          console.warn('[net] connection silent; reconnecting');
+          this._teardownSocket();
+          try { ws.close(4000, 'heartbeat timeout'); } catch { /* ignore */ }
+          this._failPending('DISCONNECTED', false);
+          this._scheduleReconnect();
+        }, 0);
+        this._silenceTimer = timer;
+      }
       return;
     }
     const interval = this._background ? BACKGROUND_PING_INTERVAL_MS : PING_INTERVAL_MS;
@@ -1065,9 +1217,13 @@ export class Net {
       // 恢复前台先给新探测完整答复窗口，不用暂停期间积累的旧超时断线。
       this._unansweredSince = null;
       this._pingSamples.clear();
+      this._clearTimer('_silenceTimer', 'clearTimeout');
     }
     this._background = hidden;
-    if (hidden) this._clearTimer('_resumeTimer', 'clearTimeout');
+    if (hidden) {
+      this._clearTimer('_resumeTimer', 'clearTimeout');
+      this._clearTimer('_silenceTimer', 'clearTimeout');
+    }
   }
 
   /** A mobile browser may keep a dead transport OPEN after suspension or a network change. */
@@ -1093,14 +1249,10 @@ export class Net {
       }
       return;
     }
-    if (!['online', 'connected'].includes(this.status) || this._resumeTimer != null) return;
+    if (!['online', 'connected'].includes(this.status)) return;
+    // Focus/network signals only probe live sessions. Keep the existing heartbeat deadline;
+    // neither a shorter three-second timer nor repeated focus may decide or defer disconnect.
     this.probe();
-    if (ws !== this.ws) { this.retryNow(); return; }
-    // Repeated focus/visibility signals must not keep extending the recovery deadline.
-    this._resumeTimer = this.timers.setTimeout(() => {
-      this._resumeTimer = null;
-      if (ws === this.ws && !this._manualClose && !this.isHidden()) this.reconnectNow();
-    }, RESUME_PROBE_MS);
   }
 
   attachBrowserHooks() {
@@ -1219,6 +1371,7 @@ export function createIdentity(deps = {}) {
     return isToken(token) ? token : null;
   };
   const savedServer = sget(session, K_SERVER) || sget(local, K_SERVER);
+  let serverSelected = ['main', 'secondary'].includes(savedServer);
   let serverId = savedServer === 'secondary' ? 'secondary' : 'main';
   // 保留华东旧键兼容；华南凭据与页面 origin 解耦，仍单独保存。
   let K_TOKEN = `sp.server.${SESSION_SCOPE}${serverId === 'main' ? '' : '.secondary'}.token`;
@@ -1336,10 +1489,12 @@ export function createIdentity(deps = {}) {
       sdel(session, authKey(normalized));
     },
     getServer: () => serverId,
+    hasSelectedServer: () => serverSelected,
     selectServer(id) {
       if (!['main', 'secondary'].includes(id)) throw new Error('无效服务器');
       current = null;
       serverId = id;
+      serverSelected = true;
       sset(session, K_SERVER, id);
       K_TOKEN = `sp.server.${SESSION_SCOPE}${id === 'main' ? '' : '.secondary'}.token`;
       K_RECENT = `sp.server.${SESSION_SCOPE}${id === 'main' ? '' : '.secondary'}.tokens`;

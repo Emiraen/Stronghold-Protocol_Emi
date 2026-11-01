@@ -564,7 +564,7 @@ test('#10 AI 托管 never destroys a human\'s item to clear temp: a bench operat
   const elites = [1, 2, 3, 4, 5, 6].flatMap((t) => plainOf(m, t)).map((id) => m.gd.goldenIdOf(id)).filter((g) => g && m.pool.left(m.gd.baseIdOf(g)) >= m.gd.goldenCopies);
   while (ps.hand.some((x) => x == null)) give(m, ps, elites.shift(), 'hand');
   const item = Object.values(DATA.items).find((it) => it && it.id !== CELL && !it.isGolden && it.price > 0 && /_e_a$/.test(it.id));
-  giveItem(m, ps, item.id, 'temp');
+  giveItem(m, ps, item.id, 'temp', 0);
   botPrepEnd(m, ps);
   assert.equal(ownedItems(ps, item.id).length, 1, `${item.name}: kept (it used to be destroyed when the hand was full)`);
   assert.ok(ps.tempEmpty, 'temp resolved');
@@ -579,7 +579,7 @@ test('#4 a bot never destroys the cell: left in temp with a full hand and nobody
   const elites = [1, 2, 3, 4, 5, 6].flatMap((t) => plainOf(m, t)).map((id) => m.gd.goldenIdOf(id)).filter((g) => g && m.pool.left(m.gd.baseIdOf(g)) >= m.gd.goldenCopies);
   for (let i = 0; i < 8; i++) { const id = elites.shift(); give(m, ps, id, 'board', legalTileFor(m, ps, id)); }
   while (ps.hand.some((x) => x == null)) give(m, ps, elites.shift(), 'hand');
-  giveItem(m, ps, CELL, 'temp');
+  giveItem(m, ps, CELL, 'temp', 0);
   assert.equal(cellTarget(m, ps), null, 'elites only: nobody to inject');
   botPrepEnd(m, ps); // the end of the bot's prep: temp → hand / sell / destroy, a free hand slot, Ready
   assert.equal(ownedItems(ps, CELL).length, 1, 'the bot kept its strategy item (a hand chess was sold for the slot)');

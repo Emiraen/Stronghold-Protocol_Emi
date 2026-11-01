@@ -1,0 +1,1051 @@
+{
+  "source": {
+    "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/roguelike_topic_table.json",
+    "retrievedAt": "2026-10-27",
+    "sha256": "7541a13e7c9670844c0ebcafe5a776ea71a775ac5b57cb4fb10ce718752ca0c9"
+  },
+  "levelsById": {
+    "obt/roguelike/ro2/level_rogue2_1-1": {
+      "file": "level_rogue2_1-1.json",
+      "sha256": "29956c5c12e46ac82a5023f87f16e197e8620b71f62a564aff204ecd38634336",
+      "bytes": 105002,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_1-2": {
+      "file": "level_rogue2_1-2.json",
+      "sha256": "3c1b0683ab4e95eae08b6071c15e5b1bc10a4879f2479d1090cb587a69777cbb",
+      "bytes": 118882,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_1-3": {
+      "file": "level_rogue2_1-3.json",
+      "sha256": "5f9899b9b51b36f66e23c4e1360aa956a96c6966f7997e95c073f4d4502c98b1",
+      "bytes": 97937,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_1-4": {
+      "file": "level_rogue2_1-4.json",
+      "sha256": "c64b95e8127cbfef58bb29d3472e75a79d693ae3362e4aac9f6fc42c75d4b8ec",
+      "bytes": 127597,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_1-5": {
+      "file": "level_rogue2_1-5.json",
+      "sha256": "b7341579e48ebdfc6621c91564911bca3c5520426a58a5c4929c75e3ca8d87c2",
+      "bytes": 82605,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_2-1": {
+      "file": "level_rogue2_2-1.json",
+      "sha256": "0c3183b368e1ec5f75c90e71f5f4e1682628e6402c40c09466bf0807cae2d3f9",
+      "bytes": 96042,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_2-2": {
+      "file": "level_rogue2_2-2.json",
+      "sha256": "f93ba2e6c9cd8f9779902f7d8a4baf283bc2b81f801e804fd3eb8b400b9f4b77",
+      "bytes": 137279,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_2-3": {
+      "file": "level_rogue2_2-3.json",
+      "sha256": "27ff63d225fe27e1b23228c75afc43cefc6177007b90dadb30433aaa686e5157",
+      "bytes": 98395,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_2-4": {
+      "file": "level_rogue2_2-4.json",
+      "sha256": "806312cf4b64010c43d6baf24cfe4d59f2d55a84b2527bf48db33648ad0ee07c",
+      "bytes": 97559,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_2-5": {
+      "file": "level_rogue2_2-5.json",
+      "sha256": "7d385db8ebe59327d7c9b7567bd3c514bf4d486982d601b10d85bc8a8d2b15a3",
+      "bytes": 238443,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_2-6": {
+      "file": "level_rogue2_2-6.json",
+      "sha256": "86694fafeb2fdbf7859318cf55588dfb2d6ba6427480ca56cc61aabcca595767",
+      "bytes": 114177,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-6.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-1": {
+      "file": "level_rogue2_3-1.json",
+      "sha256": "792e02ee9db0e1ae64cc99524892c8d30a3ac87e8dd8549781016430a6a0f5bc",
+      "bytes": 130359,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-2": {
+      "file": "level_rogue2_3-2.json",
+      "sha256": "364f8aa6c8ba213ea0751c2fd5a83830cf8271bae75ca95651cd353a73ed3e7c",
+      "bytes": 115976,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-3": {
+      "file": "level_rogue2_3-3.json",
+      "sha256": "33ed5f4f89f7020de230745d812b3fde561739600e46904549996d089e00c9c1",
+      "bytes": 81708,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-4": {
+      "file": "level_rogue2_3-4.json",
+      "sha256": "4a81e5caf1b059190ef39efb2bc9a72cf0c12e07fa9f548cb5b0a614fb0555bb",
+      "bytes": 140787,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-5": {
+      "file": "level_rogue2_3-5.json",
+      "sha256": "68347b6243637da8052d398a49ce2c53ee0c6b044a942c8a4e39af81d0989601",
+      "bytes": 259706,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-6": {
+      "file": "level_rogue2_3-6.json",
+      "sha256": "dcae5e908a76cd1717bfc6f82bf61b3525eecc015b16004060e4ac7664d7e550",
+      "bytes": 166113,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-6.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-7": {
+      "file": "level_rogue2_3-7.json",
+      "sha256": "92fabc797b949301129e8c4e729bc3ebf8229ec7e3dfd8dbd0e28706589383ea",
+      "bytes": 259543,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-7.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_3-8": {
+      "file": "level_rogue2_3-8.json",
+      "sha256": "67fcd6d35a38243cb9e1e0a2dd49ab1c82ca74755589d4f24363cceb6d1f3d79",
+      "bytes": 93544,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-8.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-1": {
+      "file": "level_rogue2_4-1.json",
+      "sha256": "77ec1e45fd1ba8bf4edf7a724ff77d00912f9d105f25292b1a053599b56f88b7",
+      "bytes": 134617,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-2": {
+      "file": "level_rogue2_4-2.json",
+      "sha256": "42749f519a73a55335fff328093edbb70a65a3ad7a433a654f3b94c0d8efc121",
+      "bytes": 205916,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-3": {
+      "file": "level_rogue2_4-3.json",
+      "sha256": "e38ed3541014881e047ba2ac237908d5fa50a9ad54f44980fa92c33b03612b09",
+      "bytes": 119772,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-4": {
+      "file": "level_rogue2_4-4.json",
+      "sha256": "6386501f7f245a9dc47fbc1a18a555e5fe578750f2942dbb7d653b601fe65b5b",
+      "bytes": 175307,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-5": {
+      "file": "level_rogue2_4-5.json",
+      "sha256": "3ce2bedd18bffe623b75c2c62940fbcf1e0d1ea4a365325c28702f5e92a413e0",
+      "bytes": 151216,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-6": {
+      "file": "level_rogue2_4-6.json",
+      "sha256": "e8436e705427b8a62b5b92b37b913f374f975051c76e1be7e60dbf9a0d71018a",
+      "bytes": 151579,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-6.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-7": {
+      "file": "level_rogue2_4-7.json",
+      "sha256": "de4dba24c64f3d49c70dad4fd38742215a3a5671800db1c3fbf9b3bd585d1920",
+      "bytes": 131170,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-7.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_4-8": {
+      "file": "level_rogue2_4-8.json",
+      "sha256": "b7941ff924bcea3d99a66e44ffccf97de6e55f44c9b3f7160b7be7618f459bc0",
+      "bytes": 121832,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-8.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-1": {
+      "file": "level_rogue2_5-1.json",
+      "sha256": "50771cebc5adcf30b3a4fd57785853c409631c5af570afe90cd84f9ec6e74325",
+      "bytes": 151213,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-2": {
+      "file": "level_rogue2_5-2.json",
+      "sha256": "591e621085e5bc575667096f61e481d6f5915ea9eb8027d9bd2e3f886ffea1c5",
+      "bytes": 126149,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-3": {
+      "file": "level_rogue2_5-3.json",
+      "sha256": "535388e9dbdd1435e557aa9503c9bdc87adfb01b11038c8e91b1067c7baf07ba",
+      "bytes": 113804,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-4": {
+      "file": "level_rogue2_5-4.json",
+      "sha256": "f6d79d80639500c33036f11d2dccd7fd465aadf9abdf8c124aa314c10124ff88",
+      "bytes": 256179,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-5": {
+      "file": "level_rogue2_5-5.json",
+      "sha256": "e72022b1949937607e7056a86b9c86c4ace41b9ef5aef1e0209bb124f75e5c4d",
+      "bytes": 147298,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-6": {
+      "file": "level_rogue2_5-6.json",
+      "sha256": "5636c83aa31eebb75c874be5e24aaec1cca320bcdfe7ebe331d3809453ddd566",
+      "bytes": 236415,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-6.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-7": {
+      "file": "level_rogue2_5-7.json",
+      "sha256": "1f46fa17f9b3953cf1184cfa309daa42d9be6f11a515052c7f1003b359419738",
+      "bytes": 133765,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-7.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_5-8": {
+      "file": "level_rogue2_5-8.json",
+      "sha256": "de3f6ee4d263b572ed0f555dcec33a9f886a74e9cd41a66d576f67df3b07cd0d",
+      "bytes": 109203,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-8.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_6-1": {
+      "file": "level_rogue2_6-1.json",
+      "sha256": "3492d430a22a84a16ae403cac9e93c26ec8e3e8fbb68310eaff4292c49ab22f1",
+      "bytes": 173229,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_6-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_6-2": {
+      "file": "level_rogue2_6-2.json",
+      "sha256": "2ff5480b64631d730bf793fec71e507fc61f4af23544bb227f50cdc353655261",
+      "bytes": 123131,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_6-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-1": {
+      "file": "level_rogue2_b-1.json",
+      "sha256": "bae6c952d7dc091a435b7d6fa3ea6dc0fbbd8d909e88fa9d67267e78a4e4fd1b",
+      "bytes": 76826,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-1-b": {
+      "file": "level_rogue2_b-1-b.json",
+      "sha256": "09a3bb66a8fc982fd22a6da0c8f20f7af136386abdd585d69b83364c641f48ec",
+      "bytes": 75915,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-1-b.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-10": {
+      "file": "level_rogue2_b-10.json",
+      "sha256": "3ec5d92e69263a0b5f151917046612c482431cc3801ba3ad8d191922bfadd56a",
+      "bytes": 181823,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-10.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-2": {
+      "file": "level_rogue2_b-2.json",
+      "sha256": "85bdc32c0d2a4eb70fd149941e49cc6bc14c4e7fa4aeee0b74d27ca625965978",
+      "bytes": 76086,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-2-b": {
+      "file": "level_rogue2_b-2-b.json",
+      "sha256": "18edf36e5ffa6e31447e2f1ecfb5a1dde8fbf90cca4440d67988e7c40f7d6b10",
+      "bytes": 76088,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-2-b.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-3": {
+      "file": "level_rogue2_b-3.json",
+      "sha256": "b0286702e7a4a98406c5c5bf5aab9615470798f06bc82be04b0787055fd2d73b",
+      "bytes": 48638,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-3-b": {
+      "file": "level_rogue2_b-3-b.json",
+      "sha256": "47e381f28024b596bd58fab40d1329250a1dd2757a8bd91086178aa53ccf3e25",
+      "bytes": 44712,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-3-b.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-4": {
+      "file": "level_rogue2_b-4.json",
+      "sha256": "cfa8d5e3b428f6c60a2d41fa4bb5ce52ed2d2d41936038d187fbb4cd54f771dc",
+      "bytes": 190888,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-5": {
+      "file": "level_rogue2_b-5.json",
+      "sha256": "0b76d5ebb57c1a3b43e0a1dc64abcad694786e803d6a355fee6c967ef70b1424",
+      "bytes": 142066,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-6": {
+      "file": "level_rogue2_b-6.json",
+      "sha256": "31b2d18636323121a835b8893d40c4024f46769fc14b5040eacd41a23fe2fc36",
+      "bytes": 214120,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-6.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-7": {
+      "file": "level_rogue2_b-7.json",
+      "sha256": "782cdb3b8832a1cef46ed7ebf604c40882ab5c46a0673357d9f6463c85d3ae93",
+      "bytes": 720346,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-7.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-8": {
+      "file": "level_rogue2_b-8.json",
+      "sha256": "302b1a6fe3d48b5974d5c0b8f7e83fd31eafa9964aab3cf292ba0dce80a677fd",
+      "bytes": 160562,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-8.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_b-9": {
+      "file": "level_rogue2_b-9.json",
+      "sha256": "8c249a5b1894dbdab1bc95ede5ba190b0ca0431463de9770bd85114276ac06e9",
+      "bytes": 95635,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-9.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_ev-1": {
+      "file": "level_rogue2_ev-1.json",
+      "sha256": "81d7e5b133890f5e692cf1c8aeab6898ad58c0cd5bc637c71f8ad71539f01abe",
+      "bytes": 71476,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_ev-2": {
+      "file": "level_rogue2_ev-2.json",
+      "sha256": "0b98f769c0421d8c1cc1dd558dbb579f8f4bc75009b6af4ae78654eb8b2311b3",
+      "bytes": 51789,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_ev-3": {
+      "file": "level_rogue2_ev-3.json",
+      "sha256": "14b51f2eebc208592acccdda2af5992f73c20dc5a06f46302bac7cd6878aeaa9",
+      "bytes": 206366,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_ev-4": {
+      "file": "level_rogue2_ev-4.json",
+      "sha256": "03bd9806768234352b9bd7474433b80b0c46aa4a79a81a3f3fe22e511647f3a9",
+      "bytes": 99750,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_ev-5": {
+      "file": "level_rogue2_ev-5.json",
+      "sha256": "f98643c0c9b437502c2303a205ef005b5a714e5a53cb9595c6df342db6b9d201",
+      "bytes": 101999,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-5.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_t-1": {
+      "file": "level_rogue2_t-1.json",
+      "sha256": "d878542858d7451886b2764d65c58ea86a02e8698ac1726cce7cf50e93d329ec",
+      "bytes": 66679,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-1.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_t-2": {
+      "file": "level_rogue2_t-2.json",
+      "sha256": "d4970ffbe02e1c6b24b3f949d322728e5f9d3d4a744cd11aaa752268ea1e6993",
+      "bytes": 34791,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-2.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_t-3": {
+      "file": "level_rogue2_t-3.json",
+      "sha256": "411a3fddcbb0d44aaa95952ddd3538f93a466f7c5d47e65184b9a7c0fafcdffa",
+      "bytes": 93649,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-3.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_t-4": {
+      "file": "level_rogue2_t-4.json",
+      "sha256": "4c797c5b806f0df0a751559ff8c5979b97c71b4396dc99b9ed2f686990e35929",
+      "bytes": 60586,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-4.json"
+    },
+    "obt/roguelike/ro2/level_rogue2_t-5": {
+      "file": "level_rogue2_t-5.json",
+      "sha256": "aca52524af012db44485bced06eca7c2411d347af4b7b477db92e6d0e226c351",
+      "bytes": 96581,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-5.json"
+    }
+  },
+  "stagesById": {
+    "ro2_n_1_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-1",
+      "file": "level_rogue2_1-1.json",
+      "sha256": "29956c5c12e46ac82a5023f87f16e197e8620b71f62a564aff204ecd38634336",
+      "bytes": 105002,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-1.json"
+    },
+    "ro2_n_1_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-2",
+      "file": "level_rogue2_1-2.json",
+      "sha256": "3c1b0683ab4e95eae08b6071c15e5b1bc10a4879f2479d1090cb587a69777cbb",
+      "bytes": 118882,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-2.json"
+    },
+    "ro2_n_1_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-3",
+      "file": "level_rogue2_1-3.json",
+      "sha256": "5f9899b9b51b36f66e23c4e1360aa956a96c6966f7997e95c073f4d4502c98b1",
+      "bytes": 97937,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-3.json"
+    },
+    "ro2_n_1_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-4",
+      "file": "level_rogue2_1-4.json",
+      "sha256": "c64b95e8127cbfef58bb29d3472e75a79d693ae3362e4aac9f6fc42c75d4b8ec",
+      "bytes": 127597,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-4.json"
+    },
+    "ro2_n_1_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-5",
+      "file": "level_rogue2_1-5.json",
+      "sha256": "b7341579e48ebdfc6621c91564911bca3c5520426a58a5c4929c75e3ca8d87c2",
+      "bytes": 82605,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-5.json"
+    },
+    "ro2_n_2_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-1",
+      "file": "level_rogue2_2-1.json",
+      "sha256": "0c3183b368e1ec5f75c90e71f5f4e1682628e6402c40c09466bf0807cae2d3f9",
+      "bytes": 96042,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-1.json"
+    },
+    "ro2_n_2_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-2",
+      "file": "level_rogue2_2-2.json",
+      "sha256": "f93ba2e6c9cd8f9779902f7d8a4baf283bc2b81f801e804fd3eb8b400b9f4b77",
+      "bytes": 137279,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-2.json"
+    },
+    "ro2_n_2_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-3",
+      "file": "level_rogue2_2-3.json",
+      "sha256": "27ff63d225fe27e1b23228c75afc43cefc6177007b90dadb30433aaa686e5157",
+      "bytes": 98395,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-3.json"
+    },
+    "ro2_n_2_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-4",
+      "file": "level_rogue2_2-4.json",
+      "sha256": "806312cf4b64010c43d6baf24cfe4d59f2d55a84b2527bf48db33648ad0ee07c",
+      "bytes": 97559,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-4.json"
+    },
+    "ro2_n_2_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-5",
+      "file": "level_rogue2_2-5.json",
+      "sha256": "7d385db8ebe59327d7c9b7567bd3c514bf4d486982d601b10d85bc8a8d2b15a3",
+      "bytes": 238443,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-5.json"
+    },
+    "ro2_n_2_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-6",
+      "file": "level_rogue2_2-6.json",
+      "sha256": "86694fafeb2fdbf7859318cf55588dfb2d6ba6427480ca56cc61aabcca595767",
+      "bytes": 114177,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-6.json"
+    },
+    "ro2_n_3_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-1",
+      "file": "level_rogue2_3-1.json",
+      "sha256": "792e02ee9db0e1ae64cc99524892c8d30a3ac87e8dd8549781016430a6a0f5bc",
+      "bytes": 130359,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-1.json"
+    },
+    "ro2_n_3_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-2",
+      "file": "level_rogue2_3-2.json",
+      "sha256": "364f8aa6c8ba213ea0751c2fd5a83830cf8271bae75ca95651cd353a73ed3e7c",
+      "bytes": 115976,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-2.json"
+    },
+    "ro2_n_3_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-3",
+      "file": "level_rogue2_3-3.json",
+      "sha256": "33ed5f4f89f7020de230745d812b3fde561739600e46904549996d089e00c9c1",
+      "bytes": 81708,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-3.json"
+    },
+    "ro2_n_3_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-4",
+      "file": "level_rogue2_3-4.json",
+      "sha256": "4a81e5caf1b059190ef39efb2bc9a72cf0c12e07fa9f548cb5b0a614fb0555bb",
+      "bytes": 140787,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-4.json"
+    },
+    "ro2_n_3_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-5",
+      "file": "level_rogue2_3-5.json",
+      "sha256": "68347b6243637da8052d398a49ce2c53ee0c6b044a942c8a4e39af81d0989601",
+      "bytes": 259706,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-5.json"
+    },
+    "ro2_n_3_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-6",
+      "file": "level_rogue2_3-6.json",
+      "sha256": "dcae5e908a76cd1717bfc6f82bf61b3525eecc015b16004060e4ac7664d7e550",
+      "bytes": 166113,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-6.json"
+    },
+    "ro2_n_3_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-7",
+      "file": "level_rogue2_3-7.json",
+      "sha256": "92fabc797b949301129e8c4e729bc3ebf8229ec7e3dfd8dbd0e28706589383ea",
+      "bytes": 259543,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-7.json"
+    },
+    "ro2_n_3_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-8",
+      "file": "level_rogue2_3-8.json",
+      "sha256": "67fcd6d35a38243cb9e1e0a2dd49ab1c82ca74755589d4f24363cceb6d1f3d79",
+      "bytes": 93544,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-8.json"
+    },
+    "ro2_n_4_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-1",
+      "file": "level_rogue2_4-1.json",
+      "sha256": "77ec1e45fd1ba8bf4edf7a724ff77d00912f9d105f25292b1a053599b56f88b7",
+      "bytes": 134617,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-1.json"
+    },
+    "ro2_n_4_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-2",
+      "file": "level_rogue2_4-2.json",
+      "sha256": "42749f519a73a55335fff328093edbb70a65a3ad7a433a654f3b94c0d8efc121",
+      "bytes": 205916,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-2.json"
+    },
+    "ro2_n_4_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-3",
+      "file": "level_rogue2_4-3.json",
+      "sha256": "e38ed3541014881e047ba2ac237908d5fa50a9ad54f44980fa92c33b03612b09",
+      "bytes": 119772,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-3.json"
+    },
+    "ro2_n_4_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-4",
+      "file": "level_rogue2_4-4.json",
+      "sha256": "6386501f7f245a9dc47fbc1a18a555e5fe578750f2942dbb7d653b601fe65b5b",
+      "bytes": 175307,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-4.json"
+    },
+    "ro2_n_4_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-5",
+      "file": "level_rogue2_4-5.json",
+      "sha256": "3ce2bedd18bffe623b75c2c62940fbcf1e0d1ea4a365325c28702f5e92a413e0",
+      "bytes": 151216,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-5.json"
+    },
+    "ro2_n_4_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-6",
+      "file": "level_rogue2_4-6.json",
+      "sha256": "e8436e705427b8a62b5b92b37b913f374f975051c76e1be7e60dbf9a0d71018a",
+      "bytes": 151579,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-6.json"
+    },
+    "ro2_n_4_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-7",
+      "file": "level_rogue2_4-7.json",
+      "sha256": "de4dba24c64f3d49c70dad4fd38742215a3a5671800db1c3fbf9b3bd585d1920",
+      "bytes": 131170,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-7.json"
+    },
+    "ro2_n_4_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-8",
+      "file": "level_rogue2_4-8.json",
+      "sha256": "b7941ff924bcea3d99a66e44ffccf97de6e55f44c9b3f7160b7be7618f459bc0",
+      "bytes": 121832,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-8.json"
+    },
+    "ro2_n_5_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-1",
+      "file": "level_rogue2_5-1.json",
+      "sha256": "50771cebc5adcf30b3a4fd57785853c409631c5af570afe90cd84f9ec6e74325",
+      "bytes": 151213,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-1.json"
+    },
+    "ro2_n_5_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-2",
+      "file": "level_rogue2_5-2.json",
+      "sha256": "591e621085e5bc575667096f61e481d6f5915ea9eb8027d9bd2e3f886ffea1c5",
+      "bytes": 126149,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-2.json"
+    },
+    "ro2_n_5_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-3",
+      "file": "level_rogue2_5-3.json",
+      "sha256": "535388e9dbdd1435e557aa9503c9bdc87adfb01b11038c8e91b1067c7baf07ba",
+      "bytes": 113804,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-3.json"
+    },
+    "ro2_n_5_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-4",
+      "file": "level_rogue2_5-4.json",
+      "sha256": "f6d79d80639500c33036f11d2dccd7fd465aadf9abdf8c124aa314c10124ff88",
+      "bytes": 256179,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-4.json"
+    },
+    "ro2_n_5_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-5",
+      "file": "level_rogue2_5-5.json",
+      "sha256": "e72022b1949937607e7056a86b9c86c4ace41b9ef5aef1e0209bb124f75e5c4d",
+      "bytes": 147298,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-5.json"
+    },
+    "ro2_n_5_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-6",
+      "file": "level_rogue2_5-6.json",
+      "sha256": "5636c83aa31eebb75c874be5e24aaec1cca320bcdfe7ebe331d3809453ddd566",
+      "bytes": 236415,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-6.json"
+    },
+    "ro2_n_5_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-7",
+      "file": "level_rogue2_5-7.json",
+      "sha256": "1f46fa17f9b3953cf1184cfa309daa42d9be6f11a515052c7f1003b359419738",
+      "bytes": 133765,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-7.json"
+    },
+    "ro2_n_5_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-8",
+      "file": "level_rogue2_5-8.json",
+      "sha256": "de3f6ee4d263b572ed0f555dcec33a9f886a74e9cd41a66d576f67df3b07cd0d",
+      "bytes": 109203,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-8.json"
+    },
+    "ro2_n_6_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_6-1",
+      "file": "level_rogue2_6-1.json",
+      "sha256": "3492d430a22a84a16ae403cac9e93c26ec8e3e8fbb68310eaff4292c49ab22f1",
+      "bytes": 173229,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_6-1.json"
+    },
+    "ro2_n_6_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_6-2",
+      "file": "level_rogue2_6-2.json",
+      "sha256": "2ff5480b64631d730bf793fec71e507fc61f4af23544bb227f50cdc353655261",
+      "bytes": 123131,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_6-2.json"
+    },
+    "ro2_b_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-1",
+      "file": "level_rogue2_b-1.json",
+      "sha256": "bae6c952d7dc091a435b7d6fa3ea6dc0fbbd8d909e88fa9d67267e78a4e4fd1b",
+      "bytes": 76826,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-1.json"
+    },
+    "ro2_b_1_b": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-1-b",
+      "file": "level_rogue2_b-1-b.json",
+      "sha256": "09a3bb66a8fc982fd22a6da0c8f20f7af136386abdd585d69b83364c641f48ec",
+      "bytes": 75915,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-1-b.json"
+    },
+    "ro2_b_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-2",
+      "file": "level_rogue2_b-2.json",
+      "sha256": "85bdc32c0d2a4eb70fd149941e49cc6bc14c4e7fa4aeee0b74d27ca625965978",
+      "bytes": 76086,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-2.json"
+    },
+    "ro2_b_2_b": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-2-b",
+      "file": "level_rogue2_b-2-b.json",
+      "sha256": "18edf36e5ffa6e31447e2f1ecfb5a1dde8fbf90cca4440d67988e7c40f7d6b10",
+      "bytes": 76088,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-2-b.json"
+    },
+    "ro2_b_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-3",
+      "file": "level_rogue2_b-3.json",
+      "sha256": "b0286702e7a4a98406c5c5bf5aab9615470798f06bc82be04b0787055fd2d73b",
+      "bytes": 48638,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-3.json"
+    },
+    "ro2_b_3_b": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-3-b",
+      "file": "level_rogue2_b-3-b.json",
+      "sha256": "47e381f28024b596bd58fab40d1329250a1dd2757a8bd91086178aa53ccf3e25",
+      "bytes": 44712,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-3-b.json"
+    },
+    "ro2_b_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-4",
+      "file": "level_rogue2_b-4.json",
+      "sha256": "cfa8d5e3b428f6c60a2d41fa4bb5ce52ed2d2d41936038d187fbb4cd54f771dc",
+      "bytes": 190888,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-4.json"
+    },
+    "ro2_b_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-5",
+      "file": "level_rogue2_b-5.json",
+      "sha256": "0b76d5ebb57c1a3b43e0a1dc64abcad694786e803d6a355fee6c967ef70b1424",
+      "bytes": 142066,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-5.json"
+    },
+    "ro2_b_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-6",
+      "file": "level_rogue2_b-6.json",
+      "sha256": "31b2d18636323121a835b8893d40c4024f46769fc14b5040eacd41a23fe2fc36",
+      "bytes": 214120,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-6.json"
+    },
+    "ro2_b_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-7",
+      "file": "level_rogue2_b-7.json",
+      "sha256": "782cdb3b8832a1cef46ed7ebf604c40882ab5c46a0673357d9f6463c85d3ae93",
+      "bytes": 720346,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-7.json"
+    },
+    "ro2_b_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-8",
+      "file": "level_rogue2_b-8.json",
+      "sha256": "302b1a6fe3d48b5974d5c0b8f7e83fd31eafa9964aab3cf292ba0dce80a677fd",
+      "bytes": 160562,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-8.json"
+    },
+    "ro2_b_9": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-9",
+      "file": "level_rogue2_b-9.json",
+      "sha256": "8c249a5b1894dbdab1bc95ede5ba190b0ca0431463de9770bd85114276ac06e9",
+      "bytes": 95635,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-9.json"
+    },
+    "ro2_b_10": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_b-10",
+      "file": "level_rogue2_b-10.json",
+      "sha256": "3ec5d92e69263a0b5f151917046612c482431cc3801ba3ad8d191922bfadd56a",
+      "bytes": 181823,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_b-10.json"
+    },
+    "ro2_t_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_t-1",
+      "file": "level_rogue2_t-1.json",
+      "sha256": "d878542858d7451886b2764d65c58ea86a02e8698ac1726cce7cf50e93d329ec",
+      "bytes": 66679,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-1.json"
+    },
+    "ro2_t_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_t-2",
+      "file": "level_rogue2_t-2.json",
+      "sha256": "d4970ffbe02e1c6b24b3f949d322728e5f9d3d4a744cd11aaa752268ea1e6993",
+      "bytes": 34791,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-2.json"
+    },
+    "ro2_t_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_t-3",
+      "file": "level_rogue2_t-3.json",
+      "sha256": "411a3fddcbb0d44aaa95952ddd3538f93a466f7c5d47e65184b9a7c0fafcdffa",
+      "bytes": 93649,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-3.json"
+    },
+    "ro2_t_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_t-4",
+      "file": "level_rogue2_t-4.json",
+      "sha256": "4c797c5b806f0df0a751559ff8c5979b97c71b4396dc99b9ed2f686990e35929",
+      "bytes": 60586,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-4.json"
+    },
+    "ro2_t_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_t-5",
+      "file": "level_rogue2_t-5.json",
+      "sha256": "aca52524af012db44485bced06eca7c2411d347af4b7b477db92e6d0e226c351",
+      "bytes": 96581,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_t-5.json"
+    },
+    "ro2_ev_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_ev-1",
+      "file": "level_rogue2_ev-1.json",
+      "sha256": "81d7e5b133890f5e692cf1c8aeab6898ad58c0cd5bc637c71f8ad71539f01abe",
+      "bytes": 71476,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-1.json"
+    },
+    "ro2_ev_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_ev-2",
+      "file": "level_rogue2_ev-2.json",
+      "sha256": "0b98f769c0421d8c1cc1dd558dbb579f8f4bc75009b6af4ae78654eb8b2311b3",
+      "bytes": 51789,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-2.json"
+    },
+    "ro2_ev_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_ev-3",
+      "file": "level_rogue2_ev-3.json",
+      "sha256": "14b51f2eebc208592acccdda2af5992f73c20dc5a06f46302bac7cd6878aeaa9",
+      "bytes": 206366,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-3.json"
+    },
+    "ro2_ev_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_ev-4",
+      "file": "level_rogue2_ev-4.json",
+      "sha256": "03bd9806768234352b9bd7474433b80b0c46aa4a79a81a3f3fe22e511647f3a9",
+      "bytes": 99750,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-4.json"
+    },
+    "ro2_ev_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_ev-5",
+      "file": "level_rogue2_ev-5.json",
+      "sha256": "f98643c0c9b437502c2303a205ef005b5a714e5a53cb9595c6df342db6b9d201",
+      "bytes": 101999,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_ev-5.json"
+    },
+    "ro2_e_1_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-1",
+      "file": "level_rogue2_1-1.json",
+      "sha256": "29956c5c12e46ac82a5023f87f16e197e8620b71f62a564aff204ecd38634336",
+      "bytes": 105002,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-1.json"
+    },
+    "ro2_e_1_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-2",
+      "file": "level_rogue2_1-2.json",
+      "sha256": "3c1b0683ab4e95eae08b6071c15e5b1bc10a4879f2479d1090cb587a69777cbb",
+      "bytes": 118882,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-2.json"
+    },
+    "ro2_e_1_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-3",
+      "file": "level_rogue2_1-3.json",
+      "sha256": "5f9899b9b51b36f66e23c4e1360aa956a96c6966f7997e95c073f4d4502c98b1",
+      "bytes": 97937,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-3.json"
+    },
+    "ro2_e_1_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-4",
+      "file": "level_rogue2_1-4.json",
+      "sha256": "c64b95e8127cbfef58bb29d3472e75a79d693ae3362e4aac9f6fc42c75d4b8ec",
+      "bytes": 127597,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-4.json"
+    },
+    "ro2_e_1_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_1-5",
+      "file": "level_rogue2_1-5.json",
+      "sha256": "b7341579e48ebdfc6621c91564911bca3c5520426a58a5c4929c75e3ca8d87c2",
+      "bytes": 82605,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_1-5.json"
+    },
+    "ro2_e_2_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-1",
+      "file": "level_rogue2_2-1.json",
+      "sha256": "0c3183b368e1ec5f75c90e71f5f4e1682628e6402c40c09466bf0807cae2d3f9",
+      "bytes": 96042,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-1.json"
+    },
+    "ro2_e_2_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-2",
+      "file": "level_rogue2_2-2.json",
+      "sha256": "f93ba2e6c9cd8f9779902f7d8a4baf283bc2b81f801e804fd3eb8b400b9f4b77",
+      "bytes": 137279,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-2.json"
+    },
+    "ro2_e_2_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-3",
+      "file": "level_rogue2_2-3.json",
+      "sha256": "27ff63d225fe27e1b23228c75afc43cefc6177007b90dadb30433aaa686e5157",
+      "bytes": 98395,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-3.json"
+    },
+    "ro2_e_2_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-4",
+      "file": "level_rogue2_2-4.json",
+      "sha256": "806312cf4b64010c43d6baf24cfe4d59f2d55a84b2527bf48db33648ad0ee07c",
+      "bytes": 97559,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-4.json"
+    },
+    "ro2_e_2_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-5",
+      "file": "level_rogue2_2-5.json",
+      "sha256": "7d385db8ebe59327d7c9b7567bd3c514bf4d486982d601b10d85bc8a8d2b15a3",
+      "bytes": 238443,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-5.json"
+    },
+    "ro2_e_2_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_2-6",
+      "file": "level_rogue2_2-6.json",
+      "sha256": "86694fafeb2fdbf7859318cf55588dfb2d6ba6427480ca56cc61aabcca595767",
+      "bytes": 114177,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_2-6.json"
+    },
+    "ro2_e_3_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-1",
+      "file": "level_rogue2_3-1.json",
+      "sha256": "792e02ee9db0e1ae64cc99524892c8d30a3ac87e8dd8549781016430a6a0f5bc",
+      "bytes": 130359,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-1.json"
+    },
+    "ro2_e_3_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-2",
+      "file": "level_rogue2_3-2.json",
+      "sha256": "364f8aa6c8ba213ea0751c2fd5a83830cf8271bae75ca95651cd353a73ed3e7c",
+      "bytes": 115976,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-2.json"
+    },
+    "ro2_e_3_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-3",
+      "file": "level_rogue2_3-3.json",
+      "sha256": "33ed5f4f89f7020de230745d812b3fde561739600e46904549996d089e00c9c1",
+      "bytes": 81708,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-3.json"
+    },
+    "ro2_e_3_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-4",
+      "file": "level_rogue2_3-4.json",
+      "sha256": "4a81e5caf1b059190ef39efb2bc9a72cf0c12e07fa9f548cb5b0a614fb0555bb",
+      "bytes": 140787,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-4.json"
+    },
+    "ro2_e_3_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-5",
+      "file": "level_rogue2_3-5.json",
+      "sha256": "68347b6243637da8052d398a49ce2c53ee0c6b044a942c8a4e39af81d0989601",
+      "bytes": 259706,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-5.json"
+    },
+    "ro2_e_3_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-6",
+      "file": "level_rogue2_3-6.json",
+      "sha256": "dcae5e908a76cd1717bfc6f82bf61b3525eecc015b16004060e4ac7664d7e550",
+      "bytes": 166113,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-6.json"
+    },
+    "ro2_e_3_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-7",
+      "file": "level_rogue2_3-7.json",
+      "sha256": "92fabc797b949301129e8c4e729bc3ebf8229ec7e3dfd8dbd0e28706589383ea",
+      "bytes": 259543,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-7.json"
+    },
+    "ro2_e_3_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_3-8",
+      "file": "level_rogue2_3-8.json",
+      "sha256": "67fcd6d35a38243cb9e1e0a2dd49ab1c82ca74755589d4f24363cceb6d1f3d79",
+      "bytes": 93544,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_3-8.json"
+    },
+    "ro2_e_4_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-1",
+      "file": "level_rogue2_4-1.json",
+      "sha256": "77ec1e45fd1ba8bf4edf7a724ff77d00912f9d105f25292b1a053599b56f88b7",
+      "bytes": 134617,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-1.json"
+    },
+    "ro2_e_4_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-2",
+      "file": "level_rogue2_4-2.json",
+      "sha256": "42749f519a73a55335fff328093edbb70a65a3ad7a433a654f3b94c0d8efc121",
+      "bytes": 205916,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-2.json"
+    },
+    "ro2_e_4_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-3",
+      "file": "level_rogue2_4-3.json",
+      "sha256": "e38ed3541014881e047ba2ac237908d5fa50a9ad54f44980fa92c33b03612b09",
+      "bytes": 119772,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-3.json"
+    },
+    "ro2_e_4_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-4",
+      "file": "level_rogue2_4-4.json",
+      "sha256": "6386501f7f245a9dc47fbc1a18a555e5fe578750f2942dbb7d653b601fe65b5b",
+      "bytes": 175307,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-4.json"
+    },
+    "ro2_e_4_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-5",
+      "file": "level_rogue2_4-5.json",
+      "sha256": "3ce2bedd18bffe623b75c2c62940fbcf1e0d1ea4a365325c28702f5e92a413e0",
+      "bytes": 151216,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-5.json"
+    },
+    "ro2_e_4_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-6",
+      "file": "level_rogue2_4-6.json",
+      "sha256": "e8436e705427b8a62b5b92b37b913f374f975051c76e1be7e60dbf9a0d71018a",
+      "bytes": 151579,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-6.json"
+    },
+    "ro2_e_4_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-7",
+      "file": "level_rogue2_4-7.json",
+      "sha256": "de4dba24c64f3d49c70dad4fd38742215a3a5671800db1c3fbf9b3bd585d1920",
+      "bytes": 131170,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-7.json"
+    },
+    "ro2_e_4_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_4-8",
+      "file": "level_rogue2_4-8.json",
+      "sha256": "b7941ff924bcea3d99a66e44ffccf97de6e55f44c9b3f7160b7be7618f459bc0",
+      "bytes": 121832,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_4-8.json"
+    },
+    "ro2_e_5_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-1",
+      "file": "level_rogue2_5-1.json",
+      "sha256": "50771cebc5adcf30b3a4fd57785853c409631c5af570afe90cd84f9ec6e74325",
+      "bytes": 151213,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-1.json"
+    },
+    "ro2_e_5_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-2",
+      "file": "level_rogue2_5-2.json",
+      "sha256": "591e621085e5bc575667096f61e481d6f5915ea9eb8027d9bd2e3f886ffea1c5",
+      "bytes": 126149,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-2.json"
+    },
+    "ro2_e_5_3": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-3",
+      "file": "level_rogue2_5-3.json",
+      "sha256": "535388e9dbdd1435e557aa9503c9bdc87adfb01b11038c8e91b1067c7baf07ba",
+      "bytes": 113804,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-3.json"
+    },
+    "ro2_e_5_4": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-4",
+      "file": "level_rogue2_5-4.json",
+      "sha256": "f6d79d80639500c33036f11d2dccd7fd465aadf9abdf8c124aa314c10124ff88",
+      "bytes": 256179,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-4.json"
+    },
+    "ro2_e_5_5": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-5",
+      "file": "level_rogue2_5-5.json",
+      "sha256": "e72022b1949937607e7056a86b9c86c4ace41b9ef5aef1e0209bb124f75e5c4d",
+      "bytes": 147298,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-5.json"
+    },
+    "ro2_e_5_6": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-6",
+      "file": "level_rogue2_5-6.json",
+      "sha256": "5636c83aa31eebb75c874be5e24aaec1cca320bcdfe7ebe331d3809453ddd566",
+      "bytes": 236415,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-6.json"
+    },
+    "ro2_e_5_7": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-7",
+      "file": "level_rogue2_5-7.json",
+      "sha256": "1f46fa17f9b3953cf1184cfa309daa42d9be6f11a515052c7f1003b359419738",
+      "bytes": 133765,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-7.json"
+    },
+    "ro2_e_5_8": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_5-8",
+      "file": "level_rogue2_5-8.json",
+      "sha256": "de3f6ee4d263b572ed0f555dcec33a9f886a74e9cd41a66d576f67df3b07cd0d",
+      "bytes": 109203,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_5-8.json"
+    },
+    "ro2_e_6_1": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_6-1",
+      "file": "level_rogue2_6-1.json",
+      "sha256": "3492d430a22a84a16ae403cac9e93c26ec8e3e8fbb68310eaff4292c49ab22f1",
+      "bytes": 173229,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_6-1.json"
+    },
+    "ro2_e_6_2": {
+      "levelId": "obt/roguelike/ro2/level_rogue2_6-2",
+      "file": "level_rogue2_6-2.json",
+      "sha256": "2ff5480b64631d730bf793fec71e507fc61f4af23544bb227f50cdc353655261",
+      "bytes": 123131,
+      "url": "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/levels/obt/roguelike/ro2/level_rogue2_6-2.json"
+    }
+  },
+  "errors": {}
+}

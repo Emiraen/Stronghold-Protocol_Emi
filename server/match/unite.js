@@ -28,9 +28,10 @@
 // re-enter) — the same 10 cap as a normal round.
 
 import { buildUniteWave } from './waves.js';
-import { layerGainRoom } from '../../shared/constants.js';
+import { layerGainRoom, canStackBond } from '../../shared/constants.js';
 import { MAX_UNITE_HELPERS, uniteRoundLimit } from '../../shared/playerCapacity.js';
 import { isCyclopsBonusRound } from './cyclops.js';
+import { uniteLpExempt } from '../../shared/uniteBilling.js';
 
 /**
  * @param {import('./Match.js').Match} m
@@ -59,7 +60,7 @@ export function planUnite(m, results) {
     const r = results.get(ps.playerId);
     for (const l of r.leaked || []) {
       if (!l || l.counted === false) continue;
-      if (!m.gd.enemy(l.enemyKey)) { notReentered.set(ps.playerId, (notReentered.get(ps.playerId) || 0) + 1); continue; }
+      if (!m.gd.enemy(l.enemyKey)) { if (!uniteLpExempt(l)) notReentered.set(ps.playerId, (notReentered.get(ps.playerId) || 0) + 1); continue; }
       // kill bounties keep paying in 联防, and only on the card's own enemy. A split or summoned child
       // never carries bountyId / bountyCoins (spawnChildren). A leak that still has the card's id but is
       // some other enemy — a copy that did not go through spawnChildren — does not collect the card either
@@ -96,6 +97,7 @@ export function helperStats(m, ps, results) {
   for (const [id, b] of Object.entries(ps.bonds || {})) {
     if (!b || !b.active) continue;
     active = true;
+    if (!canStackBond(id)) continue;
     const stored = Number(ps.layers && ps.layers[id]) || Number(b.layers) || 0;
     const gain = pending && Number(pending[id]);
     const add = Number.isFinite(gain) && gain > 0 ? layerGainRoom(stored, Math.floor(gain), m.isEndless ? Infinity : undefined) : 0;
@@ -169,7 +171,7 @@ export function uniteRemainingLeaks(plan, result) {
   const sources = new Set(plan.leakers.map((p) => p.playerId));
   const out = [];
   const add = (entry) => {
-    if (!entry || !sources.has(entry.sourcePlayerId) || !entry.enemyKey) return;
+    if (!entry || entry.counted === false || uniteLpExempt(entry) || !sources.has(entry.sourcePlayerId) || !entry.enemyKey) return;
     const key = keyOf(entry);
     const prior = (entry.mods == null ? null : take(byMods.get(key)?.get(JSON.stringify(entry.mods)))) || take(bySource.get(key));
     out.push({ enemyKey: entry.enemyKey, sourcePlayerId: entry.sourcePlayerId, tag: entry.tag ?? null,
@@ -177,7 +179,7 @@ export function uniteRemainingLeaks(plan, result) {
       rankedHpRatio: entry.rankedHpRatio ?? prior?.rankedHpRatio ?? 0, bounty: prior?.bounty ?? null });
   };
   for (const entry of result.unspawned || []) add(entry);
-  for (const pp of Object.values(result.perPlayer || {})) for (const entry of pp?.leaked || []) if (entry?.counted !== false) add(entry);
+  for (const pp of Object.values(result.perPlayer || {})) for (const entry of pp?.leaked || []) if (entry?.counted !== false && !entry?.uniteRuntime) add(entry);
   return out;
 }
 
@@ -236,12 +238,12 @@ export function uniteSurvivors(plan, uniteResult) {
   const perPlayer = (uniteResult && uniteResult.perPlayer) || {};
   for (const pp of Object.values(perPlayer)) {
     for (const l of (pp && pp.leaked) || []) {
-      if (!l || l.counted === false || !l.sourcePlayerId) continue;
+      if (!l || l.counted === false || uniteLpExempt(l) || !l.sourcePlayerId) continue;
       out.set(l.sourcePlayerId, (out.get(l.sourcePlayerId) || 0) + 1);
     }
   }
   for (const u of (uniteResult && uniteResult.unspawned) || []) {
-    if (!u || !u.sourcePlayerId) continue;
+    if (!u || u.counted === false || uniteLpExempt(u) || !u.sourcePlayerId) continue;
     out.set(u.sourcePlayerId, (out.get(u.sourcePlayerId) || 0) + 1);
   }
   return out;

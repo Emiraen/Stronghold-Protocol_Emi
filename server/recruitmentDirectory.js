@@ -1,5 +1,8 @@
+import { MIZUKI_VARIANT } from '../shared/mizuki-constants.js';
+import { ZHAJING_VARIANT, ZHAJING_DIFFICULTY } from '../shared/zhajing-constants.js';
 import { performance } from 'node:perf_hooks';
 import { DIFFICULTIES, MAX_SEATS, ENTERTAINMENT_MAX_SEATS, CYCLOPS_MAX_SEATS, ENDLESS_VARIANT } from '../shared/constants.js';
+import { ANNIHILATION_VARIANT } from '../shared/annihilation-constants.js';
 
 const IDS = ['main', 'secondary'];
 export const RECRUITMENT_TTL_MS = 12_000;
@@ -20,8 +23,8 @@ export function validateRecruitmentItems(items, serverId) {
       || row.serverId !== serverId || !/^[A-HJ-NP-Z]{4}$/.test(row.code) || seen.has(row.code)
       // Same partition as regions.roomServer; no import cycle through regions -> validator.
       || !(serverId === 'main' ? 'ABCDEFGHJKLM' : 'NPQRSTUVWXYZ').includes(row.code[0])
-      || row.mode !== 'coop' || ![null, 'entertainment_multi', 'entertainment_cyclops', ENDLESS_VARIANT].includes(row.variant)
-      || !text(row.modeId) || !DIFFICULTIES.includes(row.difficulty) || typeof row.ranked !== 'boolean'
+       || row.mode !== 'coop' || ![null, MIZUKI_VARIANT, 'entertainment_multi', 'entertainment_cyclops', ENDLESS_VARIANT, ANNIHILATION_VARIANT, ZHAJING_VARIANT].includes(row.variant)
+       || !text(row.modeId) || !(row.variant === ZHAJING_VARIANT ? row.difficulty === ZHAJING_DIFFICULTY : row.variant === ANNIHILATION_VARIANT ? row.difficulty === 'ANNIHILATION' : DIFFICULTIES.includes(row.difficulty)) || typeof row.ranked !== 'boolean'
       || (row.variant !== null && row.ranked) || !text(row.hostId) || !text(row.hostName)
       || !integer(row.capacity, capacityLimit) || row.capacity < 2
       || !integer(row.occupied, row.capacity - 1) || row.occupied < 1

@@ -240,15 +240,12 @@ export class BattleDeploy {
       if (u.alive || u.removed || u.kind !== 'op') continue;
       const free = !!u.mem?.indomFreeDeploy;
       if (!free && this.time + 1e-9 < u.respawnAt) continue;
-      // the DP first: an operator past its timer mostly waits for DP, and the tile checks scan every ally
-      const ps = this.getPlayer(u.ownerId);
-      const cost = u.base.cost;
-      if (!free && (!ps || ps.dp + 1e-9 < cost)) continue;
       const [r, c] = this.restTile(u);
       const occ = this._occ[r * COLS + c];
       if (occ && occ.alive && occ !== u) continue;
       if (this.downOn(r, c, u)) continue;
-      // Use the same payment path as explicit redeploys: a blocked attempt keeps its free entitlement (and DP).
+      // redeploy owns the DP check and payment, including a pending 不屈 free deployment.
+      // A blocked attempt keeps its entitlement and retries as soon as the tile is free, even at zero DP.
       this.redeploy(u, { free, tile: r === u.homeR && c === u.homeC ? null : [r, c] });
     }
   }

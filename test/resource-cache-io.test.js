@@ -18,6 +18,84 @@ describe('resource cache IO in real IndexedDB', { skip: resourceTestChrome ? fal
   before(async () => { harness = await resourceBrowserHarness(); });
   after(async () => { await harness?.close(); });
 
+  test('preloaded inventory checks keys only and ignores all stored metadata and contents', async () => {
+    const resources = Array.from({ length: 520 }, (_, i) => item('/assets/present-' + i + '.txt', 'current'));
+    const result = await harness.run(fixture(resources), async () => {
+      const f = globalThis.resourceFixture;
+      for (const resource of f.config.manifest.groups.required) await f.put(resource, 'old', {
+        version: 'old', bytes: -1, type: 'different/type', complete: false, transport: { version: 'old' },
+      });
+      f.resetIo();
+      const originalGet = IDBObjectStore.prototype.get, originalAll = IDBObjectStore.prototype.getAll;
+      IDBObjectStore.prototype.get = function(...args) {
+        if (this.name === 'resources') throw new Error('inventory must not read record values');
+        return originalGet.apply(this, args);
+      };
+      IDBObjectStore.prototype.getAll = function(...args) {
+        if (this.name === 'resources') throw new Error('inventory must not read Blob values');
+        return originalAll.apply(this, args);
+      };
+      let ready;
+      try { ready = await f.resourceCache.check(); }
+      finally { IDBObjectStore.prototype.get = originalGet; IDBObjectStore.prototype.getAll = originalAll; }
+      return { ready, io: f.io, state: f.resourceCache.getState(), requests: f.requests };
+    });
+    assert.equal(result.ready, true);
+    assert.equal(result.state.required.done, 520);
+    assert.equal(result.state.error, null);
+    assert.equal(result.io.keyScans, 3);
+    assert.equal(result.io.blobScans || 0, 0);
+    assert.equal(result.io.gets.length, 0);
+    assert.deepEqual(result.requests, []);
+  });
+
+  test('an existing resource is read without version, size, type or hash revalidation', async () => {
+    const resource = item('/assets/existing.txt', 'new contents');
+    const result = await harness.run(fixture([resource]), async () => {
+      const f = globalThis.resourceFixture;
+      await f.put(f.config.manifest.groups.required[0], 'stored contents', { version: 'old', bytes: -99, type: 'old/type' });
+      const response = await f.cachedFetch('/assets/existing.txt');
+      return { body: await response.text(), requests: f.requests, manifestRequests: f.manifestRequests };
+    });
+    assert.equal(result.body, 'stored contents');
+    assert.deepEqual(result.requests, []);
+    assert.deepEqual(result.manifestRequests, []);
+  });
+
+  test('manual production preloads combine nearby pack entries and reuse existing cache', async () => {
+    const resources = Array.from({ length: 130 }, (_, index) => {
+      const body = 'packed resource ' + index;
+      return { item: item('/assets/cache-batch/' + index + '.txt', body), body };
+    });
+    const config = fixture([], resources.map(record => record.item));
+    config.productionRouting = true;
+    config.pack = pack(resources);
+    const result = await harness.run(config, async () => {
+      const f = globalThis.resourceFixture;
+      await f.put(f.config.manifest.groups.optional[0], 'packed resource 0');
+      f.onFetch = async (url, options) => {
+        if (url.pathname === '/api/resource-preload') return new Response('', { status: 404 });
+        if (!url.pathname.endsWith('.sprpack')) throw new Error('unexpected raw fallback: ' + url.pathname);
+        const match = /^bytes=(\d+)-(\d+)$/.exec(new Headers(options.headers).get('Range'));
+        const start = Number(match[1]), end = Number(match[2]), bytes = new Uint8Array(f.config.pack);
+        return new Response(bytes.slice(start, end + 1), { status: 206,
+          headers: { 'Content-Range': 'bytes ' + start + '-' + end + '/' + bytes.length } });
+      };
+      const ok = await f.resourceCache.download('optional');
+      const state = f.resourceCache.getState();
+      const first = await f.inspect(f.config.manifest.groups.optional[0]);
+      const last = await f.inspect(f.config.manifest.groups.optional.at(-1));
+      return { ok, state: state.optional, requests: f.requests, first: await first.blob.text(), last: await last.blob.text() };
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.state.done, 130);
+    assert.equal(result.state.error, null);
+    assert.equal(result.first, 'packed resource 0');
+    assert.equal(result.last, 'packed resource 129');
+    assert.equal(result.requests.filter(request => request.path === '/api/resource-preload').length, 1, 'unsupported stream is probed only once');
+    assert.equal(result.requests.filter(request => request.path.endsWith('.sprpack')).length, 5, 'two header requests plus three bounded pack batches');
+  });
+
   test('a miss reads twice, keeps the transactional guard, and returns the record won by another tab', async () => {
     const raw = 'raw png resource', webp = 'webp resource';
     const resource = item('/assets/cache-race.png', raw, { type: 'image/png',
@@ -43,11 +121,51 @@ describe('resource cache IO in real IndexedDB', { skip: resourceTestChrome ? fal
     assert.equal(result.requests.filter(request => request.path === resource.url).length, 1);
   });
 
+  test('pausing a shared pack batch aborts IO and resumes without losing completed resources', async () => {
+    const records = Array.from({ length: 65 }, (_, index) => {
+      const body = 'resume-' + index;
+      return { item: item('/assets/resume-batch/' + index + '.txt', body), body };
+    });
+    const config = fixture([], records.map(record => record.item));
+    config.productionRouting = true;
+    config.pack = pack(records);
+    const result = await harness.run(config, async () => {
+      const f = globalThis.resourceFixture;
+      await f.put(f.config.manifest.groups.optional[0], 'resume-0');
+      let started, paused = false;
+      const dataStarted = new Promise(resolve => { started = resolve; });
+      f.onFetch = async (url, options) => {
+        if (!url.pathname.endsWith('.sprpack')) throw new Error('unexpected raw');
+        const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(options.headers).get('Range'));
+        const start = Number(range[1]), end = Number(range[2]), bytes = new Uint8Array(f.config.pack);
+        const headerEnd = 12 + new DataView(bytes.buffer).getUint32(8, true);
+        if (!paused && start >= headerEnd) {
+          started();
+          return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+        }
+        return new Response(bytes.slice(start, end + 1), { status: 206,
+          headers: { 'Content-Range': 'bytes ' + start + '-' + end + '/' + bytes.length } });
+      };
+      const first = f.resourceCache.download('optional');
+      await dataStarted;
+      f.resourceCache.pause('optional'); paused = true;
+      const stopped = await first, afterPause = f.resourceCache.getState().optional;
+      const resumed = await f.resourceCache.download('optional');
+      return { stopped, afterPause, resumed, final: f.resourceCache.getState().optional };
+    });
+    assert.equal(result.stopped, false);
+    assert.equal(result.afterPause.done, 1);
+    assert.equal(result.afterPause.error, null);
+    assert.equal(result.resumed, true);
+    assert.equal(result.final.done, 65);
+    assert.equal(result.final.error, null);
+  });
+
   test('concurrent consumers share the download and all receive the complete resource', async () => {
     const body = 'concurrent resource body', resource = item('/assets/shared.txt', body);
     const result = await harness.run(fixture([resource], [], [], { [resource.url]: body }), async () => {
       const f = globalThis.resourceFixture;
-      await f.resourceCache.ensureSessionReady();
+      await f.resourceCache.ensureManifestReady();
       f.resetIo();
       const responses = await Promise.all(Array.from({ length: 4 }, () => f.cachedFetch('/assets/shared.txt')));
       return { bodies: await Promise.all(responses.map(response => response.text())), gets: f.io.gets,
@@ -62,10 +180,11 @@ describe('resource cache IO in real IndexedDB', { skip: resourceTestChrome ? fal
 
   test('cache hits share a pending lookup, avoid downloads, and honor later eviction', async () => {
     const body = 'already cached', resource = item('/assets/hit.txt', body);
-    const result = await harness.run(fixture([], [resource]), async () => {
+    const config = fixture([], [resource]); config.productionRouting = true;
+    const result = await harness.run(config, async () => {
       const f = globalThis.resourceFixture, resource = f.config.manifest.groups.optional[0];
       await f.put(resource, 'already cached');
-      await f.resourceCache.ensureSessionReady();
+      await f.resourceCache.ensureManifestReady();
       f.resetIo();
       const responses = await Promise.all([f.cachedFetch(resource.url), f.cachedFetch(resource.url)]);
       const bodies = await Promise.all(responses.map(response => response.text()));
@@ -88,20 +207,23 @@ describe('resource cache IO in real IndexedDB', { skip: resourceTestChrome ? fal
     const resource = item('/assets/fallback.png', raw, { type: 'image/png',
       transport: { version: sha(webp), bytes: Buffer.byteLength(webp), type: 'image/webp' },
       pack: { offset: 12, storedBytes: Buffer.byteLength(raw), total: 12 + Buffer.byteLength(raw), encoding: 'identity' } });
-    const result = await harness.run(fixture([resource], [], [], { [resource.url]: raw }), async () => {
+    const config = fixture([resource], [], [], { [resource.url]: raw }); config.productionRouting = true;
+    const result = await harness.run(config, async () => {
       const f = globalThis.resourceFixture, resource = f.config.manifest.groups.required[0];
-      await f.resourceCache.ensureSessionReady();
+      await f.resourceCache.ensureManifestReady();
       f.resetIo();
       f.onFetch = async url => {
         if (!url.pathname.endsWith('.sprpack')) return null;
         await f.put(resource, 'finished webp', { transport: resource.transport,
           blob: new Blob(['finished webp'], { type: 'image/webp' }) });
-        return new Response('x'.repeat(resource.bytes), { status: 206,
+        return new Response('x', { status: 206,
           headers: { 'Content-Range': `bytes 12-${resource.pack.total - 1}/${resource.pack.total}` } });
       };
+      const prefetched = await f.resourceCache.prefetchRequired([resource.url], { priority: 2 });
       const response = await f.cachedFetch(resource.url);
-      return { text: await response.text(), gets: f.io.gets, requests: f.requests };
+      return { prefetched, text: await response.text(), gets: f.io.gets, requests: f.requests };
     });
+    assert.equal(result.prefetched, true);
     assert.equal(result.text, webp);
     assert.equal(result.gets.filter(entry => entry.mode === 'readonly').length, 3,
       'initial lookup, first download lookup, and a fresh lookup after the pack failed');

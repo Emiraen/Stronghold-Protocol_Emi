@@ -16,13 +16,14 @@ function messageTime(at) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
+export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dockSelector = null }) {
   const chat = useStore((s) => channel === 'match' ? s.matchChat : s.chat);
+  const matchId = useStore((s) => channel === 'match' ? s.match.public?.matchId || s.matchChat?.matchId : null);
   const room = useStore((s) => s.room);
   const route = useStore(selectRoute);
   const inLobby = route === 'lobby';
   const phase = useStore((s) => channel === 'match' ? s.match.public?.phase : null);
-  const items = Array.isArray(chat?.items) ? chat.items.slice(-MAX_MESSAGES) : [];
+  const items = Array.isArray(chat?.items) && (channel !== 'match' || chat.matchId === matchId) ? chat.items.slice(-MAX_MESSAGES) : [];
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [pending, setPending] = useState(null);
@@ -34,14 +35,18 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
   const [bounds, setBounds] = useState(null);
   const chatRef = useRef(null);
   useLayoutEffect(() => {
-    const selector = channel === 'match' ? '.gm__corner, .gm__chat-slot, .gtop' : roomCode ? '.room-fill, .room-bar, .room-screen .topbar, .ally-guide' : '.lobby-screen .topbar, .ally-guide';
+    const selector = dockSelector || (channel === 'match' ? '.gm__corner, .gm__chat-slot, .gtop' : roomCode ? '.room-fill, .room-bar, .room-screen .topbar, .ally-guide' : '.lobby-screen .topbar, .ally-guide');
     const update = () => {
       const v = visibleViewport();
       const css = getComputedStyle(document.documentElement);
       const inset = (side) => parseFloat(css.getPropertyValue(`--sa-${side}`)) || 0;
-      const cornerNode = channel === 'match' ? document.querySelector('.gm__corner') : null;
+      const cornerNode = channel === 'match' && !dockSelector ? document.querySelector('.gm__corner') : null;
       const slotNode = cornerNode?.querySelector('.gm__chat-slot');
       const launcher = chatRef.current?.querySelector('.sp-chat__toggle');
+      const dock = dockSelector ? [...document.querySelectorAll(dockSelector)].find(node => {
+        const box = node.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && getComputedStyle(node).visibility !== 'hidden';
+      })?.getBoundingClientRect() : null;
       // Reserve the unscaled size: the toolbar and floating launcher share the same mobile scale.
       // Keep that reservation while the panel opens and finishes its exit animation.
       if (slotNode && !expanded && launcher?.offsetWidth && launcher?.offsetHeight) {
@@ -97,7 +102,9 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
           side.style.setProperty('--public-chat-side-height', `${Math.max(0, bottom - toggle - 8 - top)}px`);
         }
       }
-      const next = { bottom: launcherBottom ?? Math.max(v.bottomGap + inset('b') + 8, innerHeight - bottom), left: launcherLeft,
+      const dockLeft = dock && !expanded ? dock.left + (dock.width - (launcher?.offsetWidth || 32)) / 2 : null;
+      const dockBottom = dock && !expanded ? innerHeight - dock.top - (dock.height + (launcher?.offsetHeight || 32)) / 2 : null;
+      const next = { bottom: dockBottom ?? launcherBottom ?? Math.max(v.bottomGap + inset('b') + 8, innerHeight - bottom), left: dockLeft ?? launcherLeft,
         height: available, keyboard: v.keyboard, tight };
       setBounds((prev) => prev && prev.bottom === next.bottom && prev.left === next.left && prev.height === next.height && prev.keyboard === next.keyboard && prev.tight === next.tight ? prev : next);
     };
@@ -109,7 +116,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
       document.querySelectorAll(selector).forEach((node) => observer?.observe(node));
       update();
     }) : null;
-    const screen = document.querySelector(channel === 'match' ? '.gm__hud' : roomCode ? '.room-screen' : '.lobby-screen');
+    const screen = document.querySelector(dockSelector ? '[data-mz-exploration-host]' : channel === 'match' ? '.gm__hud' : roomCode ? '.room-screen' : '.lobby-screen');
     if (screen) mutations?.observe(channel === 'lobby' ? document.body : screen, { childList: true, subtree: true });
     const toggle = chatRef.current?.querySelector('.sp-chat__toggle');
     if (toggle) observer?.observe(toggle);
@@ -125,7 +132,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
       globalThis.visualViewport?.removeEventListener('resize', update);
       globalThis.visualViewport?.removeEventListener('scroll', update);
     };
-  }, [channel, roomCode, phase, expanded, route]);
+  }, [channel, roomCode, phase, expanded, route, dockSelector]);
   const busy = useRef(false);
   const list = useRef(null);
   const pinned = useRef(true);
@@ -195,7 +202,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
     const value = text.trim().slice(0, MAX_TEXT);
     if (!value) return;
     run('send', () => net.request('chat.send', { text: value, channel,
-      ...(channel === 'match' ? { matchId: chat.matchId } : {}) }), () => { setText(''); latest(); });
+      ...(channel === 'match' ? { matchId } : {}) }), () => { setText(''); latest(); });
   };
   const join = (target) => {
     if (!['lobby', 'room'].includes(selectRoute(store.get())) || store.get().room?.inMatch) {
@@ -206,7 +213,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
   const keyboard = expanded && bounds?.keyboard;
   const style = bounds ? `${bounds.left == null ? '' : `left:${bounds.left}px;`}bottom:${bounds.bottom}px;--chat-available:${bounds.height}px;` : undefined;
 
-  return html`<${Overlay} level="chat" active=${expanded}><aside ref=${chatRef} class=${`sp-chat${channel === 'match' ? ' sp-chat--match' : ''}${expanded ? ' is-expanded' : ''}${open ? ' is-open' : ''}${leaving ? ' is-leaving' : ''}${keyboard ? ' has-keyboard' : ''}${bounds?.tight && expanded ? ' is-tight' : ''}`} style=${style} aria-label=${label}>
+  return html`<${Overlay} level="chat" active=${expanded}><aside ref=${chatRef} class=${`sp-chat${channel === 'match' ? ' sp-chat--match' : ''}${dockSelector ? ' sp-chat--docked' : ''}${expanded ? ' is-expanded' : ''}${open ? ' is-open' : ''}${leaving ? ' is-leaving' : ''}${keyboard ? ' has-keyboard' : ''}${bounds?.tight && expanded ? ' is-tight' : ''}`} style=${style} aria-label=${label}>
     <button type="button" class="sp-chat__toggle" aria-label=${label} aria-expanded=${open} aria-controls="sp-chat-panel"
       onClick=${() => { pinned.current = true; setOpen(!open); }}><${Icon} name="users" class="sp-chat__compact-icon" /><span class="sp-chat__label">${label}</span>
       ${unread ? html`<span class="sp-chat__count" aria-label=${trA("{p0} 条未读", { "p0": (unread) })}>${unread}</span>` : null}<span class="sp-chat__state" aria-hidden="true">${open ? '−' : '+'}</span></button>
@@ -224,7 +231,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby' }) {
       ${newBelow ? html`<button type="button" class="sp-chat__latest" onClick=${latest}>${trA('{p0} 条新消息', {p0: newBelow})}<${Icon} name="chevronRight" /></button>` : null}
       <form class="sp-chat__compose" onSubmit=${send}>
         <input type="text" value=${text} maxLength=${MAX_TEXT} placeholder=${trA("输入内容（最多 200 字）")} aria-label=${trA("聊天内容")}
-          disabled=${!online || !!pending || (channel === 'match' && !chat.matchId)}
+          disabled=${!online || !!pending || (channel === 'match' && !matchId)}
           onInput=${(event) => setText(event.currentTarget.value.slice(0, MAX_TEXT))}
           onKeyDown=${(event) => { if (event.key === 'Enter' && event.isComposing) event.preventDefault(); }} />
         <button type="submit" aria-label=${trA('发送消息')} disabled=${!online || !!pending || !text.trim()}><span>${pending === 'send' ? trA("发送中") : trA("发送")}</span><${Icon} name="chevrons" /></button>

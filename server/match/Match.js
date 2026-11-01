@@ -1,3 +1,6 @@
+import { AnnihilationGameData } from './annihilationGamedata.js';
+import { installAnnihilation } from './annihilation.js';
+import { ANNIHILATION_VARIANT } from '../../shared/annihilation-constants.js';
 // server/match/Match.js — the match & meta engine: state machine, timers, round loop, co-op orchestration,
 // broadcasting views (DESIGN §6, §8). Rules are documented in the module headers of ./PlayerState.js, ./pool.js,
 // ./board.js, ./bondsMeta.js, ./effectsMeta.js, ./choices.js, ./waves.js, ./unite.js, ./finalAssault.js,
@@ -176,14 +179,15 @@ export class Match {
     this._infoAdvanceTimer = null;
     this.roomCode = opts.roomCode ?? '----';
     this.mode = opts.mode === 'solo' ? 'solo' : 'coop';
-    this.variant = this.mode === 'coop' && (opts.variant === 'entertainment_multi' || opts.variant === 'entertainment_cyclops' || opts.variant === ENDLESS_VARIANT) ? opts.variant : null;
+    this.isAnnihilation = opts.variant === ANNIHILATION_VARIANT;
+    this.variant = this.isAnnihilation ? ANNIHILATION_VARIANT : this.mode === 'coop' && (opts.variant === 'entertainment_multi' || opts.variant === 'entertainment_cyclops' || opts.variant === ENDLESS_VARIANT) ? opts.variant : null;
     this.isEntertainmentMulti = this.variant === 'entertainment_multi';
     /** 独眼巨人冲锋：完全独立的娱乐模式（mode_cyclops），规则与普通模式/娱乐多人互不影响。 */
     this.isCyclops = this.variant === 'entertainment_cyclops';
     // 舟铲铲沿用玩家在大厅选择的难度；模式专属规则与难度解耦，不能覆盖 difficulty。
     this.rankedStore = opts.rankedStore || null;
     this.matchId = opts.matchId || randomBytes(16).toString('hex');
-    this.modeId = this.isCyclops ? 'mode_cyclops' : (this.variant === ENDLESS_VARIANT ? ENDLESS_MODE_ID : opts.modeId || modeIdFor(this.mode, opts.difficulty));
+    this.modeId = this.isAnnihilation ? `mode_${this.mode === 'solo' ? 'single' : 'multi'}_annihilation` : this.isCyclops ? 'mode_cyclops' : (this.variant === ENDLESS_VARIANT ? ENDLESS_MODE_ID : opts.modeId || modeIdFor(this.mode, opts.difficulty));
     this.seed = (Number(opts.seed) >>> 0) || 1;
     this.log = opts.log || noopLog;
     this.sendFn = opts.send;
@@ -192,7 +196,7 @@ export class Match {
     this.completeMatch = opts.completeMatch || null;
     this.archiveSeats = structuredClone(opts.seats || []);
     this.data = opts.data && typeof opts.data === 'object' ? opts.data : {};
-    this.gd = new GameData(this.data, this.modeId);
+    this.gd = this.isAnnihilation ? new AnnihilationGameData(this.data, this.modeId, { erosion: opts.erosion }) : new GameData(this.data, this.modeId);
     this.gd.isEntertainmentMulti = this.isEntertainmentMulti;
     this.gd.isCyclops = this.isCyclops;
     if (this.isCyclops) this.gd.setCyclopsDifficulty(opts.difficulty);
@@ -362,6 +366,7 @@ export class Match {
     this.hiddenReached = false;
     this.outcome = null;
     this._turnToken = 0;
+    if (this.isAnnihilation) installAnnihilation(this);
   }
 }
 for (const part of [MatchBoss, MatchClientCombat, MatchCombat, MatchInfra, MatchIntents, MatchMessaging, MatchPause, MatchSetupVote, MatchPhases, MatchPlatform, MatchPersonalChoice, MatchPrep, MatchReports, MatchSettle, MatchSpDraft, MatchUnite, MatchViews, MatchWatch]) {

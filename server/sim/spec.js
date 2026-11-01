@@ -27,6 +27,7 @@ import { isContentHash } from '../../shared/plugins/identity.js';
 import { Battle } from './Battle.js';
 import { toDataSource, withUnitLoadouts } from './simdata.js';
 import { BOSS_POOL_MIN_HP } from './constants.js';
+import { uniteLpExempt } from '../../shared/uniteBilling.js';
 
 export const SPEC_VERSION = 1;
 
@@ -225,7 +226,7 @@ export function attachLpMeter(battle) {
  * alive, or already through the objective again — i.e. what settlement would charge them if the battle ended now
  * (server/match/unite.js uniteSurvivors: the unite result's counted leaks + unspawned entries by `sourcePlayerId`;
  * alive enemies become leaks on a timeout, keyed like Battle._recordLeak). It falls as the helpers strike them down and
- * rises when one splits or summons (content-spawned children inherit the parent's sourcePlayerId).
+ * ignores runtime splits and summons (they retain attribution but did not cross the leaker's own goal).
  * `{ [playerId]: n }` (a player with none left is absent), or null for a battle without the sim's state (a stand-in).
  * @returns {Record<string, number> | null}
  */
@@ -236,14 +237,14 @@ export function uniteLeft(battle) {
   if (battle.finished && typeof battle.result === 'function') {
     const r = battle.result();
     if (!r || !r.perPlayer) return null;
-    for (const pp of Object.values(r.perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false && !l.uniteRuntime) add(l.sourcePlayerId);
-    for (const u of r.unspawned || []) if (u) add(u.sourcePlayerId);
+    for (const pp of Object.values(r.perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false && !uniteLpExempt(l)) add(l.sourcePlayerId);
+    for (const u of r.unspawned || []) if (u && u.counted !== false && !uniteLpExempt(u)) add(u.sourcePlayerId);
     return out;
   }
   if (!battle._perPlayer || !Array.isArray(battle._pending) || !Array.isArray(battle.enemies)) return null;
-  for (const p of battle._pending) if (p) add(p.sourcePlayerId);
-  for (const e of battle.enemies) if (e && e.alive && e.counted && !e.uniteRuntime) add(e.sourcePlayerId ?? e.ownerId);
-  for (const pp of Object.values(battle._perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false && !l.uniteRuntime) add(l.sourcePlayerId);
+  for (const p of battle._pending) if (p && p.counted !== false && !uniteLpExempt(p)) add(p.sourcePlayerId);
+  for (const e of battle.enemies) if (e && e.alive && e.counted && !uniteLpExempt(e)) add(e.sourcePlayerId ?? e.ownerId);
+  for (const pp of Object.values(battle._perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false && !uniteLpExempt(l)) add(l.sourcePlayerId);
   return out;
 }
 

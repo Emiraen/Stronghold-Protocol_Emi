@@ -275,7 +275,7 @@ test('伊内丝 S3 独影归途: first deployment leaves a sentry and retreats; 
     const buff = u.findBuff('ines:s3');
     assert.ok(buff, 'passive buff on the redeploy');
     approx(buff.mods.atkPct, bb.atk, 1e-9);
-    approx(buff.timeLeft, sk.duration, 0.1);
+    approx(u.skill.timeLeft, sk.duration, 0.1);
     const recall = dmgBy(h, u, tagged('sentryRecall'));
     assert.equal(recall.length, bb.max_target, `${id}: recall hits ≤ ${bb.max_target} of 6`);
     assert.ok(recall.every((c) => near.includes(c.target)) && !recall.some((c) => c.target === far));
@@ -611,10 +611,10 @@ test('缄默德克萨斯 S1 细雨无声: passive ATK up for its duration; hits 
     const h = battle([U(id, 10, 4, 0)]);
     h.step();
     const u = h.unit(id);
-    const buff = u.findBuff('texas2:drizzle');
+    const buff = u.findBuff('skill:' + u.id);
     assert.ok(buff, `${id}: passive active on deployment`);
-    approx(buff.mods.atkPct, bb.atk, 1e-9);
-    assert.ok(u.findBuff('texas2:rainAtk'), 'talent 德克萨斯传统 ATK during the passive');
+    approx(buff.mods.atkPct, bb.atk + D(id, 0).talents[0].bb.atk, 1e-9);
+    assert.ok(u.skill.active && u.skill.kind === 'duration', 'deployment skill owns its lifecycle');
     const e = h.spawn('enemy_dummy', { pos: [10, 5] });
     h.run(3);
     assert.ok(e.s.flags.silence, 'hit target silenced (失去特殊能力)');
@@ -623,7 +623,7 @@ test('缄默德克萨斯 S1 细雨无声: passive ATK up for its duration; hits 
     assert.ok(dot.length >= 2, `a DoT tick every second although she re-hits faster (${dot.length})`);
     for (const c of dot) approx(c.amount, bb['attack@texas2_s_1[dot].dot_damage'], 1e-9, 'fixed arts per second (RES 0)');
     h.run(sk.duration);
-    assert.ok(!u.findBuff('texas2:drizzle'), 'ends with the skill duration');
+    assert.ok(!u.skill.active && !u.findBuff('skill:' + u.id), 'ends with the skill duration');
     h.run(bb['attack@silence'] + 1);
     assert.ok(!e.s.flags.silence && !e.findBuff(`texas2:drizzleDot:${u.id}`), 'no new silence / DoT after the passive');
   }
@@ -657,8 +657,8 @@ test('缄默德克萨斯 S2 阵雨连绵: deploy burst atk_scale arts + RES down
     approx(burst[0].amount, u.s.atk * bb.atk_scale * 0.5, 1e-6, 'arts burst vs RES 50');
     approx(e.s.res, 50 * (1 + bb.magic_resistance), 1e-6, 'RES down');
     assert.equal(far.s.res, 50);
-    approx(u.findBuff('texas2:shower').mods.atkPct, bb.atk, 1e-9);
-    approx(u.findBuff('texas2:shower').timeLeft, sk.duration, 1e-6);
+    approx(u.findBuff('skill:' + u.id).mods.atkPct, bb.atk + D(id, 1).talents[0].bb.atk, 1e-9);
+    approx(u.skill.timeLeft, sk.duration, 1e-6);
     h.run(2);
     const hits = dmgBy(h, u, (c) => c.dmg.isAttack);
     assert.ok(hits.length >= 2 && hits.every((c) => c.type === 'arts'), 'arts attacks');
@@ -719,7 +719,7 @@ test('星熊 module PRO-X 护身符: DEF +20 % while blocking', () => {
   approx(def(null, true), def(null, false), 1e-9);
 });
 
-test('泥岩 S1 防御力强化·γ型 (TAKE_DAMAGE) and S3 秽壤的血脉 (dormant & invulnerable & blocking, slow; then stun, buffs, hits all blocked)', () => {
+test('泥岩 S1 防御力强化·γ型 (TAKE_DAMAGE) and S3 秽壤的血脉 (dormant & invulnerable & noBlock, slow; then stun, buffs, hits all blocked)', () => {
   for (const id of pair('chess_char_4_18_a')) {
     const b1 = D(id, 0).skill.bb, sk = D(id, 2).skill, b3 = sk.bb;
     let h = battle([U(id, 10, 4, 0)], { enemies: { enemy_hitter: dummy({ key: 'enemy_hitter', atk: 300, bat: 1 }) } });
@@ -730,8 +730,8 @@ test('泥岩 S1 防御力强化·γ型 (TAKE_DAMAGE) and S3 秽壤的血脉 (dor
     h.spawn('enemy_hitter', { pos: [10, 4] });
     assert.ok(h.runUntil(() => u.skill.active, 5));
     approx(u.s.def, u.base.def * (1 + b1.def), 1e-6);
-    h = battle([U(id, 9, 5, 2)], { enemies: { e_walk: enemyRec({ key: 'e_walk', hp: 1e8, atk: 500, speed: 1, bat: 1 }) } });
-    for (let i = 0; i < 3; i++) h.spawn('e_walk', { routeIndex: 0 });
+    h = battle([U(id, 9, 5, 2)], { enemies: { e_walk: enemyRec({ key: 'e_walk', hp: 1e8, atk: 500, speed: 0, bat: 1 }) } });
+    const nearby = Array.from({ length: 3 }, () => h.spawn('e_walk', { pos: [9, 5] }));
     u = h.unit(id);
     assert.ok(h.runUntil(() => u.blocking.length === 3, 30), 'blocks three walkers');
     const hp0 = u.hp;
@@ -739,12 +739,15 @@ test('泥岩 S1 防御力强化·γ型 (TAKE_DAMAGE) and S3 秽壤的血脉 (dor
     const t0 = h.b.time;
     h.run(b3.sleep - 1);
     assert.equal(u.hp >= hp0 - 1e-6, true, `${id}: no damage while dormant`);
-    assert.equal(u.blocking.length, 3, 'keeps blocking');
+    assert.equal(u.blocking.length, 0, 'closed state releases all blockers');
+    assert.ok(nearby.every(e => e.blockedBy !== u), 'each former blocker released');
     assert.equal(h.hooksOf('attack').filter((c) => c.attacker === u && c.t > t0).length, 0, 'cannot act');
-    assert.ok(u.blocking.every((e) => e.findBuff(`mudrok:slow:${u.id}`)), 'enemies around slowed');
+    assert.equal(nearby.length, 3);
+    assert.ok(nearby.every((e) => e.findBuff(`mudrok:slow:${u.id}`)), 'all nearby enemies slowed');
     h.run(1.2);
     assert.ok(u.findBuff('mudrok:awake'), 'awake');
-    for (const e of u.blocking) assert.ok(e.s.flags.stun, 'ground enemies around stunned');
+    assert.equal(u.blocking.length, 3, 'blocking resumes after waking');
+    for (const e of nearby) assert.ok(e.s.flags.stun, 'ground enemies around stunned');
     approx(u.s.atk, u.base.atk * (1 + b3.atk) * (u.findBuff('mudrok:module') ? 1 + (u.def.traitBb.atk ?? 0) : 1), 1e-6, 'ATK');
     approx(u.s.interval, (u.base.bat + b3.base_attack_time) * 100 / u.s.aspd, 1e-6, 'BAT −0.3 s');
     assert.ok(h.runUntil(() => h.hooksOf('attack').some((c) => c.attacker === u && c.t > t0), 5));

@@ -1,0 +1,852 @@
+{
+  "source": {
+    "tables": "local official character_table/skill_table/roguelike_topic_table",
+    "mechanics": [
+      "https://prts.wiki/w/骰子",
+      "https://prts.wiki/w/8面骰子",
+      "https://prts.wiki/w/12面骰子"
+    ]
+  },
+  "dice": {
+    "rogue_2_dice_battle1": {
+      "itemId": "rogue_2_dice_battle1",
+      "key": "trap_067_dice",
+      "count": 1,
+      "position": "ALL",
+      "raw": {
+        "name": "骰子",
+        "description": null,
+        "sortIndex": 1004,
+        "spTargetType": "NONE",
+        "spTargetId": null,
+        "canUseGeneralPotentialItem": true,
+        "canUseActivityPotentialItem": false,
+        "potentialItemId": null,
+        "activityPotentialItemId": null,
+        "classicPotentialItemId": null,
+        "nationId": null,
+        "groupId": null,
+        "teamId": null,
+        "mainPower": {
+          "nationId": null,
+          "groupId": null,
+          "teamId": null
+        },
+        "subPower": null,
+        "displayNumber": null,
+        "appellation": "Dice",
+        "position": "NONE",
+        "tagList": null,
+        "itemUsage": null,
+        "itemDesc": null,
+        "itemObtainApproach": null,
+        "isNotObtainable": false,
+        "isSpChar": false,
+        "maxPotentialLevel": 0,
+        "rarity": "TIER_1",
+        "profession": "TRAP",
+        "subProfessionId": "notchar2",
+        "trait": {
+          "candidates": [
+            {
+              "unlockCondition": {
+                "phase": "PHASE_0",
+                "level": 1
+              },
+              "requiredPotentialRank": 0,
+              "blackboard": [],
+              "overrideDescripton": "部署时消耗<@ba.vup>1</>掷骰次数，部署后根据掷骰结果使敌人的速度在<@ba.vup>15</>秒内降低，点数越大，效果越强\\n每场战斗仅可使用<@ba.vup>1</>次骰子",
+              "prefabKey": null,
+              "rangeId": null
+            }
+          ]
+        },
+        "phases": [
+          {
+            "characterPrefabKey": "trap_067_dice",
+            "rangeId": null,
+            "maxLevel": 30,
+            "attributesKeyFrames": [
+              {
+                "level": 1,
+                "data": {
+                  "maxHp": 100,
+                  "atk": 0,
+                  "def": 0,
+                  "magicResistance": 0,
+                  "cost": 3,
+                  "blockCnt": 0,
+                  "moveSpeed": 1,
+                  "attackSpeed": 100,
+                  "baseAttackTime": 1,
+                  "respawnTime": 5,
+                  "hpRecoveryPerSec": 0,
+                  "spRecoveryPerSec": 1,
+                  "maxDeployCount": 1,
+                  "maxDeckStackCnt": 0,
+                  "tauntLevel": 0,
+                  "massLevel": 0,
+                  "baseForceLevel": 0,
+                  "stunImmune": false,
+                  "silenceImmune": false,
+                  "sleepImmune": false,
+                  "frozenImmune": false,
+                  "levitateImmune": false,
+                  "disarmedCombatImmune": false,
+                  "fearedImmune": false,
+                  "palsyImmune": false,
+                  "attractImmune": false,
+                  "teleportImmune": false,
+                  "groundBoundImmune": false
+                }
+              },
+              {
+                "level": 30,
+                "data": {
+                  "maxHp": 100,
+                  "atk": 0,
+                  "def": 0,
+                  "magicResistance": 0,
+                  "cost": 3,
+                  "blockCnt": 0,
+                  "moveSpeed": 1,
+                  "attackSpeed": 100,
+                  "baseAttackTime": 1,
+                  "respawnTime": 5,
+                  "hpRecoveryPerSec": 0,
+                  "spRecoveryPerSec": 1,
+                  "maxDeployCount": 1,
+                  "maxDeckStackCnt": 0,
+                  "tauntLevel": 0,
+                  "massLevel": 0,
+                  "baseForceLevel": 0,
+                  "stunImmune": false,
+                  "silenceImmune": false,
+                  "sleepImmune": false,
+                  "frozenImmune": false,
+                  "levitateImmune": false,
+                  "disarmedCombatImmune": false,
+                  "fearedImmune": false,
+                  "palsyImmune": false,
+                  "attractImmune": false,
+                  "teleportImmune": false,
+                  "groundBoundImmune": false
+                }
+              }
+            ],
+            "evolveCost": null
+          }
+        ],
+        "skills": [
+          {
+            "skillId": "sktok_dice",
+            "overridePrefabKey": null,
+            "overrideTokenKey": null,
+            "levelUpCostCond": [],
+            "unlockCond": {
+              "phase": "PHASE_0",
+              "level": 1
+            }
+          }
+        ],
+        "displayTokenDict": null,
+        "talents": [
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-20</>，移动速度<@ba.vup>-50%</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          },
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-30</>，移动速度<@ba.vup>-70%</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          }
+        ],
+        "potentialRanks": [],
+        "favorKeyFrames": null,
+        "allSkillLvlup": []
+      },
+      "skill": {
+        "skillId": "sktok_dice",
+        "iconId": null,
+        "hidden": false,
+        "levels": [
+          {
+            "name": "掷骰",
+            "rangeId": null,
+            "description": null,
+            "skillType": "AUTO",
+            "durationType": "NONE",
+            "spData": {
+              "spType": "INCREASE_WITH_TIME",
+              "levelUpCost": null,
+              "maxChargeTime": 1,
+              "spCost": 0,
+              "initSp": 0,
+              "increment": 1
+            },
+            "prefabId": "sktok_dice",
+            "duration": 15,
+            "blackboard": [
+              {
+                "key": "dice_interval[0].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[0].attack_speed",
+                "value": -20,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[0].move_speed",
+                "value": -0.5,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].attack_speed",
+                "value": -30,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].move_speed",
+                "value": -0.7,
+                "valueStr": null
+              }
+            ]
+          }
+        ]
+      },
+      "faces": 6,
+      "thresholds": [
+        3,
+        6
+      ]
+    },
+    "rogue_2_dice_battle2": {
+      "itemId": "rogue_2_dice_battle2",
+      "key": "trap_088_dice2",
+      "count": 1,
+      "position": "ALL",
+      "raw": {
+        "name": "8面骰子",
+        "description": null,
+        "sortIndex": 693,
+        "spTargetType": "NONE",
+        "spTargetId": null,
+        "canUseGeneralPotentialItem": true,
+        "canUseActivityPotentialItem": false,
+        "potentialItemId": null,
+        "activityPotentialItemId": null,
+        "classicPotentialItemId": null,
+        "nationId": null,
+        "groupId": null,
+        "teamId": null,
+        "mainPower": {
+          "nationId": null,
+          "groupId": null,
+          "teamId": null
+        },
+        "subPower": null,
+        "displayNumber": null,
+        "appellation": "Eight-sided Dice",
+        "position": "NONE",
+        "tagList": null,
+        "itemUsage": null,
+        "itemDesc": null,
+        "itemObtainApproach": null,
+        "isNotObtainable": false,
+        "isSpChar": false,
+        "maxPotentialLevel": 0,
+        "rarity": "TIER_1",
+        "profession": "TRAP",
+        "subProfessionId": "notchar2",
+        "trait": {
+          "candidates": [
+            {
+              "unlockCondition": {
+                "phase": "PHASE_0",
+                "level": 1
+              },
+              "requiredPotentialRank": 0,
+              "blackboard": [],
+              "overrideDescripton": "部署时消耗<@ba.vup>1</>掷骰次数，部署后根据掷骰结果使敌人的速度在<@ba.vup>15</>秒内降低，可能<@ba.vup>减少</>我方再部署时间，点数越大，效果越强\\n每场战斗仅可使用<@ba.vup>1</>次骰子",
+              "prefabKey": null,
+              "rangeId": null
+            }
+          ]
+        },
+        "phases": [
+          {
+            "characterPrefabKey": "trap_088_dice2",
+            "rangeId": null,
+            "maxLevel": 30,
+            "attributesKeyFrames": [
+              {
+                "level": 1,
+                "data": {
+                  "maxHp": 100,
+                  "atk": 0,
+                  "def": 0,
+                  "magicResistance": 0,
+                  "cost": 3,
+                  "blockCnt": 0,
+                  "moveSpeed": 1,
+                  "attackSpeed": 100,
+                  "baseAttackTime": 1,
+                  "respawnTime": 5,
+                  "hpRecoveryPerSec": 0,
+                  "spRecoveryPerSec": 1,
+                  "maxDeployCount": 1,
+                  "maxDeckStackCnt": 0,
+                  "tauntLevel": 0,
+                  "massLevel": 0,
+                  "baseForceLevel": 0,
+                  "stunImmune": false,
+                  "silenceImmune": false,
+                  "sleepImmune": false,
+                  "frozenImmune": false,
+                  "levitateImmune": false,
+                  "disarmedCombatImmune": false,
+                  "fearedImmune": false,
+                  "palsyImmune": false,
+                  "attractImmune": false,
+                  "teleportImmune": false,
+                  "groundBoundImmune": false
+                }
+              },
+              {
+                "level": 30,
+                "data": {
+                  "maxHp": 100,
+                  "atk": 0,
+                  "def": 0,
+                  "magicResistance": 0,
+                  "cost": 3,
+                  "blockCnt": 0,
+                  "moveSpeed": 1,
+                  "attackSpeed": 100,
+                  "baseAttackTime": 1,
+                  "respawnTime": 5,
+                  "hpRecoveryPerSec": 0,
+                  "spRecoveryPerSec": 1,
+                  "maxDeployCount": 1,
+                  "maxDeckStackCnt": 0,
+                  "tauntLevel": 0,
+                  "massLevel": 0,
+                  "baseForceLevel": 0,
+                  "stunImmune": false,
+                  "silenceImmune": false,
+                  "sleepImmune": false,
+                  "frozenImmune": false,
+                  "levitateImmune": false,
+                  "disarmedCombatImmune": false,
+                  "fearedImmune": false,
+                  "palsyImmune": false,
+                  "attractImmune": false,
+                  "teleportImmune": false,
+                  "groundBoundImmune": false
+                }
+              }
+            ],
+            "evolveCost": null
+          }
+        ],
+        "skills": [
+          {
+            "skillId": "sktok_dice2",
+            "overridePrefabKey": null,
+            "overrideTokenKey": null,
+            "levelUpCostCond": [],
+            "unlockCond": {
+              "phase": "PHASE_0",
+              "level": 1
+            }
+          }
+        ],
+        "displayTokenDict": null,
+        "talents": [
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-20</>，移动速度<@ba.vup>-50%</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          },
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-30</>，移动速度<@ba.vup>-70%</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          },
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-40</>，移动速度<@ba.vup>-80%</>；当前再部署时间<@ba.vup>减半</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          }
+        ],
+        "potentialRanks": [],
+        "favorKeyFrames": null,
+        "allSkillLvlup": []
+      },
+      "skill": {
+        "skillId": "sktok_dice2",
+        "iconId": null,
+        "hidden": false,
+        "levels": [
+          {
+            "name": "掷骰",
+            "rangeId": null,
+            "description": null,
+            "skillType": "AUTO",
+            "durationType": "NONE",
+            "spData": {
+              "spType": "INCREASE_WITH_TIME",
+              "levelUpCost": null,
+              "maxChargeTime": 1,
+              "spCost": 0,
+              "initSp": 0,
+              "increment": 1
+            },
+            "prefabId": "sktok_dice2",
+            "duration": 15,
+            "blackboard": [
+              {
+                "key": "dice_interval[0].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[0].attack_speed",
+                "value": -20,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[0].move_speed",
+                "value": -0.5,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].attack_speed",
+                "value": -30,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].move_speed",
+                "value": -0.7,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[2].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[2].attack_speed",
+                "value": -40,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[2].move_speed",
+                "value": -0.8,
+                "valueStr": null
+              }
+            ]
+          }
+        ]
+      },
+      "faces": 8,
+      "thresholds": [
+        3,
+        6,
+        8
+      ]
+    },
+    "rogue_2_dice_battle3": {
+      "itemId": "rogue_2_dice_battle3",
+      "key": "trap_089_dice3",
+      "count": 1,
+      "position": "ALL",
+      "raw": {
+        "name": "12面骰子",
+        "description": null,
+        "sortIndex": 692,
+        "spTargetType": "NONE",
+        "spTargetId": null,
+        "canUseGeneralPotentialItem": true,
+        "canUseActivityPotentialItem": false,
+        "potentialItemId": null,
+        "activityPotentialItemId": null,
+        "classicPotentialItemId": null,
+        "nationId": null,
+        "groupId": null,
+        "teamId": null,
+        "mainPower": {
+          "nationId": null,
+          "groupId": null,
+          "teamId": null
+        },
+        "subPower": null,
+        "displayNumber": null,
+        "appellation": "Twelve-sided Dice",
+        "position": "NONE",
+        "tagList": null,
+        "itemUsage": null,
+        "itemDesc": null,
+        "itemObtainApproach": null,
+        "isNotObtainable": false,
+        "isSpChar": false,
+        "maxPotentialLevel": 0,
+        "rarity": "TIER_1",
+        "profession": "TRAP",
+        "subProfessionId": "notchar2",
+        "trait": {
+          "candidates": [
+            {
+              "unlockCondition": {
+                "phase": "PHASE_0",
+                "level": 1
+              },
+              "requiredPotentialRank": 0,
+              "blackboard": [],
+              "overrideDescripton": "部署时消耗<@ba.vup>1</>掷骰次数，部署后根据掷骰结果使敌人的速度在<@ba.vup>15</>秒内降低，可能<@ba.vup>清除</>我方再部署时间，点数越大，效果越强\\n每场战斗仅可使用<@ba.vup>1</>次骰子",
+              "prefabKey": null,
+              "rangeId": null
+            }
+          ]
+        },
+        "phases": [
+          {
+            "characterPrefabKey": "trap_089_dice3",
+            "rangeId": null,
+            "maxLevel": 30,
+            "attributesKeyFrames": [
+              {
+                "level": 1,
+                "data": {
+                  "maxHp": 100,
+                  "atk": 0,
+                  "def": 0,
+                  "magicResistance": 0,
+                  "cost": 3,
+                  "blockCnt": 0,
+                  "moveSpeed": 1,
+                  "attackSpeed": 100,
+                  "baseAttackTime": 1,
+                  "respawnTime": 5,
+                  "hpRecoveryPerSec": 0,
+                  "spRecoveryPerSec": 1,
+                  "maxDeployCount": 1,
+                  "maxDeckStackCnt": 0,
+                  "tauntLevel": 0,
+                  "massLevel": 0,
+                  "baseForceLevel": 0,
+                  "stunImmune": false,
+                  "silenceImmune": false,
+                  "sleepImmune": false,
+                  "frozenImmune": false,
+                  "levitateImmune": false,
+                  "disarmedCombatImmune": false,
+                  "fearedImmune": false,
+                  "palsyImmune": false,
+                  "attractImmune": false,
+                  "teleportImmune": false,
+                  "groundBoundImmune": false
+                }
+              },
+              {
+                "level": 30,
+                "data": {
+                  "maxHp": 100,
+                  "atk": 0,
+                  "def": 0,
+                  "magicResistance": 0,
+                  "cost": 3,
+                  "blockCnt": 0,
+                  "moveSpeed": 1,
+                  "attackSpeed": 100,
+                  "baseAttackTime": 1,
+                  "respawnTime": 5,
+                  "hpRecoveryPerSec": 0,
+                  "spRecoveryPerSec": 1,
+                  "maxDeployCount": 1,
+                  "maxDeckStackCnt": 0,
+                  "tauntLevel": 0,
+                  "massLevel": 0,
+                  "baseForceLevel": 0,
+                  "stunImmune": false,
+                  "silenceImmune": false,
+                  "sleepImmune": false,
+                  "frozenImmune": false,
+                  "levitateImmune": false,
+                  "disarmedCombatImmune": false,
+                  "fearedImmune": false,
+                  "palsyImmune": false,
+                  "attractImmune": false,
+                  "teleportImmune": false,
+                  "groundBoundImmune": false
+                }
+              }
+            ],
+            "evolveCost": null
+          }
+        ],
+        "skills": [
+          {
+            "skillId": "sktok_dice3",
+            "overridePrefabKey": null,
+            "overrideTokenKey": null,
+            "levelUpCostCond": [],
+            "unlockCond": {
+              "phase": "PHASE_0",
+              "level": 1
+            }
+          }
+        ],
+        "displayTokenDict": null,
+        "talents": [
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-20</>，移动速度<@ba.vup>-50%</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          },
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-30</>，移动速度<@ba.vup>-70%</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          },
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-40</>，移动速度<@ba.vup>-80%</>；当前再部署时间<@ba.vup>减半</>",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          },
+          {
+            "candidates": [
+              {
+                "unlockCondition": {
+                  "phase": "PHASE_0",
+                  "level": 1
+                },
+                "requiredPotentialRank": 0,
+                "prefabKey": "1",
+                "name": null,
+                "description": "场上所有敌人攻击速度<@ba.vup>-40</>，移动速度<@ba.vup>-80%</>；<@ba.vup>清除</>当前再部署时间",
+                "rangeId": null,
+                "blackboard": [],
+                "tokenKey": null,
+                "isHideTalent": true
+              }
+            ]
+          }
+        ],
+        "potentialRanks": [],
+        "favorKeyFrames": null,
+        "allSkillLvlup": []
+      },
+      "skill": {
+        "skillId": "sktok_dice3",
+        "iconId": null,
+        "hidden": false,
+        "levels": [
+          {
+            "name": "掷骰",
+            "rangeId": null,
+            "description": null,
+            "skillType": "AUTO",
+            "durationType": "NONE",
+            "spData": {
+              "spType": "INCREASE_WITH_TIME",
+              "levelUpCost": null,
+              "maxChargeTime": 1,
+              "spCost": 0,
+              "initSp": 0,
+              "increment": 1
+            },
+            "prefabId": "sktok_dice3",
+            "duration": 15,
+            "blackboard": [
+              {
+                "key": "dice_interval[0].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[0].attack_speed",
+                "value": -20,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[0].move_speed",
+                "value": -0.5,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].attack_speed",
+                "value": -30,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[1].move_speed",
+                "value": -0.7,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[2].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[2].attack_speed",
+                "value": -40,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[2].move_speed",
+                "value": -0.8,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[3].duration",
+                "value": 15,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[3].attack_speed",
+                "value": -40,
+                "valueStr": null
+              },
+              {
+                "key": "dice_interval[3].move_speed",
+                "value": -0.8,
+                "valueStr": null
+              }
+            ]
+          }
+        ]
+      },
+      "faces": 12,
+      "thresholds": [
+        3,
+        6,
+        9,
+        12
+      ]
+    }
+  }
+}

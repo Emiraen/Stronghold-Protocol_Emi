@@ -511,18 +511,20 @@ export class MatchBoss {
         return;
       }
       const eligible = victory && !!this.hiddenBossId && hiddenEligible(this.gd, { layerSum: this.hiddenLayerSum, teamLp: this.teamLp, playerCount: this.alivePlayers().length });
-      this.later(this.scaled(DELAYS.SETTLE), () => {
-        if (eligible) {
+      if (eligible) {
+        this.later(this.scaled(DELAYS.SETTLE), () => {
           this.hiddenReached = true;
           this.bossPool = null;
           this.tickerText('隐秘核心已解锁', FLOW_TICKER_PRIORITY);
           this.startRound(this.gd.hiddenRound);
-        } else {
-          this.finish({ victory, reason: victory ? 'victory' : 'defeat' });
-        }
-      });
+        });
+      } else {
+        // No next battle needs this inter-round pause. Persist and publish the
+        // terminal result now; the client owns its non-blocking end animation.
+        this.finish({ victory, reason: victory ? 'victory' : 'defeat' });
+      }
     } else {
-      this.later(this.scaled(DELAYS.SETTLE), () => this.finish({ victory, hiddenCleared: victory, reason: victory ? 'victory' : 'defeat' }));
+      this.finish({ victory, hiddenCleared: victory, reason: victory ? 'victory' : 'defeat' });
     }
   }
 }

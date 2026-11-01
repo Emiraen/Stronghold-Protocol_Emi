@@ -6,7 +6,7 @@ import { SEEDS, runFull, reportSimIssues } from './fullmatchRun.js';
 after(reportSimIssues);
 
 for (const [humans, bots, difficulty] of [[1, 1, 'NORMAL'], [2, 1, 'HARD'], [1, 3, 'ABYSS']]) {
-  test(`co-op ${humans} human(s) + ${bots} AI (${difficulty}): ${SEEDS} seeds to RESULT with zero errors`, () => {
-    for (let seed = 1; seed <= SEEDS; seed++) runFull({ mode: 'coop', difficulty, humans, bots, seed: 100 + seed });
+  test(`co-op ${humans} human(s) + ${bots} AI (${difficulty}): ${SEEDS} seeds to RESULT with zero errors`, async () => {
+    for (let seed = 1; seed <= SEEDS; seed++) (await runFull({ mode: 'coop', difficulty, humans, bots, seed: 100 + seed }));
   });
 }

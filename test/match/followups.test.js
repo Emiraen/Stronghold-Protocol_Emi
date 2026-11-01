@@ -22,7 +22,7 @@ function everyBattleBounty(gd) {
   return c;
 }
 
-test('multi-round bounties spawn in the Final Assault on the owner\'s half, show in the boss preview, then use up a battle', () => {
+test('multi-round bounties spawn in the Final Assault on the owner\'s half, show in the boss preview, then use up a battle', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 61, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 1e9, coins: { p_0: 3 } } : {}) }).start();
   const m = h.m;
   h.drive(() => m.phase === PHASE.PREP && m.round === 14);
@@ -47,7 +47,7 @@ test('multi-round bounties spawn in the Final Assault on the owner\'s half, show
     else { assert.equal(s.ownerPlayerId, 'p_1'); assert.ok(rt.end[1] > 10, `right player's bounty goes to the right goal (${rt.end})`); }
   }
   const pending = p0.pendingFunds;
-  const end = h.runToEnd();
+  const end = (await h.runToEnd());
   assert.equal(end.victory, true);
   // (a multi-round card lasts two battles since the user's playtest #6 answer — choices.js MULTI_ROUND_BOUNTY_BATTLES)
   assert.equal(p0.bounties[0].roundsLeft, bountyBattles(card) - 1, 'the Final Assault used one of the bounty\'s battles');

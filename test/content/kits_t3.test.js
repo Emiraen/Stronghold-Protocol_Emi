@@ -6,6 +6,7 @@ import { makeBattle, enemyRec, checkInvariants } from '../helpers/battleHarness.
 import { getDefaultSource } from '../../server/sim/simdata.js';
 import { effectiveProfile } from '../../server/sim/ai.js';
 import KITS from '../../server/sim/content/kits/tier3.js';
+import { wolfShadowInterval, wolfTacticalPoint } from '../../server/sim/content/tokens.js';
 
 const ds = getDefaultSource();
 const D = (id) => ds.getChess(id);
@@ -119,12 +120,15 @@ test('3_04 琳琅诗怀雅: coins → champagne bomb (ATK% + 停顿), 大买家 
     setup: (b) => b.on('damaged', (c) => { if (c.dmg?.tags?.includes('trap')) booms.push({ amount: c.amount, atk: c.source.s.atk, t: b.time }); }),
   });
   const u = h.unit(id);
+  h.b.start();
+  assert.equal(u.mem.coins, t0.sp, 'deployment grants coins before the first throw');
+  h.b.addBuff(u, { key: 'test:hold-throw', flags: { disarm: true } });
   h.step();
-  assert.equal(u.mem.coins, t0.sp, '开启技能 coin');
   h.run(3.1);
   assert.equal(u.mem.coins, t0.sp + t0.trait_sp, 'coin from the first trait payment');
   assert.equal(u.findBuff('talent:swire2_buyer')?.stacks, 1);
   approx(u.s.atk, u.base.atk * (1 + t0.atk));
+  h.b.removeBuff(u, 'test:hold-throw');
   assert.ok(h.runUntil(() => booms.length > 0, 20), 'bomb exploded');
   assert.ok(h.hooksOf('deploy').some((c) => c.unit.defId === 'token_10031_swire2_gdtrap'), 'bomb token placed');
   approx(booms[0].amount, booms[0].atk * bb.atk_scale, 1e-6, 'bomb damage');
@@ -470,16 +474,35 @@ test('3_13 至简: 神工意匠 charges: ATK% arts ×2 per cast; 忽有所悟 cr
   const u = h.unit(id);
   assert.equal(u.skill.maxCharges, bb.ct);
   h.run(60);
-  const normal = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isAttack && !c.dmg.isSkill).map((c) => c.amount / u.s.atk);
+  const normal = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.tags?.includes('funnel') && !c.dmg.isSkill).map((c) => c.amount / u.s.atk);
   const ramp = (v) => [tb.max_atk_scale, tb.max_atk_scale * t0.atk_scale].some((x) => Math.abs(v - x) < 1e-6);
   assert.ok(normal.slice(10).every(ramp), 'ramped drone hits: max or max × crit');
   assert.ok(normal.some((v) => Math.abs(v - tb.max_atk_scale * t0.atk_scale) < 1e-6), 'some crits');
   assert.ok(normal.some((v) => Math.abs(v - tb.max_atk_scale) < 1e-6), 'some plain hits');
   const skillAtks = h.hooksOf('attack').filter((c) => c.attacker === u && c.isSkill).length;
-  const sk = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isSkill).map((c) => c.amount / u.s.atk);
+  const sk = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isSkill);
+  const body = sk.filter(c => c.dmg.isAttack && !c.dmg.tags?.includes('addition'));
+  const funnel = sk.filter(c => c.dmg.tags?.includes('addition') && c.dmg.tags?.includes('funnel'));
   assert.ok(skillAtks >= 2);
-  assert.equal(sk.length, skillAtks * 2, 'two hits per cast');
-  for (const v of sk) assert.ok([bb.atk_scale, bb.atk_scale * t0.atk_scale].some((x) => Math.abs(v - x) < 1e-6), `skill hit ${v}`);
+  assert.equal(body.length, skillAtks * 2, 'two body hits per cast');
+  assert.equal(funnel.length, skillAtks * 2, 'two additional drone hits per cast');
+  assert.equal(sk.length, body.length + funnel.length, 'every skill hit is accounted for');
+  const volleys = new Set(body.map(c => c.dmg.attackId));
+  const allVolleyIds = [...new Set(h.hooksOf('damaged').filter(c => c.source === u && c.dmg?.isAttack && !c.dmg.tags?.includes('addition')).map(c => c.dmg.attackId))];
+  const rampSpec = u.profile.funnel;
+  assert.equal(volleys.size, skillAtks, 'one attack id per skill cast');
+  for (const attackId of volleys) {
+    const main = body.filter(c => c.dmg.attackId === attackId);
+    const additions = funnel.filter(c => c.dmg.attackId === attackId);
+    assert.equal(main.length, 2);
+    assert.equal(additions.length, 2);
+    for (const c of main) {
+      const v = c.amount / u.s.atk;
+      assert.ok([bb.atk_scale, bb.atk_scale * t0.atk_scale].some(x => Math.abs(v - x) < 1e-6), `skill hit ${v}`);
+    }
+    const rampScale = Math.min(rampSpec.max, rampSpec.init + allVolleyIds.indexOf(attackId) * rampSpec.delta);
+    main.forEach((c, i) => approx(additions[i].amount, c.amount * rampScale, 1e-6, 'the growing drone inherits the same skill/crit roll'));
+  }
   done(h);
 });
 
@@ -714,8 +737,13 @@ test('3_19 伺夜: wolf pack (2 → 3 wolves, block/bites, lose a wolf instead o
   g.b.dealDamage(null, gw, { type: 'true', amount: 1e7 });
   g.b.dealDamage(null, gw, { type: 'true', amount: 1e7 });
   assert.equal(gw.alive, false);
-  g.run(gw.base.respawnTime + 0.5);
-  assert.ok(v.trait.reinforcement !== gw && v.trait.reinforcement?.alive, 'pack re-summoned after its respawn time');
+  assert.ok(wolfTacticalPoint(gw), 'last shadow enters tactical-point form');
+  const grow = wolfShadowInterval(gw.def);
+  assert.ok(grow > 0);
+  g.run(grow + 0.5);
+  assert.equal(v.trait.reinforcement, gw, 'same pack returns from tactical-point form');
+  assert.ok(gw.alive && !wolfTacticalPoint(gw));
+  assert.equal(gw.mem.wolves, 1, 'one shadow returns first');
   done(g);
 });
 
@@ -766,16 +794,17 @@ test('3_20 耶拉: 低眉 ATK (ground tiles in range); 心随意动 +1 drone, AT
   h.step();
   approx(u.s.atk, u.base.atk * (1 + t0['kjera_t_1[high].atk']));
   h.run(4);
-  const first = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isAttack).map((c) => c.amount / u.s.atk);
+   const first = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.tags?.includes('funnel')).map((c) => c.amount / u.s.atk);
   assert.ok(first[1] > first[0], 'drone ramps on the same target');
   fill(u);
   assert.ok(h.runUntil(() => u.skill.active, 5));
   approx(u.s.atk, u.base.atk * (1 + t0['kjera_t_1[high].atk'] + bb.atk));
   h.runUntil(() => !u.skill.active, 30);
-  const sk = h.hooksOf('attack').filter((c) => c.attacker === u && c.isSkill);
-  assert.ok(sk.length > 5 && sk.every((c) => c.targets.length === 1 + bb['attack@cnt']), 'two drone locks');
+  const drones = h.hooksOf('damaged').filter(c => c.source === u && c.dmg?.tags?.includes('drone'));
+  assert.ok(drones.length > 10, 'released drones keep firing');
+  assert.deepEqual(new Set(drones.map(c => c.target.defId)), new Set(['enemy_a', 'enemy_b']), 'two drone locks');
   const colds = h.hooksOf('statusApplied').filter((c) => c.source === u && c.status === 'cold');
-  assert.ok(colds.length >= 1 && colds.length < sk.length * 2, `cold procs (${colds.length}/${sk.length * 2})`);
+  assert.ok(colds.length >= 1 && colds.length < drones.length * 2, `cold procs (${colds.length}/${drones.length})`);
   approx(colds[0].duration, bb['attack@cold']);
   done(h);
 });
@@ -848,9 +877,11 @@ test('3_02 断崖: 浮游刃 blades hit enemies blocked by the allies around her
 
 test('3_04 琳琅诗怀雅 精锐: MER-X drain, coin cap, armed bomb hits twice; bombs never land on a dead operator’s tile', () => {
   const gid = 'chess_char_3_04_b', bb = BB(gid), t0 = TB(gid, 0), tb = TR(gid);
-  // drain + coin cap (no enemy: no attack spends a coin)
+  // Isolate coin income: S2 can throw onto empty ground even without enemies.
   const q = makeBattle({ units: [{ chessId: gid, row: 9, col: 5 }], timeLimit: 60, flags: { dpPerSec: 0 } });
   const s = q.unit(gid);
+  q.b.start();
+  q.b.addBuff(s, { key: 'test:hold-throw', flags: { disarm: true } });
   q.step();
   q.b.getPlayer('p1').dp = 50;
   q.run(3.1);
@@ -865,19 +896,26 @@ test('3_04 琳琅诗怀雅 精锐: MER-X drain, coin cap, armed bomb hits twice;
   const booms = [];
   const h = makeBattle({
     defs: { enemies: { enemy_d: dummy('enemy_d'), enemy_w: enemyRec({ key: 'enemy_w', hp: 1e6, speed: 1, def: 0, atk: 0 }) } }, timeLimit: 60,
-    units: [{ chessId: gid, row: 9, col: 5 }], enemies: [{ key: 'enemy_d', pos: [9, 5] }, { key: 'enemy_w', route: 0, time: 1 }],
+    units: [{ chessId: gid, row: 9, col: 5 }], autoFinish: false,
     setup: (b) => b.on('damaged', (c) => { if (c.dmg?.tags?.includes('trap')) booms.push({ target: c.target.defId, amount: c.amount, atk: c.source.s.atk, t: b.time }); }),
   });
   const u = h.unit(gid);
+  h.b.start();
+  // S2 may pick any free x-6 tile. Isolate the intended front tile without changing the kit.
+  const otherBombTiles = [[11, 5], [10, 5], [9, 3], [9, 4], [9, 7], [8, 5], [7, 5]];
+  for (const [r, c] of otherBombTiles) h.b.grid.setObstacle(r, c, true, 'crate');
   const switchT = ds.getToken('token_10031_swire2_gdtrap', gid).skill.bb.duration_switch;
   assert.ok(h.runUntil(() => h.b.allyUnits.some((t) => t.alive && t.defId === 'token_10031_swire2_gdtrap'), 5), 'bomb placed in front of her');
   const bomb = h.b.allyUnits.find((t) => t.alive && t.defId === 'token_10031_swire2_gdtrap');
   assert.deepEqual([bomb.tileR, bomb.tileC], [9, 6]);
+  h.b.addBuff(u, { key: 'test:one-bomb', flags: { disarm: true }, persist: true });
+  h.run(switchT + 1 / 30);
+  const walker = h.spawn('enemy_w', { pos: [9, 6], mods: { speedMul: 0 } });
   assert.ok(h.runUntil(() => booms.length > 0, 30), 'the walker triggered it');
   assert.ok(booms[0].t - bomb.deployedAt >= switchT);
   assert.equal(booms.length, 2, 'armed bomb: one extra hit');
   for (const b of booms) { assert.equal(b.target, 'enemy_w'); approx(b.amount, b.atk * bb.atk_scale); }
-  assert.ok(h.enemy('enemy_w').findBuff('sluggish'));
+  assert.ok(walker.findBuff('sluggish'));
   done(h);
 
   // the tile in front belongs to a dead operator waiting to redeploy: no bomb there (no coin spent)
@@ -886,7 +924,8 @@ test('3_04 琳琅诗怀雅 精锐: MER-X drain, coin cap, armed bomb hits twice;
     units: [{ chessId: gid, row: 9, col: 5 }, { chessId: 'chess_char_3_16_a', row: 9, col: 6 }], enemies: [{ key: 'enemy_d', pos: [9, 5], time: 0.5 }],
   });
   const v = k.unit(gid), cu = k.unit('chess_char_3_16_a');
-  k.step();
+  k.b.start();
+  for (const [r, c] of otherBombTiles) k.b.grid.setObstacle(r, c, true, 'crate');
   k.b.dealDamage(null, cu, { type: 'true', amount: 1e7 });
   assert.equal(cu.alive, false);
   const coins = v.mem.coins;
@@ -1029,17 +1068,27 @@ test('3_20 耶拉: 心随意动 with a single enemy — both drones lock it and 
   });
   const u = h.unit(id);
   h.run(12);
-  const plain = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.isAttack).map((c) => c.amount / u.s.atk);
+  const plain = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.tags?.includes('funnel')).map((c) => c.amount / u.s.atk);
   approx(plain[plain.length - 1], tb.max_atk_scale, 1e-6, 'module ramp cap');
   fill(u);
   assert.ok(h.runUntil(() => u.skill.active, 5));
   const n0 = h.hooksOf('damaged').length;
+  const attack0 = h.hooksOf('attack').length;
   h.run(8);
-  const sk = h.hooksOf('attack').filter((c) => c.attacker === u && c.isSkill);
-  assert.ok(sk.length >= 3 && sk.every((c) => c.targets.length === 1 + bb['attack@cnt'] && c.targets.every((t) => t.defId === 'enemy_a')));
-  const hits = h.hooksOf('damaged').slice(n0).filter((c) => c.source === u && c.dmg?.isAttack);
-  assert.ok(hits.length >= 2 * (sk.length - 1));
-  for (let i = 0; i + 1 < hits.length; i += 2) approx(hits[i].amount, hits[i + 1].amount, 1e-9, 'same volley, same scale');
+  const drones = u.mem.kjeraRel.drones;
+  assert.equal(drones.length, 1 + bb['attack@cnt']);
+  assert.ok(drones.every(d => d.lock?.defId === 'enemy_a'));
+  const sk = h.hooksOf('attack').slice(attack0).filter(c => c.attacker === u);
+  assert.ok(sk.length >= 3, 'the body still attacks while drones are released');
+  const hits = h.hooksOf('damaged').slice(n0).filter((c) => c.source === u && c.dmg?.tags?.includes('drone'));
+  assert.ok(hits.length >= drones.length * (sk.length - 1));
+  assert.equal(hits.length % drones.length, 0, 'every released-drone volley is complete');
+  for (let i = 0; i < hits.length; i += drones.length) {
+    for (const hit of hits.slice(i, i + drones.length)) {
+      assert.equal(hit.t, hits[i].t, 'all drones fire in the same volley');
+      approx(hit.amount, hits[i].amount, 1e-9, 'same volley, same scale');
+    }
+  }
   done(h);
 });
 
@@ -1105,7 +1154,7 @@ test('精锐 numbers from the golden blackboards (module traits handled by the p
   const ml = m.unit(e13);
   assert.equal(ml.skill.maxCharges, BB(e13).ct);
   m.run(25);
-  const ramps = m.hooksOf('damaged').filter((c) => c.source === ml && c.dmg?.isAttack && !c.dmg.isSkill).map((c) => c.amount / ml.s.atk);
+  const ramps = m.hooksOf('damaged').filter((c) => c.source === ml && c.dmg?.tags?.includes('funnel') && !c.dmg.isSkill).map((c) => c.amount / ml.s.atk);
   assert.ok(ramps.some((v) => Math.abs(v - TR(e13).max_atk_scale) < 1e-6), 'module cap 120 %');
   assert.ok(ramps.every((v) => v <= TR(e13).max_atk_scale * TB(e13, 0).atk_scale + 1e-6));
   done(m);
@@ -1195,7 +1244,7 @@ test('忍冬 追凶 never feeds on itself: a hit turned into HP loss credited to
   const e = h.enemy('enemy_times');
   const atks = u.stats.attacks;
   assert.ok(atks >= 3);
-  // first attack marks the enemy (1 HP), every later attack: 1 HP + one 追凶 bonus instance (1 HP)
-  assert.equal(e.s.maxHp - e.hp, 1 + 2 * (atks - 1));
+  // The first damage also receives the addition; the busy guard forbids bonus recursion.
+  assert.equal(e.s.maxHp - e.hp, 2 * atks);
   done(h);
 });

@@ -96,7 +96,7 @@ test('a duplicate b.result (a re-send after a lost reply) is accepted idempotent
 
 // ---- Final Assault m.public throttle ------------------------------------------------------------------------------
 
-test('Final Assault: boss b.progress (4 Hz per field) no longer re-marks m.public — ~1 Hz, while b.pool stays ≤ 4 Hz with the exact numbers', () => {
+test('Final Assault: boss b.progress (4 Hz per field) no longer re-marks m.public — ~1 Hz, while b.pool stays ≤ 4 Hz with the exact numbers', async () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'FUNNY', humans: 2, seed: 9111, fake: true, clientCombat: true, instant: false,
     script: (b) => (b.kind === 'boss' ? { bossDps: 300, leakEvents: [{ at: 3, lpr: 2 }, { at: 5, lpr: 1 }] } : { duration: 2 }) }).start();
   const m = h.m;
@@ -125,7 +125,7 @@ test('Final Assault: boss b.progress (4 Hz per field) no longer re-marks m.publi
   assert.equal(last.players.filter((p) => p.alive).reduce((s, p) => s + p.lp, 0), Math.round(m.teamLp), 'Σ lp = team LP');
   assert.equal(last.bossHp.hp, Math.max(0, Math.round(m.bossPool.hp)));
   assert.equal(pools[pools.length - 1].teamLp, Math.round(m.teamLp));
-  const end = h.runToEnd({ maxSteps: 5e6 });
+  const end = (await h.runToEnd({ maxSteps: 5e6 }));
   assert.ok(end);
   assert.equal(m.errorCount, 0);
   checkInvariants(m);

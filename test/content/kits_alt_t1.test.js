@@ -467,7 +467,7 @@ test('1_19 野鬃 S1 骑枪刺击 (PASSIVE): ASPD +attack_speed for `duration` s
     const s = rec(id, 'skchr_wildmn_1');
     const h = run({ defs: { chess: noGarrison(id) }, units: [entry(id, s.skillId, { row: 9, col: 5 })] });
     const u = sel(h, id, s.skillId);
-    assert.equal(u.skill.kind, 'passive');
+    assert.equal(u.skill.kind, 'duration');
     h.step();
     approx(u.s.aspd, u.base.aspd + s.bb.attack_speed, `${id} ASPD after deployment`);
     h.run(s.duration - 0.5);

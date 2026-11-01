@@ -37,7 +37,10 @@ export class PlayerStore {
           lastSeen: Math.max(value.lastSeen, value.firstSeen),
           ...(value.loadout?.v === 1 && isLoadoutEntries(value.loadout.entries)
             ? { loadout: { v: 1, entries: structuredClone(value.loadout.entries),
-              ops: isLoadoutOps(value.loadout.ops) ? structuredClone(value.loadout.ops) : {} } } : {}),
+              ops: isLoadoutOps(value.loadout.ops) ? structuredClone(value.loadout.ops) : {},
+              ...(value.loadout.normalInitialized === false ? { normalInitialized: false } : {}),
+              ...(value.loadout.zhajing?.v === 1 && isLoadoutEntries(value.loadout.zhajing.entries) && isLoadoutOps(value.loadout.zhajing.ops || {})
+                ? { zhajing: structuredClone(value.loadout.zhajing) } : {}) } } : {}),
           ...(value.presentation?.v === 1 && isPresentation(value.presentation.value)
             ? { presentation: structuredClone(value.presentation) } : {}),
         });
@@ -131,17 +134,21 @@ export class PlayerStore {
     }
   }
 
-  getLoadout(aid) {
-    const value = this.profiles.get(aid)?.loadout;
+  getLoadout(aid, scope = null) {
+    const stored = this.profiles.get(aid)?.loadout;
+    const value = scope === 'zhajing' ? stored?.zhajing : stored?.normalInitialized === false ? null : stored;
     return value ? structuredClone(value) : null;
   }
 
   /** 保存失败恢复原内存值；只有原子换名成功后才能通知客户端。 */
   setLoadout(aid, value) {
     const profile = this.profiles.get(aid);
-    if (!profile || value?.v !== 1 || !isLoadoutEntries(value.entries) || (value.ops != null && !isLoadoutOps(value.ops))) throw new Error('invalid profile loadout');
+    if (!profile || (value?.scope != null && value.scope !== 'zhajing') || value?.v !== 1 || !isLoadoutEntries(value.entries) || (value.ops != null && !isLoadoutOps(value.ops))) throw new Error('invalid profile loadout');
     const previous = profile.loadout;
-    profile.loadout = { v: 1, entries: structuredClone(value.entries), ops: structuredClone(value.ops || {}) };
+    const next = { v: 1, entries: structuredClone(value.entries), ops: structuredClone(value.ops || {}) };
+    profile.loadout = value.scope === 'zhajing'
+      ? { ...(previous || { v: 1, entries: {}, ops: {}, normalInitialized: false }), zhajing: next }
+      : { ...next, ...(previous?.zhajing ? { zhajing: previous.zhajing } : {}) };
     if (!this.save()) {
       if (previous === undefined) delete profile.loadout;
       else profile.loadout = previous;

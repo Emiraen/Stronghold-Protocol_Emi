@@ -21,6 +21,7 @@ import { absoluteRangeKeys, extendedGrid } from '../../server/sim/targeting.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
 import { createRng } from '../../server/sim/rng.js';
 import { COLS } from '../../server/sim/constants.js';
+import { bodyInRange } from '../../server/sim/body.js';
 import { unitStatsEntry } from '../../shared/protocol.js';
 import { resolveRecordLoadout, loadoutRecord, attackRangeGrid } from '../../shared/loadoutRecord.js';
 
@@ -435,7 +436,12 @@ test('real product path: a BattleSpec (S3 by loadout) on act2 m01 with a real wa
   b.on('attack', (c) => {
     if (c.attacker !== u || !u.skill.active) return;
     const s3 = keysOf(s3Grid(), u);
-    for (const t of c.targets) { picks++; if (!s3.has(tileKey(t)) && t.blockedBy !== u) offGrid++; }
+    for (const t of c.targets) {
+      picks++;
+      const committed = b._attackCommit?.get(u.id);
+      const wasCommitted = Array.isArray(committed) && committed.includes(t);
+      if (!bodyInRange(t, s3) && t.blockedBy !== u && !wasCommitted) offGrid++;
+    }
   });
   b.on('damaged', (c) => {
     if (c.source !== u || !u.skill.active || !c.dmg.isSplash) return;
@@ -445,7 +451,7 @@ test('real product path: a BattleSpec (S3 by loadout) on act2 m01 with a real wa
   assert.equal(b.errors.length, 0);
   assert.ok(casts >= 1, `S3 cast (${casts})`);
   assert.ok(picks > 10, `S3 attacks (${picks})`);
-  assert.equal(offGrid, 0, 'every S3 target stands on 4-11');
+  assert.equal(offGrid, 0, 'every S3 target collider reaches 4-11 or was already committed before this tick moved it');
   assert.ok(splashOut > 0, `splash victims outside 4-11 (${splashOut})`);
 });
 

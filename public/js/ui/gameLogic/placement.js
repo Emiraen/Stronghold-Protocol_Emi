@@ -5,6 +5,7 @@ import { resolveLoadout } from '../../../../shared/protocol.js';
 import { attackRangeGrid } from '../../../../shared/loadoutRecord.js';
 import { meleeOnHighGround } from '../../../../shared/highGround.js';
 import { itemMergeRecipe } from '../../../../shared/itemMerge.js';
+import { zhajingNeedsEquipmentSlot } from '../../../../shared/zhajing-equipment.js';
 import { rangeTiles, pieceDir } from '../facing.js';
 import { isObj, tileKey, WATER_PLATFORM_ROLE, ownerRangeOk, itemAttaches } from './shared.js';
 import { fieldTile, boardTileOf } from './camera.js';
@@ -197,7 +198,7 @@ export function canPlace(ctx, uid, target) {
 
   if (target.area === 'hand') {
     const idx = target.idx;
-    if (!Number.isInteger(idx) || idx < 0 || idx >= GEO.HAND_SIZE) return no('BAD_TILE', trA("无法放置在该位置"));
+    if (!Number.isInteger(idx) || idx < 0 || idx >= (ctx.priv?.benchSize || GEO.HAND_SIZE)) return no('BAD_TILE', trA("无法放置在该位置"));
     if (src.area === 'hand' && src.idx === idx) return no('ALREADY', trA("位置未变化"));
     const occ = ctx.handAt.get(idx);
     if (!occ) return { ok: true, action: 'move' };
@@ -213,7 +214,7 @@ export function canPlace(ctx, uid, target) {
         return { ok: true, action: 'swap' };
       }
       // 撤退会移除自己的召唤物栈，其 hand 格也可容纳撤回的干员。
-      const free = [...Array(GEO.HAND_SIZE).keys()].some((i) => {
+      const free = [...Array(ctx.priv?.benchSize || GEO.HAND_SIZE).keys()].some((i) => {
         const p = ctx.handAt.get(i)?.piece;
         return !p || (p.kind === 'token' && p.ownerUid === piece.uid);
       });
@@ -319,7 +320,11 @@ export function dropIntent(ctx, uid, target) {
     const occ = target.area === 'hand' ? ctx.handAt.get(target.idx) : ctx.boardAt.get(tileKey(target.row, target.col));
     // both slots used: the replace dialog picks the equipped item to destroy (g.equip replaceUid) — unless the item is
     // consumed on equip, or it completes an item merge (the server merges it instead of equipping: nothing replaced)
-    const full = Array.isArray(occ?.piece?.items) && occ.piece.items.length >= 2
+    const item = ctx.getItem(ctx.pieces.get(uid)?.piece?.id);
+    const fullSlots = ctx.priv?.zhajing
+      ? zhajingNeedsEquipmentSlot(item, occ?.piece?.items, ctx.getItem)
+      : Array.isArray(occ?.piece?.items) && occ.piece.items.length >= 2;
+    const full = !ctx.priv?.annihilation?.unlimitedEquipment && fullSlots
       && itemAttaches(ctx.getItem(ctx.pieces.get(uid)?.piece?.id)) && !equipMerges(ctx, uid, 2, occ.piece);
     return { t: 'g.equip', fields: { itemUid: uid, targetUid: occ.piece.uid }, confirmReplace: full };
   }

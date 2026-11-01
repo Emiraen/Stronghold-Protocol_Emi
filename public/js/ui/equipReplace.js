@@ -19,6 +19,7 @@ import { UnitThumb, RichText, GIcon } from './gameComponents.js';
 import { localAsset } from '../data.js';
 import { t, tParts } from '../../../shared/i18n.js';
 import { useResourceUrl } from './cachedImage.js';
+import { zhajingOrdinaryEquipment } from '../../../shared/zhajing-equipment.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 const isObj = (v) => !!v && typeof v === 'object';
@@ -35,7 +36,8 @@ export function replaceRequest(ctx, intent, getChess = () => null, getItem = () 
   const target = ctx?.pieces?.get(intent.fields.targetUid)?.piece;
   const item = ctx?.pieces?.get(intent.fields.itemUid)?.piece;
   if (!isObj(target) || target.kind !== 'chess' || !isObj(item) || item.kind !== 'item') return null;
-  const equipped = (Array.isArray(target.items) ? target.items : []).filter((it) => isObj(it) && Number.isInteger(it.uid));
+  const all = (Array.isArray(target.items) ? target.items : []).filter((it) => isObj(it) && Number.isInteger(it.uid));
+  const equipped = ctx.priv?.zhajing ? zhajingOrdinaryEquipment(all, getItem) : all;
   if (equipped.length < 2) return null;
   const rec = (id) => getItem(id) || null;
   const shown = getChess(target.id) || null;

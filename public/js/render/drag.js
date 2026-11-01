@@ -1,3 +1,4 @@
+import { activeBenchSize, handTile, tempTile, benchSlot } from '../zhajingMode.js';
 // render/drag.js — prep-phase pointer interactions: hover, click, right-click / long-press detail, and
 // drag & drop of pieces between hand, temp and board (DESIGN §9, §10). Pure logic (no PIXI, no DOM access):
 // app.js feeds it canvas pointer events and supplies hit-testing callbacks, so the state machine and the drop
@@ -29,8 +30,8 @@ import { GEO } from '../../../shared/constants.js';
 /** Where a piece currently sits, as a tile. `piece.area` 'board' uses row/col; 'hand'/'temp' use idx. */
 export function pieceTile(piece) {
   if (!piece || typeof piece !== 'object') return null;
-  if (piece.area === 'hand' && Number.isInteger(piece.idx)) return { row: GEO.HAND_ROW, col: piece.idx };
-  if (piece.area === 'temp' && Number.isInteger(piece.idx)) return { row: GEO.TEMP_ROW, col: GEO.TEMP_C0 + piece.idx };
+  if (piece.area === 'hand' && Number.isInteger(piece.idx)) return handTile(piece.idx);
+  if (piece.area === 'temp' && Number.isInteger(piece.idx)) return tempTile(piece.idx);
   if (Number.isInteger(piece.row) && Number.isInteger(piece.col)) return { row: piece.row, col: piece.col };
   return null;
 }
@@ -51,8 +52,9 @@ export function pieceSlot(piece) {
 export function tileSlot(tile, geo = GEO) {
   if (!tile || !Number.isInteger(tile.row) || !Number.isInteger(tile.col)) return null;
   const { row, col } = tile;
+  if (geo === GEO && activeBenchSize() > 10) { const slot = benchSlot(row, col); if (slot) return slot; }
   if (row === geo.HAND_ROW && col >= 0 && col < geo.HAND_SIZE) return { area: 'hand', idx: col };
-  if (row === geo.TEMP_ROW && col >= geo.TEMP_C0 && col < geo.TEMP_C0 + geo.TEMP_SIZE) return { area: 'temp', idx: col - geo.TEMP_C0 };
+  if (!(geo === GEO && activeBenchSize() > 10) && row === geo.TEMP_ROW && col >= geo.TEMP_C0 && col < geo.TEMP_C0 + geo.TEMP_SIZE) return { area: 'temp', idx: col - geo.TEMP_C0 };
   const F = geo.FIELD;
   if (row >= F.r0 && row <= F.r1 && col >= F.c0 && col <= F.c1) return { area: 'board', row, col };
   return null;

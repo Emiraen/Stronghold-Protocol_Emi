@@ -134,10 +134,10 @@ test('1_04 深巡: fin darts pierce attack@max_target enemies on the line + 1 s 
   h.step();
   // 技能策略 (issue #4; the deliberate deviation of DESIGN §21.29): an enemy inside her initial 2-2 range is enough — the
   // basic strategy casts it, no hit required
-  assert.equal(u.skill.rule, 'DEFAULT', '行动能力剥夺 is an offensive ranged skill, not a 重装 TAKE_DAMAGE one');
+  assert.equal(u.skill.rule, 'ACTIVE_RANGE', '行动能力剥夺 is an offensive ranged skill, not a 重装 TAKE_DAMAGE one');
   h.run(3.5);
   assert.ok(u.skill.active);
-  assert.equal(h.hooksOf('skillStart').find((c) => c.unit === u).reason, 'DEFAULT', 'cast by the basic strategy');
+  assert.equal(h.hooksOf('skillStart').find((c) => c.unit === u).reason, 'ACTIVE_RANGE', 'casts inside its expanded running range');
   approx(u.s.atk, u.base.atk * (1 + bb.atk));
   const firstAtk = h.hooksOf('attack').find((c) => c.attacker === u && c.isSkill);
   assert.equal(firstAtk.targets.length, bb['attack@max_target'], 'hits every enemy of the line');
@@ -157,9 +157,10 @@ test('1_04 深巡 / 1_20 雷蛇 S2 技能策略: both 哨戒铁卫 S2s cast with
   for (const id of ['chess_char_1_04_a', 'chess_char_1_04_b', 'chess_char_1_20_a', 'chess_char_1_20_b']) {
     const h = run({ units: [{ chessId: id, row: 9, col: 4, carryState: READY }], enemies: [{ key: 'e', pos: [9, 6] }] });
     const u = h.unit(id);
-    assert.equal(u.skill.rule, 'DEFAULT', `${id}: an offensive skill, not the 重装 TAKE_DAMAGE row`);
+    const rule = id.includes('_1_04_') ? 'ACTIVE_RANGE' : 'DEFAULT';
+    assert.equal(u.skill.rule, rule, `${id}: an offensive skill, not the 重装 TAKE_DAMAGE row`);
     assert.ok(h.runUntil(() => u.skill.activations >= 1, 5), `${id}: casts while an enemy is in range and untouched`);
-    assert.equal(h.hooksOf('skillStart').find((c) => c.unit === u).reason, 'DEFAULT', `${id}: cast by the basic strategy`);
+    assert.equal(h.hooksOf('skillStart').find((c) => c.unit === u).reason, rule, `${id}: cast by its configured range strategy`);
     done(h);
   }
 });
@@ -503,15 +504,24 @@ for (const [idA, idB] of [['chess_char_1_16_a', 'chess_char_1_16_b'], ['chess_ch
     const u = h.unit(idA), yak = h.unit('chess_char_1_02_a');
     h.step();
     yak.hp = yak.s.maxHp * 0.3;
-    h.run(bb.projectile_delay_time + 1);
+    h.run(1.1);
+    const rate = u.s.atk * bb.hp_recovery_per_sec_ratio;
+    const regen = yak.buffs.find(b => b.key.startsWith(`tinman:zone:${u.id}:`) && b.source === u);
+    assert.ok(regen, 'the alchemy unit supplies a sourced regen buff');
+    approx(regen.mods.hpRegen, rate, 'zone recovery per second');
+    const hp0 = yak.hp, pending0 = yak._regenAcc ?? 0, regenAt = h.b.time;
+    h.run(0.5);
+    approx(yak.hp - hp0 + (yak._regenAcc ?? 0) - pending0, rate * (h.b.time - regenAt), 'continuous recovery integral');
+    h.run(bb.projectile_delay_time + 1 - h.b.time);
     const [g, f] = h.enemies();
     const z = dealt(h, u, (c) => c.target === g && (c.dmg.tags || []).includes('zone'));
     assert.equal(z.length, bb.projectile_delay_time);
     for (const c of z) approx(c.amount, u.s.atk * bb.atk_scale);
     assert.equal(dealt(h, u, (c) => c.target === f && (c.dmg.tags || []).includes('zone')).length, 0, 'air units unaffected');
-    const zh = heals(h, u, (c) => c.target === yak);
-    assert.equal(zh.length, bb.projectile_delay_time);
-    for (const c of zh) approx(c.amount, u.s.atk * bb.hp_recovery_per_sec_ratio);
+    const zh = heals(h, yak, (c) => c.target === yak && c.opts?.regen);
+    assert.ok(zh.length > bb.projectile_delay_time, 'regen resolves per tick, not as caster heals');
+    for (const c of zh) approx(c.amount, rate * h.b.dt, 'regen tick');
+    assert.equal(heals(h, u, (c) => c.target === yak).length, 0, 'no treatment from the caster');
     done(h);
 
     const bbB = bbOf(idB), w = tal(idB, 1)['skill@damage_scale'], mb = hid(idB);
@@ -1019,15 +1029,28 @@ test('2_14 调香师: 精调 ATK +atk / ASPD −50; 熏衣草 heals every ally a
   const h = run({ units: [{ chessId: id, row: 10, col: 4, carryState: READY }, { chessId: 'chess_char_1_02_a', row: 9, col: 9 }, { chessId: 'chess_char_1_10_a', row: 10, col: 5 }] });
   const u = h.unit(id), far = h.unit('chess_char_1_02_a'), near = h.unit('chess_char_1_10_a');
   h.step();
-  far.hp = far.s.maxHp * 0.3;
   near.hp = near.s.maxHp * 0.3;
-  h.run(3.1);
+  assert.ok(h.runUntil(() => u.skill.active, 3));
   assert.ok(u.skill.active);
   approx(u.s.atk, u.base.atk * (1 + bb.atk));
   approx(u.s.aspd, u.base.aspd + bb.attack_speed);
-  const aura = heals(h, u, (c) => c.target === far);
-  assert.equal(aura.length, 3, 'one pulse per second, out of range too');
-  for (const c of aura) approx(c.amount, u.s.atk * t.atk_to_hp_recovery_ratio);
+  const rate = u.s.atk * t.atk_to_hp_recovery_ratio;
+  assert.ok(h.runUntil(() => Math.abs(far.s.hpRegen - rate) < 1e-9, 1), 'wait for the talent refresh after the skill ATK change');
+  approx(far.s.hpRegen, rate, 'out-of-range ally receives HP recovery');
+  far.hp = far.s.maxHp * 0.3;
+  const from = h.b.time, pending = far._regenAcc ?? 0;
+  h.run(3.1);
+  const aura = h.hooksOf('heal').filter(c => c.target === far && c.opts?.regen && c.t >= from);
+  assert.ok(aura.length > 3, 'continuous recovery, not a caster heal pulse');
+  // The engine accumulates sub-1 HP ticks before emitting a regen heal; conserve
+  // the full rate over time, rather than treating every emitted heal as one tick.
+  let previous = from;
+  for (const [i, c] of aura.entries()) {
+    // Hook timestamps are at the start of a tick, before battle.time advances.
+    approx(c.amount, rate * (c.t - previous + (i === 0 ? h.b.dt : 0)) + (i === 0 ? pending : 0));
+    previous = c.t;
+  }
+  approx(aura.reduce((sum, c) => sum + c.amount, 0) + (far._regenAcc ?? 0) - pending, rate * (h.b.time - from));
   done(h);
   const idb = 'chess_char_2_14_b';
   const ids = ['chess_char_1_02_a', 'chess_char_1_10_a', 'chess_char_1_12_a', 'chess_char_2_07_a', 'chess_char_1_18_a'];
@@ -1303,7 +1326,10 @@ test('2_10 洛洛: 自负此轭 drones stay locked on their target while the ski
   const t0 = h.b.time;
   h.run(4);
   const atks = h.hooksOf('attack').filter((c) => c.attacker === u && c.t > t0);
-  assert.ok(atks.length > 0 && atks.every((c) => c.targets.length === 1 && c.targets[0] === first), 'locked');
+  assert.ok(atks.length > 0 && atks.every((c) => c.targets.length === 1 && c.targets[0] === other), 'body attacks follow the current priority');
+  const drones = dealt(h, u, c => c.t > t0 && c.dmg.tags?.includes('drone'));
+  assert.ok(drones.length > 0 && drones.every(c => c.target === first && !c.dmg.isAttack), 'independent skill drone stays locked');
+  assert.equal(u.mem.rockLock, first);
   done(h);
 });
 

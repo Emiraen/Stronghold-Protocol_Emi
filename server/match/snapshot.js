@@ -1,3 +1,5 @@
+import { ZHAJING_VARIANT } from '../../shared/zhajing-constants.js';
+import { MIZUKI_VARIANT } from '../../shared/mizuki-constants.js';
 // Adapted from xinhai-ai/Stronghold-Protocol (20524bb), GPL-3.0-or-later.
 // server/match/snapshot.js — running-match checkpoints (docs/operations/PERSISTENCE.md).
 //
@@ -46,9 +48,10 @@ const ROUND_START_SEC = 2;
  */
 export function canSnapshot(m) {
   if (!m || m.disposed || m.ended) return false;
+  if (m.variant === MIZUKI_VARIANT) return m.phase !== 'COMBAT' && typeof m.exportCheckpoint === 'function';
   if (!m.sched || typeof m.sched.now !== 'function') return false;   // a stub Match (tests) has no restorable state
   if (!m.pool || !(m.pool.entries instanceof Map)) return false;
-  if (!SNAPSHOT_PHASES.includes(m.phase)) return false;
+  if (!SNAPSHOT_PHASES.includes(m.phase) && !(m.variant === ZHAJING_VARIANT && ['ENEMY_JIBIAN', 'HIDDEN_JIBIAN'].includes(m.phase))) return false;
   if (m.phase === PHASE.PREP) {
     // Never persist a partially paid end-of-prep batch; keep the previous safe checkpoint instead.
     if (m._prepEndAttemptedRound === m.round) return false;
@@ -177,6 +180,10 @@ function withProps(value, extra) {
  * @param {import('./Match.js').Match} m
  */
 export function matchClocks(m) {
+  if (m.variant === MIZUKI_VARIANT) {
+    const now = typeof m.now === 'function' ? m.now() : Date.now();
+    return { deadlineRemainingMs: 0, startedAtAgoMs: Math.max(0, now - (m.startedAt || now)) };
+  }
   const now = m.sched.now();
   return {
     // the phase clock travels as *remaining* time: the match is frozen while the server is down
@@ -206,6 +213,7 @@ export function matchClocks(m) {
  * @returns {string}
  */
 export function persistVersion(m) {
+  if (m.variant === MIZUKI_VARIANT) return ['mizuki', m.revision || 0, m.phase, m.round].join(',');
   const filled = (arr) => { let n = 0; for (const x of arr) if (x) n++; return n; };
   const parts = [m._persistRev | 0, m.pool?.revision | 0, m.round | 0, m.uidSeq | 0, m._battleSeq | 0, m.pausedMs | 0,
     m.setupRevision | 0, m._setupVoteSeq | 0, m._lastSetupVoteAt | 0, m._botEmotesSettledRound | 0, m._botEmotesMerges | 0,
@@ -255,6 +263,8 @@ export const PLAYER_FIELDS = Object.freeze([
 
 // Explicitly rebuilt or phase-local state. A new own property must be classified here or persisted above.
 export const TRANSIENT_MATCH_FIELDS = Object.freeze([
+  'isAnnihilation',
+  'hostId', 'relicTeam', // persisted only in the annihilation envelope
   'opts', 'log', 'sendFn', 'broadcastFn', 'onEndFn', 'data', 'gd', 'ownsScheduler', 'sched', 'onAudit',
   'workerStats', '_workerAuditAt', 'offlinePaused', 'rehearsalPressure', 'registry', 'dispatcher', 'BattleClass',
   'workerPool', '_workerTasks', 'battleContent', 'botRehearsalLimit', 'botSliceMs', 'ds', 'paused', '_pausedAt',
@@ -268,6 +278,7 @@ export const TRANSIENT_MATCH_FIELDS = Object.freeze([
   '_persistRev',
 ]);
 export const TRANSIENT_PLAYER_FIELDS = Object.freeze([
+  'relics', 'pendingRelicToast', // persisted only in the annihilation envelope
   'm', 'gd', 'standIns', '_standInSet', '_diyRecords', 'bonds', '_deployMap', '_deployField', '_legalityStale', '_botPrepToken',
 ]);
 
@@ -308,11 +319,18 @@ export function snapshotMatch(m) {
  */
 export function captureMatch(m) {
   if (!canSnapshot(m)) return null;
+  if (m.variant === MIZUKI_VARIANT) {
+    const doc = m.exportCheckpoint();
+    return doc ? { doc: { ...doc, engine: 'mizuki' }, clocks: matchClocks(m), factionSchedule: null } : null;
+  }
   const doc = { v: SNAPSHOT_VERSION, phase: m.phase, round: m.round };
+  if (m.variant === ZHAJING_VARIANT) doc.zhajing = m.captureRules();
+  if (m.isAnnihilation) doc.annihilation = { erosion: m.gd.erosion, hostId: m.hostId, relicTeam: m.relicTeam };
   for (const k of MATCH_FIELDS) {
     if (k === 'round') continue;
     doc[k] = m[k];
   }
+  if (m.variant === ZHAJING_VARIANT && Array.isArray(doc.sp)) doc.sp = doc.sp.map(d => d ? { ...d, _botTimer: null, _pickTimer: null, turnDeadline: 0 } : d);
   // dead weight the restore re-arms from its own clock (restoreMatch / enterPhase): zeroing a *copy* keeps the
   // encoded body byte-stable between real events — the dirty check's baseline — without touching the live match
   if (doc.draft && typeof doc.draft === 'object' && 'turnDeadline' in doc.draft) doc.draft = { ...doc.draft, turnDeadline: 0 };
@@ -338,6 +356,7 @@ export function captureMatch(m) {
   }
   doc.players = m.order.map((ps) => {
     const p = { playerId: ps.playerId };
+    if (m.isAnnihilation) p.annihilation = { relics: ps.relics, pendingRelicToast: ps.pendingRelicToast };
     for (const k of PLAYER_FIELDS) {
       if (k === 'playerId') continue;
       p[k] = ps[k];
@@ -356,14 +375,18 @@ export function captureMatch(m) {
 export function encodeMatchCapture(capture) {
   if (!capture) return null;
   const { doc, clocks, factionSchedule } = capture;
+  if (doc.engine === 'mizuki') return JSON.parse(JSON.stringify({ ...doc, ...clocks }));
   // Reattach before encoding: the codec preserves it in the existing snapshot format.
   if (Array.isArray(doc.factions) && factionSchedule !== undefined && !Object.hasOwn(doc.factions, 'schedule')) {
     Object.defineProperty(doc.factions, 'schedule', { value: factionSchedule, enumerable: false });
   }
   const out = { ...doc, ...clocks };
+  if (doc.zhajing) out.zhajing = encodeState(doc.zhajing);
+  if (doc.annihilation) out.annihilation = encodeState(doc.annihilation);
   for (const k of MATCH_FIELDS) if (k !== 'round') out[k] = encodeState(doc[k]);
   out.players = doc.players.map((p) => {
     const encoded = { playerId: p.playerId };
+    if (p.annihilation) encoded.annihilation = encodeState(p.annihilation);
     for (const k of PLAYER_FIELDS) if (k !== 'playerId') encoded[k] = encodeState(p[k]);
     return encoded;
   });
@@ -388,13 +411,19 @@ export function encodeMatchCapture(capture) {
  */
 export function restoreMatch(m, doc, { createRngFromState, log = console } = {}) {
   if (!m || !doc || typeof doc !== 'object') return false;
+  if (m.variant === MIZUKI_VARIANT) {
+    if (doc.engine !== 'mizuki' || typeof m.restoreCheckpoint !== 'function') return false;
+    try { return m.restoreCheckpoint(doc) === true; }
+    catch (error) { log.warn?.('[mizuki] checkpoint refused', error); return false; }
+  }
   if (!m.sched || typeof m.sched.now !== 'function' || !m.pool || !(m.pool.entries instanceof Map)) return false;
   if (doc.v !== SNAPSHOT_VERSION) { log.warn?.(`[snapshot] ${m.roomCode}: unsupported checkpoint version ${doc.v}`); return false; }
-  if (!SNAPSHOT_PHASES.includes(doc.phase)) { log.warn?.(`[snapshot] ${m.roomCode}: unsupported phase ${doc.phase}`); return false; }
+  if (!SNAPSHOT_PHASES.includes(doc.phase) && !(m.variant === ZHAJING_VARIANT && ['ENEMY_JIBIAN', 'HIDDEN_JIBIAN'].includes(doc.phase))) { log.warn?.(`[snapshot] ${m.roomCode}: unsupported phase ${doc.phase}`); return false; }
   const players = Array.isArray(doc.players) ? doc.players : [];
   for (const p of players) if (!m.players.has(p.playerId)) { log.warn?.(`[snapshot] ${m.roomCode}: seat ${p.playerId} missing`); return false; }
   if (players.length !== m.players.size) { log.warn?.(`[snapshot] ${m.roomCode}: ${players.length} of ${m.players.size} seats in the checkpoint`); return false; }
   if (typeof createRngFromState !== 'function') throw new TypeError('restoreMatch: createRngFromState required');
+  if (m.isAnnihilation && decodeState(doc.annihilation)?.erosion !== m.gd.erosion) return false;
 
   const now = m.sched.now();
   for (const k of MATCH_FIELDS) if (k !== 'round' && Object.hasOwn(doc, k)) m[k] = k === 'aiPicksLast' ? doc[k] === true : decodeState(doc[k]);
@@ -461,6 +490,9 @@ export function restoreMatch(m, doc, { createRngFromState, log = console } = {})
   m.battlePrefix = typeof m.battlePrefix === 'string' && m.battlePrefix ? m.battlePrefix : `${m.seed.toString(36)}`;
   m.order = [...m.players.values()].sort((a, b) => a.seat - b.seat);
 
+  if (m.variant === ZHAJING_VARIANT) {
+    try { m.restoreRules(decodeState(doc.zhajing)); } catch (error) { log.warn?.('[zhajing] checkpoint refused', error); return false; }
+  }
   for (const p of players) {
     const ps = m.players.get(p.playerId);
     ps.m = m;
@@ -489,6 +521,7 @@ export function restoreMatch(m, doc, { createRngFromState, log = console } = {})
     ps._lastPriv = null;
     ps.recompute();
   }
+  if (m.isAnnihilation) m.restoreAnnihilation(doc, decodeState);
   if (m.ranked && m.setupVote) { m.setupVote=null; }
   enterPhase(m, doc);
   return true;
@@ -497,6 +530,7 @@ export function restoreMatch(m, doc, { createRngFromState, log = console } = {})
 /** Re-enter the checkpointed phase (see the header for the clock rules). */
 function enterPhase(m, doc) {
   const remaining = Math.max(0, Number(doc.deadlineRemainingMs) || 0);
+  if (m.variant === ZHAJING_VARIANT && ['SP_DRAFT', 'ENEMY_JIBIAN', 'HIDDEN_JIBIAN'].includes(doc.phase)) { m.resumeRulePhase(doc.phase, remaining); return; }
   switch (doc.phase) {
     case PHASE.INFO_CHECK: {
       // solo waits for 准备就绪; co-op keeps the official guard (a fresh one)

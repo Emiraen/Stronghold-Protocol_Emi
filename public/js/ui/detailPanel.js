@@ -843,7 +843,7 @@ export function selectVoiceKey(detail) {
  *   (the owner's request of 2026-10-08 「添加一下干员点击上去的语气一样的语音」 lifted 2026-10-03's 「整备阶段不需要干员语音」
  *   for this line only; [ASSUMED] the official prep tap says 选中干员 like the battle's FOCUS_CHAR)
  */
-export function DetailPanel({ detail, editable, snapHp, onClose, onSell, onDestroy, bonds = [], offBonds = null, loadout = null, ops = null, onBond = null, side = 'left', shopOpen = false, live = null, voice = false, anchor = null }) {
+export function DetailPanel({ detail, editable, snapHp, onClose, onSell, onDestroy, bonds = [], offBonds = null, loadout = null, ops = null, onBond = null, side = 'left', shopOpen = false, live = null, voice = false, anchor = null, ignore = '.scard, .dbond, .uframe, .uframe__close' }) {
   const getter = typeof live === 'function' ? live : null;
   useTicker(detail && getter ? 250 : 0);
   // 选中干员 voice (audio.voice 'select'): once per opened operator — the panel stays mounted while the target changes,
@@ -871,7 +871,7 @@ export function DetailPanel({ detail, editable, snapHp, onClose, onSell, onDestr
     if (ok) onDestroy(piece);
   };
   return html`<${FloatingPanel} class=${cx('dpanel', 'brackets', `dpanel--${detail.type}`, side === 'right' && 'dpanel--right', side === 'right' && shopOpen && 'is-shop')} role="dialog" aria-label=${t('详情')}
-      data-side=${side === 'right' ? 'right' : 'left'} onClose=${onClose} anchor=${anchor} side=${side} width=${440} ignore=".scard, .dbond, .uframe, .uframe__close">
+      data-side=${side === 'right' ? 'right' : 'left'} onClose=${onClose} anchor=${anchor} side=${side} width=${440} ignore=${ignore}>
     <header class="sp-detail-head"><span>${t(({ chess: '干员详情', item: '道具详情', token: '召唤物详情', enemy: '敌方详情', terrain: '地形详情', device: '装置详情' })[detail.type] || '详情')}</span><button type="button" class="dpanel__close" aria-label=${t('关闭详情')} onClick=${onClose}><${Icon} name="close" /></button></header>
     <div class="dpanel__scroll">
       ${detail.type === 'chess' ? html`<${ChessDetail} chess=${detail.chess} piece=${detail.piece} unit=${detail.unitId != null ? { skin: detail.skin } : null} snapHp=${snapHp} editable=${editable} onSell=${sellIt}

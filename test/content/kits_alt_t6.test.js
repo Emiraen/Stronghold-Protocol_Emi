@@ -9,6 +9,7 @@ import { getDefaultSource } from '../../server/sim/simdata.js';
 import { KITS, skillSpecSource } from '../../server/sim/content/index.js';
 import { kitCoverage } from '../../tools/kit-coverage.mjs';
 import { COLS } from '../../server/sim/constants.js';
+import { burstLocked } from '../../server/sim/damage.js';
 
 const ds = getDefaultSource();
 const raw = (id) => ds.rawChess(id);
@@ -78,6 +79,9 @@ test('every tier-6 skill × module choice (normal + elite) survives a real wave 
           units: [{ chessId: id, row: 10, col: 4, skillIndex: s.index, moduleId, carryState: READY }, { chessId: 'chess_char_1_01_a', row: 9, col: 4 }, { chessId: 'chess_char_2_06_a', row: 11, col: 5 }],
           enemies: [{ key: 'enemy_1007_slime', count: 8, interval: 1.5 }, { key: 'enemy_1007_slime', route: 1, count: 8, interval: 1.5, time: 3 }],
         });
+        h.b.start();
+        // Healing strategies need a genuinely injured ally, not merely a ready SP bar.
+        for (const ally of h.b.allyUnits) if (ally.kind === 'op') ally.hp = ally.s.maxHp * 0.2;
         h.runToEnd(90);
         done(h);
         const u = h.b.allyUnits.find((x) => x.defId === id);
@@ -118,19 +122,19 @@ test('6_01 蕾缪安 S2 归乡邀约: ASPD/ATK +; a wanted enemy is aimed at for
     const sid = 'skchr_lemuen_2', bb = bbOf(id, sid);
     const h = run({
       defs: { enemies: { el: dummy('el', { rank: 'ELITE' }) } },
-      units: [U(id, sid, 10, 4, { carryState: READY })], enemies: [{ key: 'el', pos: [10, 6] }],
-      setup(b) { b.on('enemySpawn', ({ enemy }) => b.addBuff(enemy, { key: 'lemuen:wanted' })); },
+      units: [U(id, sid, 10, 4, { carryState: IDLE })], enemies: [{ key: 'el', pos: [10, 6] }],
     });
     const u = h.unit(id);
     usesSkill(u, sid);
-    assert.ok(h.runUntil(() => u.skill.active, 10));
+    assert.ok(h.runUntil(() => enemyOf(h, 'el')?.findBuff('lemuen:wanted'), tal(id).interval + 2), 'real talent establishes wanted before consuming S2 ammo');
+    assert.ok(u.skill.activate('test', { free: true }));
     approx(skillBuff(u).mods.aspd, bb.attack_speed, 'ASPD +');
     approx(skillBuff(u).mods.atkPct, bb.atk, 'ATK +');
-    assert.ok(h.runUntil(() => !!u.mem.lemAim, 5), 'aims at the wanted enemy');
-    const ammo = u.skill.ammoLeft, t0 = h.b.time;
+    assert.ok(h.runUntil(() => !!u.mem.lemAim, tal(id).interval + 2), 'aims after the real talent marks the wanted enemy');
+    const ammo = u.skill.ammoLeft, t0 = h.b.time, elapsed = u.mem.lemAim.t;
     const atks0 = h.hooksOf('attack').filter((c) => c.attacker === u).length;
     assert.ok(h.runUntil(() => !u.mem.lemAim, 10));
-    approx(h.b.time - t0, bb['attack@aim_duration'], 'aims the full time (1e7 HP)', 0.03);
+    approx(h.b.time - t0 + elapsed, bb['attack@aim_duration'], 'aims the full time (1e7 HP)', 0.03);
     const snipe = dealt(h, u, tagged('snipe'));
     assert.equal(h.hooksOf('attack').filter((c) => c.attacker === u && c.t < snipe[0].t).length, atks0, 'no normal attack while aiming');
     assert.ok(u.skill.ammoLeft <= ammo, 'the aim spent its bullet when it began');
@@ -145,14 +149,17 @@ test('6_01 蕾缪安 S2 归乡邀约: ASPD/ATK +; a wanted enemy is aimed at for
 test('6_01 蕾缪安 S2: a low-HP wanted target is sniped at once (ATK × scale > HP + DEF)', () => {
   const id = 'chess_char_6_01_a', sid = 'skchr_lemuen_2', bb = bbOf(id, sid);
   const h = run({
-    defs: { enemies: { el: dummy('el', { rank: 'ELITE', hp: 800 }), big: dummy('big') } },
-    units: [U(id, sid, 10, 4, { carryState: READY })], enemies: [{ key: 'big', pos: [10, 5] }, { key: 'el', pos: [10, 7], time: 2 }],
-    setup(b) { b.on('enemySpawn', ({ enemy }) => { if (isKey(enemy, 'el')) b.addBuff(enemy, { key: 'lemuen:wanted' }); }); },
+    defs: { enemies: { el: dummy('el', { rank: 'ELITE' }) } },
+    units: [U(id, sid, 10, 4, { carryState: IDLE })], enemies: [{ key: 'el', pos: [10, 6] }],
   });
   const u = h.unit(id);
-  assert.ok(h.runUntil(() => dealt(h, u, tagged('snipe')).length > 0, 10));
+  assert.ok(h.runUntil(() => enemyOf(h, 'el')?.findBuff('lemuen:wanted'), tal(id).interval + 2));
+  enemyOf(h, 'el').hp = 800;
+  assert.ok(u.skill.activate('test', { free: true }));
+  const t0 = h.b.time;
+  assert.ok(h.runUntil(() => dealt(h, u, tagged('snipe')).length > 0, 1));
   const sn = dealt(h, u, tagged('snipe'))[0];
-  assert.ok(sn.t - 2 < 0.2, `fired at once (${sn.t})`);
+  assert.ok(sn.t - t0 < 0.2, `fired at once after S2 activation (${sn.t - t0})`);
   assert.ok(isKey(sn.target, 'el'));
   assert.ok(sn.amount >= u.s.atk * bb['attack@main_atk_scale'] - 1e-6);
   done(h);
@@ -269,9 +276,14 @@ test('6_03 余 S1 今日做东: taunt +1 while carried; TAKE_DAMAGE cast, HP/DEF
     approx(skillBuff(u).mods.hpPct, bb.max_hp);
     approx(skillBuff(u).mods.defPct, bb.def);
     const t0 = h.b.time;
+    const activeTaken = [];
+    h.b.on('damaged', (c) => {
+      // applyElement rejects new gauge hits during the attacker's existing burn burst.
+      if (c.target === u && c.source?.side === 'enemy' && c.source.alive && !burstLocked(c.source) && c.dmg?.isAttack && u.skill.active && h.b.time > t0) activeTaken.push(c);
+    }, { priority: 999 });
     h.run(4);
     const burns = h.hooksOf('elementHit').filter((c) => c.source === u && c.dmg.element === 'burn' && c.t > t0 && (c.dmg.tags || []).includes('skill'));
-    const taken = h.hooksOf('damaged').filter((c) => c.target === u && c.dmg?.isAttack && c.t > t0);
+    const taken = activeTaken;
     assert.ok(burns.length >= 1 && burns.length === taken.length, `one burn per attack taken (${burns.length}/${taken.length})`);
     approx(burns[0].dmg.amount, u.s.atk * bb.ep_damage_ratio, 'ep_damage_ratio × ATK');
     done(h);
@@ -333,9 +345,12 @@ test('6_04 浊心斯卡蒂 S1 同归殊途之吟: SP_FULL, full HP + max HP +; t
     approx(onAlly[0].amount, 1000 * (1 - bb.damage_resistance), 'the ally takes the rest');
     approx(onHer[0].amount, 1000 * bb.damage_resistance, 'she takes the transferred part');
     assert.equal(onHer[0].type, 'true');
-    const hh = heals(h, u, (c) => c.target === a && c.opts?.aura);
-    assert.ok(hh.length > 0);
-    approx(hh[hh.length - 1].amount, u.s.atk * bb['attack@atk_to_hp_recovery_ratio'], 'trait heal raised');
+    const rate = u.s.atk * bb['attack@atk_to_hp_recovery_ratio'];
+    approx(a.findBuff(`trait:bard:${u.id}`).mods.hpRegen, rate, 'raised trait regen');
+    const hh = heals(h, a, (c) => c.target === a && c.opts?.regen);
+    assert.ok(hh.length > 0, 'the target recovers continuously');
+    approx(hh.at(-1).amount, rate * h.b.dt, 'regen per tick');
+    assert.equal(heals(h, u, (c) => c.target === a && c.opts?.aura).length, 0, 'not a treatment');
     done(h);
   }
 });
@@ -360,8 +375,12 @@ test('6_04 浊心斯卡蒂 S2 同葬无光之愿: toggle; 鼓舞 ATK and DEF (at
     assert.ok(!u.findBuff('inspire') && !u.findBuff('inspire:def'), 'never on herself');
     a.hp = a.s.maxHp * 0.5;
     h.run(1.1);
-    const hh = heals(h, u, (c) => c.target === a && c.opts?.aura);
-    approx(hh[hh.length - 1].amount, u.s.atk * bb['attack@atk_to_hp_recovery_ratio'], 'trait heal ratio');
+    const rate = u.s.atk * bb['attack@atk_to_hp_recovery_ratio'];
+    approx(a.findBuff(`trait:bard:${u.id}`).mods.hpRegen, rate, 'raised trait regen');
+    const hh = heals(h, a, (c) => c.target === a && c.opts?.regen);
+    assert.ok(hh.length > 0, 'the target recovers continuously');
+    approx(hh.at(-1).amount, rate * h.b.dt, 'regen per tick');
+    assert.equal(heals(h, u, (c) => c.target === a && c.opts?.aura).length, 0, 'not a treatment');
     done(h);
   }
 });
@@ -689,7 +708,11 @@ test('6_11 缪尔赛思 S2 生态耦合: +cost DP; melee copies regenerate and t
     const eco = tok().findBuff('mlyss:eco');
     assert.ok(eco, 'melee copy buffed');
     approx(eco.mods.hpRegenRatio, bb.hp_recovery_per_sec_by_max_hp_ratio);
-    approx(eco.mods.physTakenMul, 1 - bb.damage_resistance);
+    const protect = tok().buffs.find(b => b.source === u && b.mods.physTakenMul === 1 - bb.damage_resistance);
+    assert.ok(protect, 'S2 supplies the shared strongest-wins protection separately');
+    approx(protect.mods.artsTakenMul, 1 - bb.damage_resistance);
+    approx(tok().s.physTakenMul, 1 - bb.damage_resistance);
+    approx(tok().s.artsTakenMul, 1 - bb.damage_resistance);
     done(h);
 
     // ranged copy: a sniper to copy
@@ -999,7 +1022,7 @@ test('6_17 耀骑士临光 S2 逐夜烁光: on deploy ATK + and 3 护盾 layers 
     const u = h.unit(id);
     usesSkill(u, sid);
     h.step();
-    approx(u.findBuff('nearl2:night').mods.atkPct, bb.atk);
+    approx(u.findBuff('skill:' + u.id).mods.atkPct, bb.atk);
     assert.equal(u.findBuff('nearl2:shield').shieldHits, bb.times);
     h.run(bb.times * 1.2 + 1);
     const taken = h.hooksOf('damaged').filter((c) => c.target === u);
@@ -1014,7 +1037,7 @@ test('6_17 耀骑士临光 S2 逐夜烁光: on deploy ATK + and 3 护盾 layers 
     const k = run({ defs: { chess: { kaz: plain('kaz', { bonds: ['kazimierzShip'] }) } }, units: [U(id, sid, 10, 4), { chessId: 'kaz', row: 12, col: 4 }] });
     const ku = k.unit(id);
     k.step(2);
-    assert.ok(ku.alive && ku.findBuff('nearl2:night'));
+    assert.ok(ku.alive && ku.skill.active && ku.findBuff('skill:' + ku.id));
     assert.ok(k.runUntil(() => !ku.alive, dur + 1));
     approx(ku.respawnAt - k.b.time, ku.base.respawnTime, '卡西米尔 before her: no extension', 1e-3);
     done(k);
@@ -1033,7 +1056,10 @@ test('6_18 荒芜拉普兰德 S1 慵怠者悲鸣: passive 浮游单元+1 (2 hits
     const a0 = idle.hooksOf('attack').find((c) => c.attacker === iu);
     assert.ok(a0);
     idle.run(1);
-    assert.equal(dealt(idle, iu, (c) => c.dmg.attackId === dealt(idle, iu)[0].dmg.attackId).length, 2, 'drone +1');
+    const firstAttack = dealt(idle, iu).find(c => c.dmg.isAttack).dmg.attackId;
+    const group = dealt(idle, iu, c => c.dmg.attackId === firstAttack);
+    assert.equal(group.filter(c => c.dmg.tags?.includes('funnel')).length, 2, 'two additional funnel hits');
+    assert.equal(group.filter(c => !c.dmg.tags?.includes('funnel')).length, 1, 'body hit stays separate');
     done(idle);
 
     const h = run({
@@ -1359,7 +1385,7 @@ test('module 维娜 秩序圣“球”: 战栗 6 s (elite / leader 12 s), ×1.15
   done(d);
 });
 
-test('module 焰影苇草 “独属自己的一隅”: damage ×1.1 while an operator of her range is injured; 灼痕 38 % / 8 s', () => {
+test('module 焰影苇草 “独属自己的一隅”: damage ×1.1 while an operator of her range is injured; potential-resolved 灼痕 40 % / 8 s', () => {
   const id = ELITE('chess_char_6_08'), M = 'uniequip_003_reed2';
   const h = run({ defs: { chess: { a: plain('a') }, enemies: { e: dummy('e') } }, units: [{ chessId: id, row: 10, col: 4, moduleId: M, carryState: IDLE }, { chessId: 'a', row: 11, col: 5 }], enemies: [{ key: 'e', pos: [10, 6] }] });
   const u = h.unit(id), a = h.unit('a');
@@ -1368,7 +1394,8 @@ test('module 焰影苇草 “独属自己的一隅”: damage ×1.1 while an ope
   a.hp = a.s.maxHp * 0.5;
   h.run(0.5);
   approx(u.findBuff('reed2:corner')?.mods.dmgDealtMul ?? 1, 1.1, 'injured ally ⇒ ×1.1');
-  approx(tal(id, MOD(M)).damage_scale, 1.38);
+  approx(tal(id, MOD(M)).damage_scale, 1.4);
+  approx(tal(id, MOD(M)).duration, 8);
   done(h);
   const d = run({ defs: { chess: { a: plain('a') } }, units: [{ chessId: id, row: 10, col: 4, carryState: IDLE }, { chessId: 'a', row: 11, col: 5 }] });
   d.step();
@@ -1432,7 +1459,7 @@ test('module 迷迭香 特限证章: two hits (one aftershock) instead of three'
   }
 });
 
-test('module 流明 “幸运”: far heals are not reduced; 应急处理 heals 100 % with a 10 s cooldown', () => {
+test('module 流明 “幸运”: far heals are not reduced; 应急处理 heals 100 % with a potential-resolved 8 s cooldown', () => {
   const id = ELITE('chess_char_6_14'), M = 'uniequip_003_lumen';
   for (const [moduleId, mul] of [[M, 1], [null, tbOf(id).heal_scale]]) {
     const h = run({ defs: { chess: { f: plain('f', { stats: { maxHp: 1e5 } }) } }, units: [{ chessId: id, row: 10, col: 3, moduleId, carryState: IDLE }, { chessId: 'f', row: 10, col: 6 }] });
@@ -1444,7 +1471,7 @@ test('module 流明 “幸运”: far heals are not reduced; 应急处理 heals 
     done(h);
   }
   approx(tal(id, MOD(M), 1).heal_scale, 1);
-  approx(tal(id, MOD(M), 1).duration, 10);
+  approx(tal(id, MOD(M), 1).duration, 8);
 });
 
 test('module 仇白 欲雪时: the first hit on an enemy binds it 3 s; ASPD +12 with ≥2 enemies in range', () => {

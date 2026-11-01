@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const moduleFile = pathname => process.env.RESOURCE_CACHE_TEST_SOURCE && pathname === '/public/js/resourceCache.js'
+  ? process.env.RESOURCE_CACHE_TEST_SOURCE : resolve(root, '.' + pathname);
 export const resourceTestChrome = process.env.CHROME_PATH || [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -17,10 +19,10 @@ export async function resourceBrowserHarness() {
   const server = createServer(async (req, res) => {
     const path = String(req.url).split('?')[0];
     if (path === '/') { res.end('<!doctype html><title>Resource cache IO regression</title>'); return; }
-    if (!/^\/(?:public\/js|shared)\/[\w/.-]+\.js$/.test(path) || path.includes('..')) {
+    if (!/^\/(?:public\/(?:js|vendor)|shared)\/[\w/.-]+\.js$/.test(path) || path.includes('..')) {
       res.writeHead(404).end(); return;
     }
-    try { res.setHeader('Content-Type', 'text/javascript'); res.end(await readFile(resolve(root, `.${path}`))); }
+    try { res.setHeader('Content-Type', 'text/javascript'); res.end(await readFile(moduleFile(path))); }
     catch { res.writeHead(404).end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -30,14 +32,25 @@ export async function resourceBrowserHarness() {
   catch (error) { await new Promise(resolve => server.close(resolve)); throw error; }
   return {
     async run(config, scenario) {
-      const page = await browser.newPage(), externalRequests = [];
+      const context = await browser.createBrowserContext();
+      const page = await context.newPage(), externalRequests = [];
+      const pageOrigin = config.productionRouting ? 'https://emiraen.top' : origin;
       await page.setRequestInterception(true);
-      page.on('request', request => {
-        if (new URL(request.url()).origin === origin) request.continue();
+      page.on('request', async request => {
+        const url = new URL(request.url());
+        if (config.productionRouting && url.origin === pageOrigin) {
+          if (url.pathname === '/') { await request.respond({ contentType: 'text/html', body: '<!doctype html><title>Resource IO</title>' }); return; }
+          if (/^\/(?:public\/(?:js|vendor)|shared)\/[\w/.-]+\.js$/.test(url.pathname) && !url.pathname.includes('..')) {
+            try { await request.respond({ contentType: 'text/javascript', body: await readFile(moduleFile(url.pathname)) }); }
+            catch { await request.respond({ status: 404 }); }
+            return;
+          }
+          await request.respond({ status: 404 });
+        } else if (url.origin === origin) request.continue();
         else { externalRequests.push(request.url()); request.abort(); }
       });
       try {
-        await page.goto(origin);
+        await page.goto(pageOrigin);
         await page.evaluate(async config => {
           const io = { gets: [], scans: 0 }, requests = [];
           let db;
@@ -64,7 +77,7 @@ export async function resourceBrowserHarness() {
             remove(item) { return mutate(store => store.delete(new URL(item.url, location).href)); },
             resetIo() { io.gets.length = 0; io.scans = 0; requests.length = 0; },
           };
-          const get = IDBObjectStore.prototype.get, getAll = IDBObjectStore.prototype.getAll;
+          const get = IDBObjectStore.prototype.get, getAll = IDBObjectStore.prototype.getAll, getAllKeys = IDBObjectStore.prototype.getAllKeys;
           IDBObjectStore.prototype.get = function(key) {
             if (this.name === 'resources') {
               const entry = { mode: this.transaction.mode, key: String(key), sequence: io.gets.length + 1 };
@@ -76,9 +89,11 @@ export async function resourceBrowserHarness() {
             }
             return get.call(this, key);
           };
-          IDBObjectStore.prototype.getAll = function(...args) {
+          const inventoryRead = (method, keysOnly) => function(...args) {
             if (this.name === 'resources') {
               io.scans++;
+              if (keysOnly) io.keyScans = (io.keyScans || 0) + 1;
+              else io.blobScans = (io.blobScans || 0) + 1;
               if (fixture.pauseScanAt === io.scans) {
                 // Complete the real read transaction, then let an unrelated write finish before
                 // delivering its completion to check(). This exercises scanChanges reconciliation.
@@ -93,8 +108,10 @@ export async function resourceBrowserHarness() {
                 }, { once: true });
               }
             }
-            return getAll.apply(this, args);
+            return method.apply(this, args);
           };
+          IDBObjectStore.prototype.getAll = inventoryRead(getAll, false);
+          IDBObjectStore.prototype.getAllKeys = inventoryRead(getAllKeys, true);
           globalThis.fetch = async (input, options = {}) => {
             const url = new URL(input, location);
             if (url.pathname.startsWith('/data/resource-preload.')) {
@@ -132,7 +149,7 @@ export async function resourceBrowserHarness() {
         const result = await page.evaluate(scenario);
         if (externalRequests.length) throw new Error(`Unexpected external network request: ${externalRequests.join(', ')}`);
         return result;
-      } finally { await page.close(); }
+      } finally { await context.close(); }
     },
     async close() { await browser.close(); await new Promise(resolve => server.close(resolve)); },
   };

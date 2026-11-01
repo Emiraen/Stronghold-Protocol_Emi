@@ -19,7 +19,7 @@ import { LangToggle, machineTranslationNote } from './lang.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 import { errorCount, currentBattle, diagnosticsText } from '../diag.js';
 import { copyText, copyQQGroup } from './clipboard.js';
-import { TEXT_SIZES } from './gameLogic/settings.js';
+import { TEXT_SIZES, TEXT_SIZE_LABELS } from './gameLogic/settings.js';
 import { FRAME_RATES } from '../frameRate.js';
 import { ScreenFitSection } from './screenFit.js';
 import { PwaInstallButton } from './pwaInstall.js';
@@ -29,6 +29,7 @@ import { setUiPlugin, uiPluginEntries, uiPlugins } from './uiPlugins.js';
 import { UI_LIMITS } from '../../../shared/plugins/ui.js';
 import { toast, describeError } from './toasts.js';
 import { pluginMicro } from './pluginTag.js';
+import { DEFAULT_CAMERA_SETTINGS, CAMERA_SETTINGS_LIMITS } from '../render/cameraSettings.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -38,12 +39,17 @@ export const settingsStore = createStore(sanitizeSettings(loadPref('settings', n
 export function applyTextSize(value) {
   globalThis.document?.documentElement?.setAttribute('data-text', TEXT_SIZES.includes(value) ? value : 'sm');
 }
+export function applyDanmakuTextSize(value) {
+  globalThis.document?.documentElement?.setAttribute('data-danmaku-text', TEXT_SIZES.includes(value) ? value : 'sm');
+}
 applyTextSize(settingsStore.get().textSize);
+applyDanmakuTextSize(settingsStore.get().danmakuTextSize);
 
 settingsStore.subscribe((s) => {
   savePref('settings', sanitizeSettings(s));
   audio.setVolumes(s);
   applyTextSize(s.textSize);
+  applyDanmakuTextSize(s.danmakuTextSize);
 });
 audio.setVolumes(settingsStore.get());
 
@@ -78,6 +84,33 @@ function Toggle({ label, micro, value, onChange }) {
     <button type="button" class=${`set-toggle${value ? ' is-on' : ''}`} role="switch" aria-checked=${value ? 'true' : 'false'}
       onClick=${() => onChange(!value)}><i></i><span>${value ? tc('toggle', '开启') : tc('toggle', '关闭')}</span></button>
   </div>`;
+}
+
+function CameraSlider({ label, micro, setting, value, min, max, signed = false }) {
+  const pct = (value - min) / (max - min) * 100;
+  return html`<label class="set-row">
+    <span class="set-row__label">${label}<${MicroLabel}>${micro}<//></span>
+    <input class="set-range" type="range" min=${min} max=${max} step="1" value=${value} style=${`--pct:${pct}%`}
+      aria-label=${label} data-camera-setting=${setting} onInput=${e => updateSettings({ [setting]: Number(e.currentTarget.value) })} />
+    <span class="set-row__val num">${signed && value > 0 ? '+' : ''}${value}%</span>
+  </label>`;
+}
+
+function CameraSection({ settings: s }) {
+  const defaults = Object.entries(DEFAULT_CAMERA_SETTINGS).every(([key, value]) => s[key] === value);
+  return html`<section class="set-keys" aria-labelledby="set-camera-title">
+    <div class="set-keys__head">
+      <span class="set-row__label" id="set-camera-title">摄像机<${MicroLabel}>CAMERA<//></span>
+      <${Button} variant="ghost" size="sm" icon="refresh" disabled=${defaults} data-camera-reset
+        onClick=${() => updateSettings(DEFAULT_CAMERA_SETTINGS)}>${t('恢复默认')}<//>
+    </div>
+    <${CameraSlider} label="左右偏移" micro="LEFT / RIGHT" setting="cameraOffsetX" value=${s.cameraOffsetX}
+      min=${CAMERA_SETTINGS_LIMITS.offsetMin} max=${CAMERA_SETTINGS_LIMITS.offsetMax} signed=${true} />
+    <${CameraSlider} label="上下偏移" micro="UP / DOWN" setting="cameraOffsetY" value=${s.cameraOffsetY}
+      min=${CAMERA_SETTINGS_LIMITS.offsetMin} max=${CAMERA_SETTINGS_LIMITS.offsetMax} signed=${true} />
+    <${CameraSlider} label="画面缩放" micro="ZOOM" setting="cameraZoom" value=${s.cameraZoom}
+      min=${CAMERA_SETTINGS_LIMITS.zoomMin} max=${CAMERA_SETTINGS_LIMITS.zoomMax} />
+  </section>`;
 }
 
 const QUALITY = [['high', N_('高')], ['medium', N_('中')], ['low', N_('低')]];
@@ -328,6 +361,7 @@ export function SettingsModal({ open, onClose }) {
       <${Toggle} label="优先本土配音" micro="NATIVE VOICE" value=${s.voiceNative} onChange=${v => updateSettings({ voiceNative: v })} />
       <${Toggle} label="秘术师能量" micro="STORED ENERGY" value=${s.energyCount} onChange=${v => updateSettings({ energyCount: v })} />
       <${ScreenFitSection} />
+      <${CameraSection} settings=${s} />
       <${Toggle} label=${t('弹药数量')} micro="AMMO COUNT" value=${s.ammoCount} onChange=${(v) => updateSettings({ ammoCount: v })} />
       <div class="set-row">
         <span class="set-row__label">官方特效<${MicroLabel}>BATTLE EFFECTS<//></span>
@@ -337,8 +371,14 @@ export function SettingsModal({ open, onClose }) {
       </div>
       <div class="set-row">
         <span class="set-row__label">${t('文字大小')}<${MicroLabel}>TEXT SIZE<//></span>
-        <div class="set-seg" role="radiogroup" aria-label=${t('文字大小')}>
-          ${TEXT_SIZES.map((id, index) => html`<button key=${id} type="button" role="radio" aria-checked=${String(s.textSize === id)} class=${s.textSize === id ? 'is-on' : ''} onClick=${() => updateSettings({ textSize: id })}>${t(['标准', '中', '大', '特大'][index])}</button>`)}
+        <div class="set-seg" style="flex-wrap:wrap;max-width:100%" role="radiogroup" aria-label=${t('文字大小')}>
+          ${TEXT_SIZES.map((id) => html`<button key=${id} type="button" role="radio" aria-checked=${String(s.textSize === id)} class=${s.textSize === id ? 'is-on' : ''} onClick=${() => updateSettings({ textSize: id })}>${t(TEXT_SIZE_LABELS[id])}</button>`)}
+        </div>
+      </div>
+      <div class="set-row">
+        <span class="set-row__label">${t('弹幕字体大小')}<${MicroLabel}>DANMAKU TEXT SIZE<//></span>
+        <div class="set-seg" style="flex-wrap:wrap;max-width:100%" role="radiogroup" aria-label=${t('弹幕字体大小')}>
+          ${TEXT_SIZES.map((id) => html`<button key=${id} type="button" role="radio" aria-checked=${String(s.danmakuTextSize === id)} class=${s.danmakuTextSize === id ? 'is-on' : ''} onClick=${() => updateSettings({ danmakuTextSize: id })}>${t(TEXT_SIZE_LABELS[id])}</button>`)}
         </div>
       </div>
       <div class="set-row">

@@ -39,6 +39,8 @@ import { sortEnemyTargets } from '../targeting.js';
 import { DIR_VEC, normDir, oppositeDir } from '../dir.js';
 import { hypot } from '../detmath.js';
 import { isolateContentCallback } from './support/index.js';
+import * as annihilationDevices from './annihilationDevices.js';
+const isAnnihilation = battle => /^mode_(single|multi)_annihilation$/.test(battle?.modeId || battle?.opts?.modeId || '');
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : (typeof v === 'string' && v.trim() !== '' && Number.isFinite(+v) ? +v : d));
 /** ASPD blackboard values: a fraction (|v| < 1, e.g. −0.6 / −0.05) is ×100 ASPD, otherwise flat (+20). */
@@ -82,6 +84,7 @@ export function playerDeviceOverrides(ps) {
 
 /** Union of device overrides for this battle: Map alias → active. */
 export function deviceOverridesOf(battle) {
+  if (isAnnihilation(battle)) return annihilationDevices.deviceOverridesOf(battle);
   const m = new Map();
   for (const ps of battle.players || []) for (const [k, v] of playerDeviceOverrides(ps)) m.set(k, v);
   addOverrides(m, battle.opts?.deviceOverrides);
@@ -123,6 +126,7 @@ function isActive(battle, st, d) {
  * attributed to that player. Returns { cancel() } or null for bad numbers.
  */
 export function startColdWind(battle, { playerId = null, interval, duration, first, ownerOnly = false } = {}) {
+  if (isAnnihilation(battle)) return annihilationDevices.startColdWind(battle, { playerId, interval, duration, first, ownerOnly });
   const iv = num(interval, 0);
   if (!(iv > 0)) return null;
   const durOf = () => num(typeof duration === 'function' ? duration() : duration, 0);
@@ -155,6 +159,7 @@ export function startColdWind(battle, { playerId = null, interval, duration, fir
  * interval `bond_eff_kjerag[storm].interval`, duration `base_time + time_per_stack × layers` (live 谢拉格 layers).
  */
 export function kjeragColdWind(battle, playerId, bb = {}, { bondId = 'kjeragShip' } = {}) {
+  if (isAnnihilation(battle)) return annihilationDevices.kjeragColdWind(battle, playerId, bb, { bondId });
   const interval = num(bb['bond_eff_kjerag[storm].interval'], 0);
   const base = num(bb['bond_eff_kjerag[storm].base_time'], 0);
   const per = num(bb['bond_eff_kjerag[storm].time_per_stack'], 0);
@@ -263,6 +268,7 @@ function tickTurret(battle, u, dt) {
 
 /** Activate “双眼皮” turrets on this field (all known aliases by default; idempotent). Returns the turret units. */
 export function activateTurrets(battle, { aliases = null } = {}) {
+  if (isAnnihilation(battle)) return annihilationDevices.activateTurrets(battle, { aliases });
   const st = stateOf(battle);
   if (!st) return [];
   const out = [];
@@ -506,6 +512,7 @@ function ensureTick(battle, st) {
 
 /** Terrain name under (r, c) for other content ('mire' | 'smog' | 'deepsea' | 'infection' | null). */
 export function terrainAt(battle, r, c) {
+  if (isAnnihilation(battle)) return annihilationDevices.terrainAt(battle, r, c);
   const st = stateOf(battle);
   const code = st && r >= 0 && r < ROWS && c >= 0 && c < COLS ? st.terrain[r * COLS + c] : 0;
   return TERRAIN_NAME[code] || null;

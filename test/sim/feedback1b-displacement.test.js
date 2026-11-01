@@ -123,9 +123,14 @@ test('B5 (the player\'s scenario): on act2 m01 a round-7 drone flies past 薄绿
   };
   const ref = fly(false), got = fly(true);
   assert.ok(got.hits >= 5, `S2 hits the drone (${got.hits} hits)`);
-  assert.equal(got.path.length, ref.path.length, 'it reaches the goal on the same tick');
+  // A static body still has the documented 0.1 s unbalance floor (_staticForce):
+  // the force pauses its route, but must never move it away from that route.
+  const moving = (path) => path.filter((p, i) => i === 0 || Math.hypot(p[0] - path[i - 1][0], p[1] - path[i - 1][1]) > 1e-9);
+  const gotMoving = moving(got.path), refMoving = moving(ref.path);
+  assert.equal(gotMoving.length, refMoving.length, 'the same number of movement steps, excluding unbalance holds');
+  assert.ok(got.path.length >= ref.path.length, 'force may delay but cannot accelerate the route');
   let dev = 0;
-  for (let i = 0; i < ref.path.length; i++) dev = Math.max(dev, Math.hypot(got.path[i][0] - ref.path[i][0], got.path[i][1] - ref.path[i][1]));
+  for (let i = 0; i < refMoving.length; i++) dev = Math.max(dev, Math.hypot(gotMoving[i][0] - refMoving[i][0], gotMoving[i][1] - refMoving[i][1]));
   approx(dev, 0, 1e-9, 'its flight is the undisturbed one');
   checkInvariants(got.h.b);
 });

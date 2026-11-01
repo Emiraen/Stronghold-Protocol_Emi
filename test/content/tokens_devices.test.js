@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { makeBattle, chessRec, enemyRec, checkInvariants } from '../helpers/battleHarness.js';
 import { hasGeneratedData, getDefaultSource } from '../../server/sim/simdata.js';
 import { genericKit } from '../../server/sim/content/generic.js';
-import { spawnYanyou, spawnMapChar, TOKEN_IDS, wolfShadows, tileFree, findSummonTile, summonToken } from '../../server/sim/content/tokens.js';
+import { spawnYanyou, spawnMapChar, TOKEN_IDS, wolfShadows, wolfShadowInterval, wolfTacticalPoint, tileFree, findSummonTile, summonToken } from '../../server/sim/content/tokens.js';
 import { startColdWind, kjeragColdWind, activateTurrets, terrainAt, deviceOverridesOf } from '../../server/sim/content/devices.js';
 import { HUSK_REBIRTH } from '../../server/sim/content/enemies.js';
 
@@ -130,8 +130,12 @@ test('斯卡蒂的海嗣: heals allies in its range; during the owner skill: tru
     g.hp = 1000;
     const sea = spawnOn(h, sk, TOKEN_IDS.seaborn, 10, 7);
     assert.equal(sea.s.flags.untargetable, true);
-    h.run(3.05);
-    approx(g.hp - 1000, 3 * sk.s.atk * ratio, 1e-6, 'heal 3 pulses');
+    assert.ok(h.runUntil(() => g.findBuff(`trait:bard:${sk.id}`), 2), 'seaborn extends the owner regeneration aura');
+    const rate = sk.s.atk * ratio;
+    approx(g.findBuff(`trait:bard:${sk.id}`).mods.hpRegen, rate, 1e-6, 'one owner aura');
+    const hp0 = g.hp, pending0 = g._regenAcc ?? 0, regenAt = h.b.time;
+    h.run(3);
+    approx(g.hp - hp0 + (g._regenAcc ?? 0) - pending0, rate * (h.b.time - regenAt), 1e-6, 'continuous recovery across pulse refreshes');
     const life = tokDef(TOKEN_IDS.seaborn, 'chess_char_6_04_a').talents[0].bb.duration;
     h.runUntil(() => !sea.alive, life + 2);
     approx(sea.deathAt - sea.deployedAt, life, 0.01, 'lifetime');
@@ -223,11 +227,12 @@ test('狼群: board piece becomes 伺夜\'s 援军; 2→3 狼影 (block & hits),
   assert.equal(wolf.s.blockCnt, 2);
   const e = h.enemy('enemy_walker');
   assert.ok(h.runUntil(() => e.blockedBy === wolf && wolfHits >= 2, 30), 'blocks and bites');
-  // DEF ignore: every bite does ATK − (200 − 175)
+  // DEF ignore follows the owner's loadout-resolved potential talent.
+  const penetration = vigil.def.talents.find(t => t.bb.def_penetrate_fixed != null).bb.def_penetrate_fixed;
   let dealt = null;
   h.b.on('damaged', (c) => { if (c.source === wolf && c.type === 'phys') dealt = c.amount; });
   h.runUntil(() => dealt != null, 5);
-  approx(dealt, wolf.s.atk - (200 - 175), 1e-9, 'def pen');
+  approx(dealt, wolf.s.atk - Math.max(0, 200 - penetration), 1e-9, 'def pen');
   h.runUntil(() => wolfShadows(wolf) === 3, 30);
   assert.equal(wolf.s.blockCnt, 3);
   assert.equal(wolf.profile.hitsFn(h.b, wolf), 3);
@@ -240,9 +245,20 @@ test('狼群: board piece becomes 伺夜\'s 援军; 2→3 狼影 (block & hits),
   h.b.dealDamage(null, wolf, { amount: 1e6, type: 'true' });
   assert.equal(wolf.alive, false, 'last shadow falls');
   const died = h.b.time;
-  assert.ok(h.runUntil(() => wolf.alive, 20), 'respawns');
-  approx(h.b.time - died, wolf.base.respawnTime, 0.3);
-  assert.equal(wolfShadows(wolf), 2, 'fresh pack');
+  const interval = wolfShadowInterval(wolf.def);
+  assert.ok(interval > 0);
+  const point = wolfTacticalPoint(wolf);
+  assert.ok(point, 'the last fatal hit enters tactical-point form');
+  assert.equal(wolfShadows(wolf), 0);
+  approx(point.until - point.since, interval);
+  h.run(interval - h.b.dt * 2);
+  assert.equal(wolf.alive, false, 'no early return before the shadow recovery interval');
+  assert.ok(h.runUntil(() => wolf.alive, h.b.dt * 3), 'returns when tactical-point form ends');
+  approx(h.b.time - died, interval, h.b.dt / interval + 1e-9);
+  assert.equal(wolfTacticalPoint(wolf), null);
+  assert.equal(wolfShadows(wolf), 1, 'a tactical return restores one shadow, not a fresh two-shadow deployment');
+  assert.equal(wolf.s.blockCnt, 1);
+  assert.ok(h.runUntil(() => wolfShadows(wolf) === 2, interval + h.b.dt), 'the next full growth cycle restores a second shadow');
   checkInvariants(h.b);
 });
 
@@ -914,7 +930,7 @@ test('every token variant: a spawn with that owner takes the owner-level stats (
   assert.ok(n >= 38, `variants checked: ${n}`);
 });
 
-test('elite numbers: 沙之碑 230 %/1.5 s, 香槟炸弹 170 %, 纸偶 its ATK × 2.7, “耀阳” 100 % + ×1.15 vs blocked, 医疗探机 ATK 114', REAL, () => {
+test('elite numbers: 沙之碑 230 %/1.5 s, 香槟炸弹 170 %, 纸偶 its resolved talent ATK multiplier, “耀阳” 100 % + ×1.15 vs blocked, 医疗探机 ATK 114', REAL, () => {
   const burstOf = (ownerId, tokenId, r, c, ePos) => {
     const base = ownerId.replace(/_[ab]$/, '_a');
     const h = makeBattle({ defs: { enemies: { enemy_dummy: dummy() } }, kits: { [base]: genericNoSkill }, units: [{ chessId: ownerId, row: 12, col: 2 }], enemies: [{ key: 'enemy_dummy', pos: ePos }], autoFinish: false, timeLimit: 10 });
@@ -938,7 +954,8 @@ test('elite numbers: 沙之碑 230 %/1.5 s, 香槟炸弹 170 %, 纸偶 its ATK �
   {
     const { t, e } = burstOf('chess_char_2_11_b', TOKEN_IDS.paperDoll, 10, 6, [11, 7]);
     assert.equal(t.base.atk, 728);
-    approx(1e7 - e.hp, 728 * 2.7, 1e-9, '纸偶 elite');
+    const scale = t.def.talents[0].bb.damage_scale;
+    approx(1e7 - e.hp, t.s.atk * scale, 1e-9, '纸偶 elite potential-resolved burst');
   }
   {
     const { o, e } = burstOf('chess_char_6_17_b', TOKEN_IDS.radiantSword, 10, 6, [10, 7]);
@@ -1082,7 +1099,7 @@ test('预备干员-医疗: stat talent 攻击提升 (+4 % ATK) on top of the dat
   approx(med.s.atk, tokDef(TOKEN_IDS.reserveMedic).stats.atk * (1.04 + 0.5), 1e-9, '治疗强化·β型 +50 %');
 });
 
-test('Touch talents: 攫升 +3 SP to the healed unit, 超脱 +5 SP when an operator in range is knocked out; extra heal = 30 % of the main heal', REAL, () => {
+test('Touch talents: 攫升 +3 SP to the healed unit, 超脱 +5 SP when an operator in range is knocked out; extra heal = 30 % of base healing ATK, then recipient modifiers', REAL, () => {
   const g = chessRec({ id: 'test_sp', stats: { maxHp: 10000, atk: 0, spRecovery: 0 }, skill: { spCost: 100, initSp: 0 } });
   const h = makeBattle({ stageId: 'act2autochess_m01', defs: { chess: { test_sp: g } }, units: [{ chessId: 'test_sp', row: 10, col: 3, uid: 1 }, { chessId: 'test_sp', row: 11, col: 3, uid: 2 }], autoFinish: false, timeLimit: 60,
     setup: (b) => b.on('heal', (c) => { if (c.source?.defId === TOKEN_IDS.touch) (b.mem ??= []).push({ t: c.target.id, amount: c.amount, ratio: c.target.hpRatio }); }, { priority: -500 }) });
@@ -1104,7 +1121,7 @@ test('Touch talents: 攫升 +3 SP to the healed unit, 超脱 +5 SP when an opera
   assert.ok(h.runUntil(() => h.b.mem.length >= 2, 5));
   const [main, extra] = h.b.mem;
   approx(main.amount, touch.s.atk * 1.5, 1e-6, 'main heal boosted');
-  approx(extra.amount, main.amount * 0.3, 1e-6, 'extra = 30 % of the main heal');
+  approx(extra.amount, touch.s.atk * 0.3, 1e-6, 'extra = 30 % of the unboosted heal base; its own recipient is above half HP');
   checkInvariants(h.b);
 });
 
@@ -1190,7 +1207,7 @@ test('tactical point: without a board piece the 援军 (狼群) stands on an ene
   checkInvariants(h.b);
 });
 
-test('狼群 (generic 伺夜): 伺夜\'s own attacks on pack-blocked enemies ignore 175 DEF and get the S3 bonus; the pack leaves with 伺夜', REAL, () => {
+test('狼群 (generic 伺夜): 伺夜\'s own attacks on pack-blocked enemies ignore the loadout talent DEF and get the S3 bonus; the pack leaves with 伺夜', REAL, () => {
   const kit = () => ({ generic: true, talents: [], skill: { kind: 'duration', duration: 60, trigger: 'SP_FULL', spCost: 1, initSp: 1 } });
   const own = [], bonus = [];
   // RES 100: the 弱点伤害 garrison keeps the attacks physical (arts would do 5 %)
@@ -1206,8 +1223,8 @@ test('狼群 (generic 伺夜): 伺夜\'s own attacks on pack-blocked enemies ign
   assert.ok(h.runUntil(() => own.some((x) => x.blocked) && bonus.some((x) => x.src === 'chess_char_3_19_a'), 30), 'owner hits a pack-blocked enemy');
   const hit = own.find((x) => x.blocked);
   assert.equal(hit.type, 'phys');
-  // tactician trait ×1.5 vs enemies its 援军 blocks; DEF 300 − 175
-  approx(hit.amount, vigil.s.atk * 1.5 - (300 - 175), 1e-6, 'DEF ignore on 伺夜\'s attack');
+  const penetration = vigil.def.talents.find(t => t.bb.def_penetrate_fixed != null).bb.def_penetrate_fixed;
+  approx(hit.amount, vigil.s.atk * 1.5 - Math.max(0, 300 - penetration), 1e-6, 'DEF ignore on 伺夜\'s attack');
   approx(bonus.find((x) => x.src === 'chess_char_3_19_a').amount, vigil.s.atk * 0.2 * 0.05, 1e-6, 'S3 bonus: 20 % ATK arts vs RES 100 (5 % floor)');
   assert.ok(bonus.some((x) => x.src === TOKEN_IDS.wolfPack), 'the pack\'s bites carry the bonus too');
   // the 援军 leaves with its tactician (no respawn afterwards)

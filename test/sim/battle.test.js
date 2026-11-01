@@ -148,7 +148,7 @@ test('leaks: recorded per player with enemyKey/mods/lpr/sourcePlayerId; perfect=
   assert.equal(r.reason, 'cleared');
   const pp = r.perPlayer.p1;
   assert.equal(pp.leaked.length, 1);
-  assert.deepEqual({ ...pp.leaked[0] }, { enemyKey: 'enemy_walker', mods: { hpMul: 2 }, lpr: 2, sourcePlayerId: 'pX', tag: null, counted: true, boss: undefined, spawned: true });
+  assert.deepEqual({ ...pp.leaked[0] }, { enemyKey: 'enemy_walker', mods: { hpMul: 2 }, lpr: 2, sourcePlayerId: 'pX', tag: null, rankedHpRatio: 1, counted: true, boss: undefined, spawned: true });
   assert.equal(pp.perfect, false);
   assert.equal(pp.killed, 0);
   assert.equal(pp.total, 1);

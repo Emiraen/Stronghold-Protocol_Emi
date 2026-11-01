@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { APP_VERSION, PROTOCOL_VERSION } from '../shared/constants.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+const read = (p) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n');
 const pkg = JSON.parse(read('package.json'));
 const lock = JSON.parse(read('package-lock.json'));
 
@@ -27,7 +27,7 @@ test('CHANGELOG.md opens with the release version, and the README links it', () 
   const first = log.match(/^## (\d+\.\d+\.\d+) — (\d{4}-\d{2}-\d{2})/m);
   assert.ok(first, 'a "## x.y.z — date" heading');
   assert.equal(first[1], APP_VERSION, 'the newest entry is the current version');
-  assert.match(log, /^## 0\.1\.0 — 2026-10-02/m, 'the first public release stays listed');
+  assert.match(log, /不补写无法追溯的历史发布记录/, 'missing historical releases are not fabricated');
   const readme = read('README.md');
   assert.match(readme, /\[CHANGELOG\.md\]\(CHANGELOG\.md\)/);
   assert.match(readme, new RegExp(`badge/version-${APP_VERSION.replace(/\./g, '\\.')}-`), 'the README badge');
@@ -37,8 +37,9 @@ test('the release version is what players see', () => {
   assert.match(read('public/js/screens/title.js'), /v\$\{APP_VERSION\}/, 'title screen footer');
   assert.ok(!/PROTOCOL v1/.test(read('public/js/screens/title.js')), 'no protocol number posing as a version');
   const server = read('server/index.js');
-  assert.match(server, /Stronghold Protocol: Covenant v\$\{APP_VERSION\}/, 'boot banner');
-  assert.match(server, /app: APP_VERSION/, '/healthz');
+  assert.match(server, /Stronghold Protocol: Alliance v\$\{APP_VERSION\}/, 'boot banner');
+  assert.match(read('server/http/routes.js'), /const HEALTHZ_APP_VERSION = '0\.3\.1'/, '/healthz application label is fixed');
+  assert.match(read('server/http/routes.js'), /app: HEALTHZ_APP_VERSION/, '/healthz');
 });
 
 test('GPL-3.0-or-later: LICENSE, package metadata and notices', () => {

@@ -32,7 +32,7 @@ import { html, Overlay, isTopOverlay, Icon, MicroLabel, Button, TierChip, TextFi
 import { Img, RichText, UnitThumb } from '../ui/gameComponents.js';
 import { chessAvatarUrl, chessPortraitUrl, shopPortraitUrl, subProfIconUrl, bondIconUrl, moduleTypeIconUrl, itemIconUrl } from '../ui/assetUrls.js';
 import { GarrisonBlock } from '../ui/east-loadout-adapter.js';
-import { data, useData, localAsset, DATA_FILES } from '../data.js';
+import { data, useData, useDataSource, getDataSource, zhajingEditorData, localAsset, DATA_FILES } from '../data.js';
 import { useStore, loadPref, savePref } from '../store.js';
 import { PHASE } from '../../../shared/constants.js';
 import {
@@ -40,7 +40,7 @@ import {
   changedCount, skillLabel, moduleBadge, attrRows, skillTags, quickSkillTags, traitLines, serializeExport, parseImport, LOADOUT_IMPORT_MAX_BYTES,
   opsOf, setOps, resetOps, moduleRecord,
 } from '../ui/loadoutModel.js';
-import { loadoutStore, openLoadout, closeLoadout, setEntries, setOpsMap, applyLoadoutEntries, importLegacyLoadout, setNotOwned, applyOwnershipImport, setDiyPicks, applyDiyImport } from '../ui/loadoutSync.js';
+import { loadoutStore, zhajingLoadoutStore, openLoadout, closeLoadout, setEntries, setOpsMap, applyLoadoutEntries, importLegacyLoadout, setNotOwned, applyOwnershipImport, setDiyPicks, applyDiyImport } from '../ui/loadoutSync.js';
 // 干员皮肤 (docs/SKINS.md): a self-contained section — everything it does lives in ui/skinPicker.js, so this screen
 // only names it. That matters because this file is one upstream is likely to rewrite.
 import { SkinSection } from '../ui/skinPicker.js';
@@ -242,8 +242,8 @@ export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPic
 // ---- detail --------------------------------------------------------------------------------------------------------------
 
 /** The same attribute records and rich-text renderer as the in-match card, including literal trigger markers. */
-export function LoadoutGarrisons({ chess, m }) {
-  const records = (chess?.garrisonIds || []).map((id) => data.lookup('garrisons', id)).filter(Boolean);
+export function LoadoutGarrisons({ chess, m, source = data }) {
+  const records = (chess?.garrisonIds || []).map((id) => source.lookup('garrisons', id)).filter(Boolean);
   return records.length ? html`<section class="lo-garrisons" data-variant=${chess.isGolden ? 'elite' : 'normal'}>
     ${records.map((garrison) => html`<${GarrisonBlock} key=${garrison.garrisonId} garrison=${garrison} m=${m} />`)}
   </section>` : null;
@@ -315,7 +315,7 @@ export function ModuleInfo({ m, golden, opt, potential = null }) {
 const standInName = (chess) => data.get('backups')?.units?.[chess?.backup?.charId]?.name ?? null;
 
 
-function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset, locked, level = 'normal', onLevel, notOwned = false }) {
+function Detail({ source = data, m, chess, golden, entries, ops = {}, onChange, onOps, onReset, locked, level = 'normal', onLevel, notOwned = false }) {
   const [statLevel, setStatLevel] = useState('elite'); // 局内数值: the 精锐 shows the chosen module's effect
   const setLevel = onLevel;
   const bodyRef = useRef(null);
@@ -341,7 +341,7 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
           <i class="lo-sep"></i><${Img} src=${subProfIconUrl(m, chess)} class="lo-dhead__prof" />${chess.subProfessionName || ''}
         </span>
         <span class="lo-dhead__bonds">${(chess.bonds || []).map((b) => html`<span key=${b} class="lo-bond">
-          <${Img} src=${bondIconUrl(m, b)} class="lo-bond__icon" fallback=${html`<i class="lo-bond__dot"></i>`} />${data.lookup('bonds', b)?.name || b}</span>`)}</span>
+          <${Img} src=${bondIconUrl(m, b)} class="lo-bond__icon" fallback=${html`<i class="lo-bond__dot"></i>`} />${source.lookup('bonds', b)?.name || b}</span>`)}</span>
       </div>
       <${Button} variant="ghost" size="sm" icon="refresh" class="lo-dhead__reset" disabled=${!changed} onClick=${onReset}>${t('恢复默认')}<//>
     </div>
@@ -349,7 +349,7 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
       <${SkinSection} chess=${chess} />
       <${OperatorVoice} charId=${chess.charId} />
       <${CultivationSection} charId=${chess.charId} ops=${ops} onSet=${onOps} standIn=${notOwned} />
-      <${LoadoutGarrisons} chess=${level === 'elite' && golden ? golden : chess} m=${m} />
+      <${LoadoutGarrisons} source=${source} chess=${level === 'elite' && golden ? golden : chess} m=${m} />
       <section class="lo-sec">
         <header class="lo-sec__head">
           <h3>${t('技能')}<${MicroLabel}>SKILL<//></h3>
@@ -768,8 +768,15 @@ export function DataMissing({ files }) {
 }
 
 /** The overlay screen (`leaving`: closed, fading out). */
-function LoadoutScreen({ st, leaving = false }) {
-  const ready = useData('chess', 'bonds', 'assets', 'local', 'backups', 'garrisons', 'effects', 'skins');
+const normalLoadoutStore = loadoutStore;
+const loadoutEditors = { setEntries, setOpsMap, applyLoadoutEntries };
+function LoadoutScreen({ st, leaving = false, scoped = false }) {
+  const data = scoped ? zhajingEditorData : getDataSource('vanilla');
+  const loadoutStore = scoped ? zhajingLoadoutStore : normalLoadoutStore;
+  const setEntries = (entries, epoch) => loadoutEditors.setEntries(entries, epoch, loadoutStore);
+  const setOpsMap = (ops, epoch) => loadoutEditors.setOpsMap(ops, epoch, loadoutStore);
+  const applyLoadoutEntries = (entries, lookup, opts) => loadoutEditors.applyLoadoutEntries(entries, lookup, { ...opts, target: loadoutStore });
+  const ready = useDataSource(data, ...(scoped ? ['zjDefaultLoadout'] : []),'chess', 'bonds', 'assets', 'local', 'backups', 'garrisons', 'effects', 'skins');
   useStore((s) => s.entries, Object.is, skinsStore);
   useStore((s) => s.portraits, Object.is, skinsStore);
   const phase = useStore((s) => s.match?.public?.phase || null);
@@ -811,12 +818,12 @@ function LoadoutScreen({ st, leaving = false }) {
   const deckRef = useRef(null);
   const ui = useRef({});
   ui.current = { drawer, menu, quick, setDrawer, setMenu, setQuick };
-  const itemsReady = useData('items');
+  const itemsReady = useDataSource(data, 'items');
   const codex = useMemo(() => codexItems(data.get('items')), [itemsReady, data.locale()]);
-  const diySlots = ready ? diySlotList(diyData()) : [];
+  const diySlots = ready && !scoped ? diySlotList(diyData()) : [];
 
   const tab = st.tab === 'ownership' || st.tab === 'diy' ? st.tab : 'loadout';
-  const lost = ready ? missingGameData(tab) : [];
+  const lost = ready ? missingGameData(tab, data.status) : [];
   const ownRoster = useOwnershipRoster(ready);
   const nNotOwned = notOwnedCount(st.notOwned, ownRoster);
   // 自选编队 (0.2.0 DIY): the stored picks, those the server would keep (the kit list of the last welcome)
@@ -835,7 +842,7 @@ function LoadoutScreen({ st, leaving = false }) {
     const ok = await confirmDialog({ utility: true, title: t('全部清空'), text: t('清空全部 {n} 个自选名额？', { n: nDiy }), okText: t('全部清空') });
     if (ok) { syncDiySkins(loadoutStore.get().diy, {}); setDiyPicks({}); }
   };
-  const setTab = (t) => loadoutStore.set({ tab: t });
+  const setTab = (t) => normalLoadoutStore.set({ tab: t });
   const toggleOwned = (id, owned) => setNotOwned(setOwned(loadoutStore.get().notOwned, id, owned));
   const ownAll = async () => {
     if (!nNotOwned) return;
@@ -918,7 +925,7 @@ function LoadoutScreen({ st, leaving = false }) {
         mode: 'export', kind: 'loadout',
         text: serializeExport(loadoutStore.get().entries, {
           ops: loadoutStore.get().ops,
-          skins: rosterSkinMap(skinsStore.get().entries), portraits: rosterSkinMap(skinsStore.get().portraits),
+          ...(!scoped ? { skins: rosterSkinMap(skinsStore.get().entries), portraits: rosterSkinMap(skinsStore.get().portraits) } : {}),
         }),
       });
   const openImport = () => setIo({ mode: 'import', kind: tab, text: '' });
@@ -945,7 +952,7 @@ function LoadoutScreen({ st, leaving = false }) {
   const ioApply = () => {
     // an import before chess.json is loaded, or when it never arrived, would sanitise every entry away — refuse instead
     // of wiping the loadout
-    const refused = importRefusal(io.kind, ready);
+    const refused = importRefusal(io.kind, ready, data.status);
     if (refused) { toast(refused.text, refused.tone); return; }
     if (ioDiy) {
       const r = parseDiyImport(ioText);
@@ -989,7 +996,7 @@ function LoadoutScreen({ st, leaving = false }) {
     if (!res.ok) { toast(t('导入失败：{error}', { error: res.error }), 'error'); return; }
     // ops replaces 潜能 / 练度, including 自选 operators that only backups.json names. Missing data used to drop
     // them and still save, clearing a 练度 the file did not mean to erase (GitHub #538).
-    const opsRefused = loadoutOpsImportRefusal(res.ops, ready);
+    const opsRefused = loadoutOpsImportRefusal(res.ops, ready, data.status);
     if (opsRefused) { toast(opsRefused.text, opsRefused.tone); return; }
     // 0.2.2: a payload with `ops` replaces the 潜能 / 练度 too (an older export leaves them alone)
     const opIds = res.ops ? cultivationCharIds(data.get('chess'), data.get('backups')) : null;
@@ -1002,7 +1009,7 @@ function LoadoutScreen({ st, leaving = false }) {
     setIo(null);
     // the file's 皮肤 / 商店立绘 for the ROSTER chess replace the current ones (absent = an older export, untouched);
     // the 自选 slots' choices belong to the 自选编队 file, so they stay whatever this import says about operators
-    if (res.skins || res.portraits) {
+    if (!scoped && (res.skins || res.portraits)) {
       const current = skinsStore.get().entries;
       const currentP = skinsStore.get().portraits;
       setSkins({ ...slotSkinMap(current), ...rosterSkinMap(cleanSkinsMap(res.skins)) });
@@ -1123,7 +1130,7 @@ function LoadoutScreen({ st, leaving = false }) {
   const deckLoadout = deck && tab === 'loadout';
   const clearFilters = () => loadoutStore.set({ filters: { ...st.filters, tier: null, prof: null, bond: null, query: '', changedOnly: false } });
   const lockedText = t('本局的调配已锁定（确认本局信息后无法修改），修改将在下一局生效');
-  const loadoutDetail = html`<${Detail} m=${m} chess=${base} golden=${golden} entries=${st.entries} ops=${st.ops} onChange=${change} onOps=${setOpsOf} onReset=${resetOne} locked=${locked}
+  const loadoutDetail = html`<${Detail} source=${data} m=${m} chess=${base} golden=${golden} entries=${st.entries} ops=${st.ops} onChange=${change} onOps=${setOpsOf} onReset=${resetOne} locked=${locked}
     level=${golden ? previewLevel : 'normal'} onLevel=${setPreviewLevel}
     notOwned=${!!base && (st.notOwned || []).includes(base.chessId)} />`;
 
@@ -1135,16 +1142,17 @@ function LoadoutScreen({ st, leaving = false }) {
         ${deck && tab !== 'loadout'
           ? html`<${Button} variant="ghost" size="md" icon="chevronLeft" class="lo-back" onClick=${() => setTab('loadout')} title=${t('返回干员调配')}>${t('干员调配')}<//>`
           : html`<${Button} variant="ghost" size="md" icon="chevronLeft" class="lo-back" onClick=${closeLoadout} aria-label=${t('返回')} title=${t('返回 (Esc)')}>${t('返回')}<//>`}
+        ${html`<button type="button" class="lo-tbtn" data-testid="loadout-scope" aria-pressed=${scoped ? 'true' : 'false'} onClick=${() => setTab(scoped ? 'loadout' : 'zhajing')}>${scoped ? '常规调配' : '炸惊模拟'}</button>`}
         ${deck ? html`<button type="button" class="lo-info" onClick=${() => setHelp(true)} aria-label=${t('调度手册')} title=${t('调度手册')}><${Icon} name="info" /></button>` : null}
       </div>
       <div class="lo-top__center">
-        ${deckLoadout ? html`<${MicroLabel} tone="mint">${quick ? 'QUICK ASSEMBLE' : 'OPERATOR LOADOUT'}<//>
+        ${deckLoadout ? html`<${MicroLabel} tone="mint">${scoped ? '炸惊模拟' : quick ? 'QUICK ASSEMBLE' : 'OPERATOR LOADOUT'}<//>
           <p class=${cx('lo-top__note', locked && 'is-locked')}>${quick === 'cult' ? t('潜能与练度按干员保存，普通、精锐形态与自选共用')
             : quick ? t('快速编辑：展示干员精锐形态的技能与模组，改动即时保存') : locked ? lockedText : fromText}</p>`
         : deck ? html`<${MicroLabel} tone="mint">${tab === 'ownership' ? 'OPERATOR ROSTER' : 'SELF-SELECT SQUAD'}<//>
           <h2 class="lo-top__title">${tab === 'ownership' ? t('干员持有') : t('自选编队')}</h2>`
         : html`<${MicroLabel} tone="mint">${tab === 'ownership' ? 'OPERATOR ROSTER' : tab === 'diy' ? 'SELF-SELECT SQUAD' : 'OPERATOR LOADOUT'}<//>
-        <div class="lo-tabs" role="tablist" aria-label=${t('干员调配 / 干员持有 / 自选编队')}>
+        <div class="lo-tabs" hidden=${scoped} role="tablist" aria-label=${t('干员调配 / 干员持有 / 自选编队')}>
           <button type="button" role="tab" aria-selected=${tab === 'loadout' ? 'true' : 'false'} data-tab="loadout" class=${cx('lo-tab', tab === 'loadout' && 'is-on')} onClick=${() => setTab('loadout')}>
             <${Img} src=${localAsset('ui/outer', 'operator_preset')} class="lo-top__icon" fallback=${html`<${Icon} name="edit" class="lo-top__icon" />`} />${t('干员调配')}</button>
           <button type="button" role="tab" aria-selected=${tab === 'ownership' ? 'true' : 'false'} data-tab="ownership" class=${cx('lo-tab', tab === 'ownership' && 'is-on')} onClick=${() => setTab('ownership')}
@@ -1200,7 +1208,7 @@ function LoadoutScreen({ st, leaving = false }) {
               <button type="button" role="menuitem" class="is-danger" disabled=${!nChanged} onClick=${() => { setMenu(null); resetAll(); }}><${Icon} name="refresh" />${t('全部恢复默认')}</button>
             </div>` : null}
           </div>
-          <button type="button" class="lo-assist" data-testid="loadout-ownership" onClick=${() => { setMenu(null); setTab('ownership'); }}
+          <button type="button" hidden=${scoped} class="lo-assist" data-testid="loadout-ownership" onClick=${() => { setMenu(null); setTab('ownership'); }}
               title=${t('标记未持有的干员：由官方指定的替补干员上场')}>
             <span class="lo-assist__txt"><span class="lo-assist__k">${t('干员持有')}</span>
               <b class="lo-assist__v num">${nNotOwned ? t('未持有 {n}', { n: nNotOwned }) : t('全部持有')}</b></span>
@@ -1310,6 +1318,9 @@ export function shouldAutoClose(st, phase, inMatch, wasInMatch) {
 /** Mounted once (main.js): renders the overlay while open. */
 export function LoadoutHost() {
   const st = useStore((s) => s, Object.is, loadoutStore);
+  const zj = useStore((s) => s, Object.is, zhajingLoadoutStore);
+  const scoped = st.tab === 'zhajing';
+  useEffect(() => { zhajingLoadoutStore.set({ open: st.open && scoped }); }, [st.open, scoped]);
   const phase = useStore((s) => s.match?.public?.phase || null);
   const inMatch = useStore((s) => !!s.room?.inMatch);
   const wasInMatch = useRef(inMatch);
@@ -1324,7 +1335,7 @@ export function LoadoutHost() {
   // closed: kept for its fade-out
   const [shown, leaving] = usePresence(st.open, LEAVE_MS);
   if (!shown) return null;
-  return html`<${Overlay}><${LoadoutScreen} st=${st} leaving=${leaving} /><//>`;
+  return html`<${Overlay}><${LoadoutScreen} key=${scoped ? 'zhajing' : 'vanilla'} scoped=${scoped} st=${scoped ? { ...st, ...zj, open: st.open, from: st.from, tab: 'loadout' } : st} leaving=${leaving} /><//>`;
 }
 
 /**

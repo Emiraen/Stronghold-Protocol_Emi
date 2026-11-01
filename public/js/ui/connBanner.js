@@ -13,9 +13,9 @@ import { useStore, shallowEqual } from '../store.js';
 import { useDocClass } from './device.js';
 
 /** Whether the banner shows for this connection state (mirrors the early returns below). */
-export function bannerVisible(conn, entered, restoring, buildStale = false) {
+export function bannerVisible(conn, entered, restoring, buildStale = false, leaseRecovering = false) {
   if (!entered || !conn) return false;
-  if (conn.status === 'online') return !!restoring || !!buildStale;
+  if (conn.status === 'online') return !!restoring || !!buildStale || !!leaseRecovering;
   if (!conn.everOnline && (conn.status === 'connecting' || conn.status === 'handshaking' || conn.status === 'idle')) return false;
   return true;
 }
@@ -26,6 +26,13 @@ export function ConnectionBanner() {
   const restoring = useStore((s) => s.ui.restoring);
   const buildStale = useStore((s) => !!s.ui.buildStale);
   const recovering = conn.status === 'reconnecting' || conn.status === 'connecting' || conn.status === 'handshaking';
+  const [leaseRecovering, setLeaseRecovering] = useState(() => net.leaseState === 'recovering');
+  useEffect(() => {
+    const sync = () => setLeaseRecovering(net.leaseState === 'recovering');
+    const off = net.on('lease', sync);
+    sync();
+    return off;
+  }, []);
   const [retryReady, setRetryReady] = useState(false);
   useEffect(() => {
     if (!recovering) {
@@ -36,8 +43,11 @@ export function ConnectionBanner() {
     return () => clearTimeout(timer);
   }, [recovering]);
   useTicker(conn.status === 'reconnecting' ? 500 : 0);
-  useDocClass('sp-conn', bannerVisible(conn, entered, restoring, buildStale));
+  useDocClass('sp-conn', bannerVisible(conn, entered, restoring, buildStale, leaseRecovering));
   if (!entered) return null;
+  if (conn.status === 'online' && leaseRecovering) {
+    return html`<div class="conn-banner conn-banner--soft" role="status"><${Icon} name="refresh" /><span>${trA("连接恢复中")}</span></div>`;
+  }
   if (conn.status === 'online' && !restoring && !buildStale) return null;
   if (conn.status === 'online' && restoring) {
     return html`<div class="conn-banner" role="status"><${Icon} name="refresh" /><span>${trA("正在同步同盟状态…")}</span></div>`;

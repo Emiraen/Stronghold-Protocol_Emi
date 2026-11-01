@@ -525,7 +525,21 @@ describe('emotes and 玩法说明 pages from the public mirror (GitHub issue #42
     for (const e of EMOTE_CATALOG) assert.equal(m.ui[`emoticon/${e.dir}/${e.picId}`], `/assets/ui/emoticon/${e.dir}/${e.picId}.png`, e.id);
     for (const k of GUIDE_PAGES) assert.equal(m.ui[`guide/${k}`], `/assets/ui/guide/${k}.png`, k);
     assert.equal(m.stats.ui, Object.keys(m.ui).length);
-    assert.ok(!JSON.stringify(m).includes('/assets/local/'), 'never a local-client path');
+    // This client's read-only backup already ships five local BGM loops. They are not UI download paths.
+    const remote = structuredClone(m);
+    for (const id of ['sand_bgm1', 'sand_bgm2', 'siracusa_bgm1', 'kashimir_bgm1', 'kashimir_bgm2']) {
+      const loop = remote.audio.bgm.battleTracks[id].loop;
+      assert.equal(loop, '/assets/local/audio/bgm/' + id + '.mp3');
+      assert.ok(existsSync(join(PUBLIC, loop)), 'the retained local BGM is shipped: ' + id);
+      delete remote.audio.bgm.battleTracks[id].loop;
+    }
+    const localPaths = [];
+    const collect = value => {
+      if (typeof value === 'string' && value.startsWith('/assets/local/')) localPaths.push(value);
+      else if (value && typeof value === 'object') for (const nested of Object.values(value)) collect(nested);
+    };
+    collect(remote);
+    for (const url of localPaths) assert.ok(existsSync(join(PUBLIC, url)), 'every additional local resource is shipped: ' + url);
   });
 });
 
@@ -658,7 +672,8 @@ describe('generated manifest data/assets.json', () => {
       // pixi-spine finds the atlas by swapping the extension of the skel URL
       assert.equal(s.skel.replace(/\.skel$/, '.atlas'), s.atlas, s.skel);
       let done = false;
-      const atlas = new base.TextureAtlas(readFileSync(join(PUBLIC, s.atlas), 'utf8'), (page, cb) => {
+      const atlasText = readFileSync(join(PUBLIC, s.atlas), 'utf8');
+      const atlas = new base.TextureAtlas(atlasText, (page, cb) => {
         const size = pngSize(readFileSync(join(PUBLIC, dir, page)));
         assert.ok(size, `${s.atlas}: page ${page}`);
         const bt = new core.BaseTexture(null, { width: size.width, height: size.height });
@@ -668,7 +683,13 @@ describe('generated manifest data/assets.json', () => {
       }, () => { done = true; });
       assert.ok(done, `${s.atlas} parsed`);
       assert.deepEqual(atlas.pages.map((p) => `${dir}/${p.name}`), s.textures, s.atlas);
-      for (const p of atlas.pages) assert.ok(p.width > 0 && p.height > 0 && !!p.pma === s.pma, `${s.atlas} page ${p.name} size/pma`);
+      for (const p of atlas.pages) {
+        const lines = atlasText.split(/\r?\n/), start = lines.findIndex(line => line.trim() === p.name);
+        const header = [];
+        for (let i = start + 1; i < lines.length && /^[\w]+:/.test(lines[i]); i++) header.push(lines[i]);
+        assert.ok(p.width > 0 && p.height > 0, `${s.atlas} page ${p.name} size`);
+        assert.equal(!!p.pma, header.some(line => /^pma:\s*true\s*$/.test(line)), `${s.atlas} page ${p.name} follows atlas alpha metadata`);
+      }
       const data = new r38.SkeletonBinary(new r38.AtlasAttachmentLoader(atlas)).readSkeletonData(new Uint8Array(readFileSync(join(PUBLIC, s.skel))));
       const skel = new r38.Skeleton(data);
       const state = new r38.AnimationState(new r38.AnimationStateData(data));

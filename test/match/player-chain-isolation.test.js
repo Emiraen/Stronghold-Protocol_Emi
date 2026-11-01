@@ -216,7 +216,7 @@ test('messaging recovery: online failed private send does not commit cache and i
   m._lastFlowScope = `${m.phase}:${m.round}:${!!m.paused}:${m.deadline}`;
   m.sendFn = () => ++attempts > 1;
   m._sendPrivate(ps, false, false);
-  assert.equal(ps._lastPriv, 'previous'); assert.ok(m._privDirty.has(ps)); assert.equal(attempts, 1);
+  assert.equal(ps._lastPriv, null); assert.ok(m._privDirty.has(ps)); assert.equal(attempts, 1);
   m.flush();
   assert.equal(ps._lastPriv, JSON.stringify(view)); assert.equal(m._privDirty.has(ps), false); assert.equal(attempts, 2);
   m._sendPrivate(ps, false, false); assert.equal(attempts, 2);

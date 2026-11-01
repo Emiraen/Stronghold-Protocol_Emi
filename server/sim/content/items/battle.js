@@ -100,6 +100,14 @@ function statMods(p) {
   return any ? m : null;
 }
 
+/** Static carrier stats for a noncombat detail preview. The same record parser
+ * and mod converter as installItem; conditional field/skill effects need a live
+ * battle and remain the runtime's responsibility. */
+export function equipmentPassiveStatMods(rec) {
+  if (rec?.itemType !== 'EQUIP' || String(rec.kind || '').startsWith('consume_on_equip')) return [];
+  return buffsOf(rec).filter((buff) => STAT_BUFFS.has(buff.bbKey)).map((buff) => statMods(buff.p)).filter(Boolean);
+}
+
 // ---- hammers (蒸汽之心) — derived from data: hammer records carry bbStr.big_hammer on their special buff
 const STEAM_KEY = 'chess_item_6_05_e';
 const STEAM_BUFF = 'act1autochess_equip_acarm079_global_buff';

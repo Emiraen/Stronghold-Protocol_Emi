@@ -133,7 +133,7 @@ test('耶拉 S2: two drones ramp independently on two targets, ATK up; 低眉 +1
   approx(u.s.atk, u.base.atk * (1 + t0['kjera_t_1[high].atk'] + bb.atk), 1e-6);
   const n0 = dmgBy(h, u).length;
   h.run(8);
-  const hits = dmgBy(h, u).slice(n0);
+  const hits = dmgBy(h, u).slice(n0).filter(c => c.dmg?.tags?.includes('drone'));
   const onA = hits.filter((c) => c.target === a).map((c) => c.amount), onB = hits.filter((c) => c.target === b).map((c) => c.amount);
   assert.ok(onA.length >= 3 && onB.length >= 3, 'both locked targets attacked');
   const atk = u.s.atk;
@@ -501,7 +501,10 @@ test('灵知 S2: 130 % ATK arts + 2.5 s cold to all in range; fully charged cast
   assert.ok(h.runUntil(() => u.skill.activations >= 2, 20));
   const starts = noisy(h, 'skillStart').filter((c) => c.unit === u).map((c) => c.t);
   const colds = (T) => noisy(h, 'statusApplied').filter((c) => c.source === u && c.status === 'cold' && c.duration === bb.cold && c.t === T).length;
-  assert.equal(colds(starts[0]), 4, 'charged: two colds on each of the two enemies');
+  assert.equal(colds(starts[0]), 2, 'charged: the first cold event on each enemy');
+  const freezes = noisy(h, 'statusApplied').filter(c => c.source === u && c.status === 'freeze' && c.t === starts[0]);
+  assert.equal(freezes.length, 2, 'the second cold is converted into freeze, once per target');
+  assert.deepEqual(new Set(freezes.map(c => c.target)), new Set([a, b]));
   assert.equal(colds(starts[1]), 2, 'single charge: one cold each');
   // normal attacks chill for 1 s
   assert.ok(noisy(h, 'statusApplied').some((c) => c.source === u && c.status === 'cold' && c.duration === t0.cold));
@@ -660,7 +663,7 @@ test('缄默德克萨斯: first kill ⇒ full heal + recast; 剑术 buff removed
   assert.ok(u.mem.texasKilled);
   approx(u.hpRatio, 1, 1e-3, 'full heal');
   assert.equal(u.findBuff('texas2:swordplay'), null);
-  assert.ok(u.findBuff('texas2:rainAtk'), 'passive recast');
+  assert.ok(u.skill.active && u.findBuff('skill:' + u.id), 'deployment skill recast');
 });
 
 test('星熊 S2 (passive): DEF +13 % and 65 % ATK thorns; 战术装甲 negates ~25 % of hits; 重装 aura DEF +6 %', () => {
@@ -869,9 +872,11 @@ test('魔王 S3: range up, trait heal 65 % ATK/s, 鼓舞 +65 % of her max HP, HP
   h.b.dealDamage(e, a, { amount: 1000, type: 'true' });
   approx(noisy(h, 'damaged')[n0].amount, 1000 * (1 - t1.damage_resistance), 1e-9);
   // trait heal ×1.5 with a mote
-  h.runUntil(() => noisy(h, 'heal').some((c) => c.source === u && c.target === a), 3);
-  const hl = noisy(h, 'heal').find((c) => c.source === u && c.target === a);
-  approx(hl.amount, u.s.atk * D(id).traitBb['attack@atk_to_hp_recovery_ratio'] * t0['attack@trait_mul'] * a.s.healingTakenMul, 1e-6);
+  const moteRate = u.s.atk * D(id).traitBb['attack@atk_to_hp_recovery_ratio'] * t0['attack@trait_mul'];
+  assert.ok(h.runUntil(() => Math.abs((a.findBuff(`trait:bard:${u.id}`)?.mods.hpRegen ?? 0) - moteRate) < 1e-6, 3), 'the bard aura refreshes after the mote is collected');
+  approx(a.findBuff(`trait:bard:${u.id}`).mods.hpRegen, moteRate, 1e-6);
+  h.step(); // the refreshed regeneration is consumed by the next status tick
+  assert.ok(noisy(h, 'heal').some(c => c.source === a && c.target === a && c.opts?.regen));
   // S3
   h.b.dealDamage(null, b, { amount: b.s.maxHp * 0.7, type: 'true' });
   assert.ok(u.skill.activate('test', { free: true }));
@@ -882,9 +887,11 @@ test('魔王 S3: range up, trait heal 65 % ATK/s, 鼓舞 +65 % of her max HP, HP
   for (let i = 0; i < 90 && !redistributed; i++) { h.step(); redistributed = h.events.some((ev) => ev[0] === 'fx' && ev[1] === 'redistribute'); }
   assert.ok(redistributed);
   approx(a.hpRatio, b.hpRatio, 1e-9, 'equal HP ratios after redistribution');
-  h.runUntil(() => noisy(h, 'heal').filter((c) => c.source === u && c.target === b && c.t > 0.8).length >= 1, 3);
-  const sh = noisy(h, 'heal').filter((c) => c.source === u && c.target === b).pop();
-  approx(sh.amount, u.s.atk * bb['attack@atk_to_hp_recovery_ratio'] * t0['attack@trait_mul'] * b.s.healingTakenMul, 1e-6, 'trait 65 %');
+  const rate = u.s.atk * bb['attack@atk_to_hp_recovery_ratio'] * t0['attack@trait_mul'];
+  assert.ok(h.runUntil(() => Math.abs((b.findBuff(`trait:bard:${u.id}`)?.mods.hpRegen ?? 0) - rate) < 1e-6, 3));
+  const sh = noisy(h, 'heal').filter(c => c.source === b && c.target === b && c.opts?.regen).at(-1);
+  assert.ok(sh);
+  approx(sh.amount, rate * h.b.dt, 1e-6, 'trait 65 % regeneration per tick');
   h.runUntil(() => !u.skill.active, 40);
   h.run(0.3);
   approx(a.s.maxHp, a.base.maxHp, 1e-9, '鼓舞 gone');
@@ -1001,7 +1008,7 @@ test('耶拉 S2: against a lone enemy both drones lock it and ramp independently
   assert.ok(h.runUntil(() => u.skill.active, 60));
   const n0 = dmgBy(h, u).length;
   h.run(4);
-  const hits = dmgBy(h, u).slice(n0);
+  const hits = dmgBy(h, u).slice(n0).filter(c => c.dmg?.tags?.includes('drone'));
   const byT = new Map();
   for (const c of hits) (byT.get(c.t) ?? byT.set(c.t, []).get(c.t)).push(c.amount / u.s.atk);
   const volleys = [...byT.values()];

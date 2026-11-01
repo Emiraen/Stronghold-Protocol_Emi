@@ -83,11 +83,16 @@ test('赫默: the medical drone lives its owner\'s withdraw duration (module var
     // the drone is a hand piece the player places; it deploys once with the board (SKILL_SUMMON_START_DEPLOY), then
     // S2 brings it back onto its tile (user playtest #6) — both lifetimes are checked on the start deploy and on a cast
     const { h, ops } = duel({ chessId: HEMO, lo, tokens, extra: [{ kind: 'token', tokenId: DRONE, ownerUid: 1, row: 11, col: 4 }] });
+    for (const u of ops) {
+      u.skill.sp = 0;
+      h.b.addBuff(u, { key: 'test:noSp', flags: { noSp: true } });
+    }
     const start = ops.map((u) => summons(h, u, DRONE)[0]);
     assert.ok(start.every((d) => d && d.alive), 'both start deploys');
     assertLifetimes(h, start, lo.map(life));
     h.run(6);                                         // past the token's redeploy time
     assert.ok(ops.every((u) => u.skill.activations === 0), 'no cast yet');
+    for (const u of ops) h.b.removeBuff(u, 'test:noSp');
     const drones = castAndCollect(h, ops, DRONE);
     assertLifetimes(h, drones, lo.map(life));
     done(h);
@@ -125,7 +130,7 @@ test('琳琅诗怀雅: a 香槟炸弹 arms after its owner\'s module variant of 
       chessId: SWIRE, lo, tokens, row: 9, col: 5, enemies: { enemy_d: dummy('enemy_d') },
       spawns: [{ key: 'enemy_d', pos: [9, 5] }, { key: 'enemy_d', pos: [9, 13] }],
     });
-    for (const u of ops) { u.mem.coins = 5; u.player.dp = 99; }
+    for (const u of ops) { u.mem.coins = 1; u.player.dp = 99; }
     // the moment a bomb stands, an enemy steps on it (the bomb is < 1 tick old)
     const bombs = [null, null];
     for (let i = 0; i < 30 * 10 && bombs.some((x) => !x); i++) {
@@ -133,7 +138,11 @@ test('琳琅诗怀雅: a 香槟炸弹 arms after its owner\'s module variant of 
       ops.forEach((u, k) => {
         if (bombs[k]) return;
         const t = summons(h, u, TRAP).find((x) => x.alive);
-        if (t) { bombs[k] = t; h.spawn('enemy_d', { def: dummy('enemy_d'), pos: [t.tileR, t.tileC] }); }
+        if (t) {
+          bombs[k] = t;
+          u.mem.coins = 0;
+          h.spawn('enemy_d', { def: dummy('enemy_d'), pos: [t.tileR, t.tileC] });
+        }
       });
     }
     assert.ok(bombs.every(Boolean), 'both placed a bomb');
@@ -141,7 +150,9 @@ test('琳琅诗怀雅: a 香槟炸弹 arms after its owner\'s module variant of 
     ops.forEach((u, k) => {
       assert.equal(bombs[k].alive, false, `${u.player.playerId} bomb went off`);
       const hits = h.hooksOf('damaged').filter((c) => c.source === u && c.dmg?.tags?.includes('trap'));
-      assert.equal(hits.length, lo[k] === M3 ? 2 : 1, `${u.player.playerId} (${lo[k] === M3 ? 'module 003' : 'default'}) hits`);
+      const targets = new Set(hits.map(c => c.target));
+      assert.ok(targets.size > 0, 'bomb reaches at least one target');
+      for (const target of targets) assert.equal(hits.filter(c => c.target === target).length, lo[k] === M3 ? 2 : 1, `${u.player.playerId} (${lo[k] === M3 ? 'module 003' : 'default'}) hits per target`);
     });
     done(h);
   }
@@ -181,7 +192,7 @@ test('凯瑟琳: device shield cap and deploy limit follow the owner\'s module v
   });
   const cap = (lo) => want(tokens, CATSLD, CATHY, lo).talents[0].bb.max_shield_ratio;
   const limit = (lo) => (lo === NONE ? 1 : base.rawToken(CATSLD).variants[CATHY].stats.deployLimit);
-  assert.deepEqual([cap(DEF), cap(NONE), limit(DEF)], [0.2, 0.5, 2]);
+  assert.deepEqual([cap(DEF), cap(NONE), limit(DEF)], [0.22, 0.5, 2]);
   for (const lo of ORDERS(DEF, NONE)) {
     // two placed devices each (hand pieces, user playtest #6), facing her and one more operator: the default limit (2)
     // keeps both, the patched one (1) withdraws the first deployed

@@ -88,14 +88,15 @@ export const ROOM_CODE_LEN = 4;
 export const NAME_MAX_LEN = 12;
 
 export const DIFFICULTIES = ['FUNNY', 'NORMAL', 'HARD', 'ABYSS'];
-export const DIFFICULTY_NAMES = { FUNNY: '标准模拟', NORMAL: '险境模拟', HARD: '绝境模拟', ABYSS: '终极模拟' };
-export const DIFFICULTY_COLORS = { FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024' };
+export const DIFFICULTY_NAMES = {ZHAJING: '炸惊模拟', ANNIHILATION: '湮灭模拟', FUNNY: '标准模拟', NORMAL: '险境模拟', HARD: '绝境模拟', ABYSS: '终极模拟' };
+export const DIFFICULTY_COLORS = {ZHAJING: '#efae4b', ANNIHILATION: '#5b0a14', FUNNY: '#f6a329', NORMAL: '#e85a1a', HARD: '#e73118', ABYSS: '#ff0024' };
 
 // modeId in data/config.json = `mode_${type}_${difficulty.toLowerCase()}` with type single|multi
 export const modeIdFor = (roomMode, difficulty) =>
   `mode_${roomMode === 'solo' ? 'single' : 'multi'}_${difficulty.toLowerCase()}`;
 
 export const PHASE = Object.freeze({
+  ENEMY_JIBIAN: 'ENEMY_JIBIAN', HIDDEN_JIBIAN: 'HIDDEN_JIBIAN',
   LOBBY: 'LOBBY',
   INFO_CHECK: 'INFO_CHECK',
   BAND_DRAFT: 'BAND_DRAFT',
@@ -104,6 +105,14 @@ export const PHASE = Object.freeze({
   SP_DRAFT: 'SP_DRAFT',
   CYCLOPS_HEX: 'CYCLOPS_HEX',
   CYCLOPS_DRAFT: 'CYCLOPS_DRAFT',
+  MIZUKI_SQUAD: 'MIZUKI_SQUAD',
+  MIZUKI_STRATEGY: 'MIZUKI_STRATEGY',
+  MIZUKI_RECRUIT_GROUP: 'MIZUKI_RECRUIT_GROUP',
+  MIZUKI_ROUTE: 'MIZUKI_ROUTE',
+  MIZUKI_EVENT: 'MIZUKI_EVENT',
+  MIZUKI_RECRUIT: 'MIZUKI_RECRUIT',
+  MIZUKI_SHOP: 'MIZUKI_SHOP',
+  MIZUKI_REWARD: 'MIZUKI_REWARD',
   PREP: 'PREP',
   COMBAT: 'COMBAT',
   UNITE: 'UNITE',
@@ -113,9 +122,11 @@ export const PHASE = Object.freeze({
   RESULT: 'RESULT',
 });
 
-export const PHASE_NAMES = {
+export const PHASE_NAMES = {ENEMY_JIBIAN: '敌方惊变', HIDDEN_JIBIAN: '隐秘惊变',
   LOBBY: '等待中', INFO_CHECK: '确认本局信息', BAND_DRAFT: '选择策略', BATTLE_CHECK: '协议启动',
   ROUND_START: '回合开始', SP_DRAFT: '机变阶段', CYCLOPS_HEX: '独眼巨人的馈赠', CYCLOPS_DRAFT: '征召', PREP: '休整期', COMBAT: '作战中', UNITE: '联防阶段',
+  MIZUKI_SQUAD: '选择探索分队', MIZUKI_STRATEGY: '选择盟约策略', MIZUKI_RECRUIT_GROUP: '选择招募组合',
+  MIZUKI_ROUTE: '探索路线投票', MIZUKI_EVENT: '共同决策', MIZUKI_RECRUIT: '干员招募', MIZUKI_SHOP: '诡意行商', MIZUKI_REWARD: '探索收获',
   SETTLE: '结算', FINAL_ASSAULT: '最终攻势', HIDDEN_CORE: '隐秘核心', RESULT: '模拟结束',
 };
 
@@ -160,6 +171,16 @@ export const SKILL_SUMMON_START_DEPLOY = true;
  * per N layers (远见, 奇迹, 维多利亚 …) stop with the count. 0 / Infinity = no cap.
  */
 export const BOND_LAYER_CAP = 999;
+
+// 独行 never gains layers, including modes that remove the normal layer cap.
+// Other noStack bonds retain their existing effect-specific layer rules.
+export const canStackBond = bondId => bondId !== 'soloShip';
+
+/** Remove obsolete 独行 layers from an owned/restored layer map in place. */
+export function clearNonStackingBondLayers(layers) {
+  if (layers && Object.hasOwn(layers, 'soloShip')) delete layers.soloShip;
+  return layers;
+}
 
 /**
  * The layers a gain of `n` actually adds to a bond holding `before` under BOND_LAYER_CAP: min(n, cap − before), never

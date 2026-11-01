@@ -60,6 +60,16 @@ function garrisonIdsOf(u) {
 // ---------------------------------------------------------------------------------------------------------------------
 // install
 
+/** The same instance factory used by automatic fields and live manual fields. */
+export function createGarrisonInstance(unit, g, grantedBy = null) {
+  const bb = g.bb || {};
+  const cap = grantedBy && Number.isFinite(GRANTED_CAP_OVERRIDE[g.garrisonId]) ? GRANTED_CAP_OVERRIDE[g.garrisonId] : (S.num(bb.max_add_count_per_battle, 0) > 0 ? S.num(bb.max_add_count_per_battle) : Infinity);
+  return {
+    unit, g, gid: g.garrisonId, key: g.effectKey, bb, bbStr: g.bbStr || {}, grantedBy,
+    cap, capKey: 'gar:' + g.garrisonId + ':' + unit.id, cnt: 0, k: -1,
+  };
+}
+
 export function install(battle) {
   const all = [];
   const owned = new Map(); // unit → Set(garrisonId)
@@ -124,6 +134,22 @@ export function install(battle) {
 // ---------------------------------------------------------------------------------------------------------------------
 // ADD_BOND targets (before deployment: home tiles)
 
+/** Install existing retained instances without resetting their counters/caps. */
+export function installGarrisonInstances(battle, all) {
+  const by = new Map();
+  for (const it of all) {
+    let arr = by.get(it.key);
+    if (!arr) { arr = []; by.set(it.key, arr); }
+    arr.push(it);
+  }
+  for (const [key, list] of by) {
+    const inst = INSTALLERS[key];
+    if (inst) S.isolateContentCallback(battle, () => inst(battle, list), 'garrison:install:' + key);
+  }
+  S.isolateContentCallback(battle, () => installHitMods(battle, by), 'garrison:install:hitMods');
+  S.isolateContentCallback(battle, () => installReaders(battle, by), 'garrison:install:readers');
+}
+
 function opsOf(battle, pid) {
   const out = [];
   for (const u of battle.allyUnits) if (S.isOp(u) && u.ownerId === pid && !u.removed) out.push(u);
@@ -134,7 +160,7 @@ function opAtHome(battle, pid, r, c) {
   return null;
 }
 
-function grantTargets(battle, it) {
+export function grantTargets(battle, it) {
   const u = it.unit;
   const desc = it.g.desc || '';
   const need = it.bbStr.check_bond_id || null;

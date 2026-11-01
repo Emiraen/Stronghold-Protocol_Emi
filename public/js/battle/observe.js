@@ -16,6 +16,12 @@ const COMBAT = new Set([PHASE.COMBAT, PHASE.UNITE, PHASE.FINAL_ASSAULT, PHASE.HI
 /** The server runs client-side combat (m.public.combatMode). */
 export const isClientCombat = (pub) => !!pub && pub.combatMode === 'client';
 
+/** Eliminated players follow the server-selected field, including phase resets and reconnects. */
+export function displayedWatch(field, { alive = true, spectator = false, watching = null } = {}) {
+  const fieldId = typeof field?.fieldId === 'string' && field.fieldId ? field.fieldId : null;
+  return spectator || !alive ? fieldId || watching : watching;
+}
+
 const players = (pub) => (Array.isArray(pub?.players) ? pub.players.filter(isObj) : []);
 const fields = (pub) => (Array.isArray(pub?.fields) ? pub.fields.filter(isObj) : []);
 

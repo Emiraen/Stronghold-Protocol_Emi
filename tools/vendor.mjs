@@ -40,6 +40,7 @@ export const VENDOR_FILES = Object.freeze([
   ['node_modules/htm/dist/htm.module.js', 'htm.module.js'],
   ['node_modules/ses/dist/ses.umd.js', 'ses.umd.js'],
   ['node_modules/acorn/dist/acorn.mjs', 'acorn.mjs'],
+  ['node_modules/fflate/esm/browser.js', 'fflate.module.js'],
   ['node_modules/three/build/three.core.js', 'three.core.js', true],
   ['node_modules/three/build/three.module.js', 'three.module.js', true],
 ]);

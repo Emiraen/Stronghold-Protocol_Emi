@@ -1,0 +1,156 @@
+.mz-screen--result .mz-content { grid-template-columns: minmax(0, 1fr); }
+
+/* Short landscape event screens reserve height for choices, not decoration. */
+@media (max-height: 600px) and (orientation: landscape) and (pointer: coarse),
+       (max-height: 600px) and (orientation: landscape) and (any-pointer: coarse) {
+  .mz-screen.mz-screen--event .mz-header {
+    display: flex; flex-wrap: nowrap; min-height: 0; padding: 4px 12px; gap: 10px;
+  }
+  .mz-screen.mz-screen--event .mz-brand { min-width: 128px; flex: 0 0 auto; }
+  .mz-screen.mz-screen--event .mz-brand h1 { font-size: 15px; line-height: 1.2; letter-spacing: .04em; }
+  .mz-screen.mz-screen--event .mz-brand .mz-eyebrow,
+  .mz-screen.mz-screen--event .mz-brand > div > span { display: none; }
+  .mz-screen.mz-screen--event .mz-resources {
+    display: flex; flex: 1; justify-content: space-between; width: auto;
+    margin: 0 0 0 auto; padding: 0; border: 0; gap: 8px;
+  }
+  .mz-screen.mz-screen--event .mz-resource { min-width: 0; gap: 4px; }
+  .mz-screen.mz-screen--event .mz-resource b { font-size: 16px; line-height: 1.1; }
+  .mz-screen.mz-screen--event .mz-resource > .icon,
+  .mz-screen.mz-screen--event .mz-resource-icon { width: 16px !important; height: 16px !important; }
+  .mz-screen.mz-screen--event .mz-header__status { flex: 0 0 auto; gap: 1px; }
+  .mz-screen.mz-screen--event .mz-header__status > .mz-tag { min-height: 16px; padding: 1px 3px; font-size: 8px; }
+  .mz-screen.mz-screen--event > .mz-progress { min-height: 20px; padding: 1px 12px; }
+  .mz-screen.mz-screen--event > .mz-phase-footer { min-height: 24px; padding: 1px 12px; }
+  .mz-screen.mz-screen--event > .mz-light-effect { padding: 2px 12px; font-size: 10px; line-height: 1.3; }
+  .mz-screen.mz-screen--event > .mz-content { display: block; padding: 6px 12px; }
+  .mz-screen.mz-screen--event .mz-phase-heading { margin-bottom: 8px; gap: 10px; }
+  .mz-screen.mz-screen--event .mz-phase-heading .mz-eyebrow { display: none; }
+  .mz-screen.mz-screen--event .mz-phase-heading h2 { font-size: 20px; margin: 0 0 4px; line-height: 1.25; }
+  .mz-screen.mz-screen--event .mz-phase-heading > div > p:last-child:not(.mz-eyebrow) {
+    max-width: none; font-size: 12px; line-height: 1.5;
+  }
+  .mz-screen.mz-screen--event .mz-event-choices { margin-top: 8px; gap: 7px; max-width: none; }
+  .mz-screen.mz-screen--event .mz-event-choice { min-height: 76px; padding: 8px 14px; gap: 12px; }
+  .mz-screen.mz-screen--event .mz-event-choice__number { min-width: 30px; font-size: 22px; }
+  .mz-screen.mz-screen--event .mz-event-choice__text { gap: 3px; }
+  .mz-screen.mz-screen--event .mz-event-choice .mz-event-choice__text > b { font-size: 16px; line-height: 1.3; }
+  .mz-screen.mz-screen--event .mz-event-choice .mz-event-choice__text > small { font-size: 14px; line-height: 1.4; }
+  .mz-screen.mz-screen--event .mz-event-choice .mz-votes { margin-top: 0; }
+  .mz-screen.mz-screen--event .mz-event-choice .mz-voter { padding-block: 1px; font-size: 8px; line-height: 1.3; }
+  .mz-screen.mz-screen--event .mz-expedition-aside { display: none; }
+  .mz-screen.mz-screen--event .mz-footer { min-height: 14px; padding: 1px 12px; font-size: 8px; }
+}
+
+/* Fallback node screens share the same fixed-height shell. Keep its chrome
+   compact so event choices and shop goods retain their own scrollable area. */
+@media (max-width: 980px), (max-height: 600px) and (orientation: landscape) {
+  .mz-screen .mz-header {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0; padding: 6px 14px; gap: 4px 12px;
+  }
+  .mz-screen .mz-brand { min-width: 0; }
+  .mz-screen .mz-brand > div { font-size: 9px; line-height: 1.3; }
+  .mz-screen .mz-brand h1 { font-size: 18px; line-height: 1.25; margin: 0; }
+  .mz-screen .mz-brand .mz-eyebrow { font-size: 8px; line-height: 1.25; }
+  .mz-screen .mz-brand > div > span { font-size: 9px; line-height: 1.3; }
+  .mz-screen .mz-header__status { grid-column: 2; grid-row: 1; min-width: 0; padding: 0; border: 0; gap: 2px; }
+  .mz-screen .mz-header__status > small { font-size: 8px; }
+  .mz-screen .mz-resources {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-column: 1 / -1; width: 100%; margin: 0; padding-top: 4px;
+    gap: 6px; border-top: 1px solid var(--mz-line);
+  }
+  .mz-screen .mz-resource { min-width: 0; gap: 5px; }
+  .mz-screen .mz-resource > span { min-width: 0; font-size: 8px; line-height: 1.3; }
+  .mz-screen .mz-resource b { font-size: 18px; line-height: 1.1; }
+  .mz-screen .mz-resource b > small { font-size: 10px; margin-left: 2px; }
+  .mz-screen .mz-resource > span > small { font-size: 8px; line-height: 1.2; }
+  .mz-screen .mz-resource > .icon { width: 16px; height: 16px; }
+  .mz-screen .mz-resource-icon { width: 20px !important; height: 20px !important; }
+  .mz-screen > .mz-progress { min-height: 25px; padding: 2px 14px; gap: 8px; font-size: 9px; }
+  .mz-screen > .mz-progress > .mz-tag { min-height: 20px; font-size: 8px; padding: 2px 5px; }
+  .mz-screen > .mz-phase-footer {
+    flex: none; flex-direction: row; align-items: center; min-height: 34px;
+    margin: 0; padding: 3px 14px; gap: 8px; border-top: 0;
+  }
+  .mz-screen > .mz-phase-footer > .mz-tag { margin-left: auto; }
+  .mz-screen > .mz-phase-footer > div { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: 4px 8px; }
+  .mz-screen > .mz-phase-footer > .mz-btn { width: auto; }
+  .mz-screen > .mz-light-effect { padding: 4px 14px; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+  .mz-screen > .mz-content {
+    min-height: 0; flex: 1 1 0; padding: 12px 14px;
+    overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  }
+  .mz-screen .mz-main { min-height: 0; }
+  .mz-screen .mz-phase { min-height: 0; padding-top: 0; }
+  .mz-screen .mz-phase-heading { margin-bottom: 14px; }
+  .mz-screen .mz-phase-heading h2 { font-size: 24px; margin: 3px 0 8px; }
+  .mz-screen .mz-event-choices { margin-top: 16px; }
+  .mz-screen .mz-content .mz-phase-footer { flex-wrap: wrap; }
+  .mz-screen .mz-footer { min-height: 20px; padding: 3px 14px; gap: 12px; font-size: 8px; }
+}
+
+@media (max-width: 420px) {
+  .mz-screen .mz-header__status { display: none; }
+  .mz-screen .mz-resource { gap: 3px; }
+  .mz-screen .mz-resource-icon { width: 16px !important; height: 16px !important; }
+  .mz-screen .mz-resource b { font-size: 17px; }
+  .mz-screen .mz-content .mz-phase-footer { flex-wrap: wrap; }
+  .mz-screen .mz-content .mz-result__stats { flex-wrap: wrap; }
+}
+
+/* The native 1920px stage scales its labels as well as its artwork. Compensate
+   text only on touch devices; desktop coordinates and original art stay intact. */
+@media (pointer: coarse), (any-pointer: coarse) {
+  .mz-screen .mz-btn { font-size: 14px; }
+  .mzh-stage {
+    --mzh-button-font: calc(14px / var(--mzh-stage-scale, 1));
+    --mzh-small-button-font: calc(12px / var(--mzh-stage-scale, 1));
+  }
+  .mzh-screen .mzh-confirm {
+    font-size: max(30px, var(--mzh-button-font)); line-height: 1.15;
+    padding-inline: 4px; gap: 10px; min-height: calc(34px / var(--mzh-stage-scale, 1));
+  }
+  .mzh-confirm > span:last-child { min-width: 0; white-space: normal; text-wrap: balance; }
+  .mzh-confirm__check { flex: none; }
+  .mzh-screen :is(.mzr-giveup, .mzr-confirm, .mzs-ticket__btn, .mzv-quick, .mzv-clear) {
+    font-size: max(32px, var(--mzh-button-font)); line-height: 1.1;
+  }
+  .mzh-screen .mzr-actions { top: auto; bottom: 0; height: auto; gap: 20px; }
+  .mzh-screen .mzr-actions :is(.mzr-giveup, .mzr-confirm) {
+    min-height: calc(34px / var(--mzh-stage-scale, 1)); padding-left: 10px; gap: 8px;
+  }
+  .mzh-screen .mzr-refresh b { font-size: max(28px, var(--mzh-small-button-font)); }
+  .mzh-screen :is(.mzr-filter, .mzv-split, .mzv-sel__assign, .mzv-side__dismiss, .mzv-gear__offers, .mzv-tabs button) {
+    font-size: max(24px, var(--mzh-small-button-font)); line-height: 1.15;
+  }
+  .mzh-screen .mzr-filter {
+    min-width: calc(44px / var(--mzh-stage-scale, 1)); min-height: calc(34px / var(--mzh-stage-scale, 1)); white-space: nowrap;
+  }
+  .mzh-screen .mzv-split { min-height: calc(26px / var(--mzh-stage-scale, 1)); padding-inline: 12px; }
+  .mzh-screen .mzv-go b { font-size: max(46px, var(--mzh-button-font)); }
+  .mzh-screen .mzh-operators__label { font-size: max(26px, var(--mzh-small-button-font)); line-height: 1.15; }
+  .mzh-screen .mzh-collect span:last-child { font-size: max(26px, var(--mzh-small-button-font)); line-height: 1.15; }
+}
+
+@media (max-height: 600px) and (orientation: landscape) {
+  .mz-screen--result .mz-header { min-height: 0; padding: 6px 16px; gap: 4px 12px; }
+  .mz-screen--result .mz-brand h1 { font-size: 18px; margin: 0; }
+  .mz-screen--result .mz-brand .mz-eyebrow { font-size: 8px; }
+  .mz-screen--result .mz-brand > div > span { font-size: 9px; }
+  .mz-screen--result .mz-resources { gap: 8px; padding-top: 4px; }
+  .mz-screen--result .mz-resource b { font-size: 18px; }
+  .mz-screen--result .mz-resource > span { font-size: 8px; }
+  .mz-screen--result .mz-progress { min-height: 26px; font-size: 9px; }
+  .mz-screen--result > .mz-phase-footer { flex-direction: row; align-items: center; margin-top: 0; padding: 2px 16px; gap: 8px; }
+  .mz-screen--result .mz-footer { min-height: 20px; padding: 3px 16px; }
+  .mz-screen--result .mz-content { padding: 10px 16px; }
+  .mz-screen--result .mz-result { min-height: 0; padding: 8px 0 12px; }
+  .mz-screen--result .mz-result > * { flex-shrink: 0; }
+  .mz-screen--result .mz-result__mark { width: 42px; height: 42px; margin-bottom: 6px; }
+  .mz-screen--result .mz-result__mark > .icon { width: 26px; height: 26px; }
+  .mz-screen--result .mz-result h2 { font-size: 22px; margin: 6px 0 10px; }
+  .mz-screen--result .mz-result__stats { gap: 24px; margin: 12px 0; padding: 10px 16px; }
+  .mz-screen--result .mz-result__stats b { font-size: 26px; }
+}

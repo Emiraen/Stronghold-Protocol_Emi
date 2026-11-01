@@ -4,6 +4,7 @@ import { loadoutStore } from './ui/loadoutSync.js';
 import { skinsStore } from './ui/skins.js';
 import { confirmDialog } from './ui/components.js';
 import { resourceCache } from './resourceCache.js';
+import { isResourceOnlyOrigin } from './serverOrigins.js';
 
 const HANDOFF_PREFIX = '#sp-server=';
 const REGION_NAMES = { main: '华东', secondary: '华南' };
@@ -12,13 +13,45 @@ let directoryRequest = null;
 let joining = null;
 let initialSelectionDone = false;
 let retryLogin = null;
+let stopAutomaticFallback = null;
 
-// 未知采样不是空闲；同档保留华东作为默认入口。
+// 默认入口固定华东；负载采样不改变玩家的连接目标。
 export function preferredServer(servers) {
-  const priority = { idle: 0, normal: 1, busy: 2, unknown: 3 };
-  return [...servers].sort((a, b) =>
-    (priority[a.load] ?? 3) - (priority[b.load] ?? 3)
-      || (a.id === 'main' ? 0 : 1) - (b.id === 'main' ? 0 : 1))[0]?.id || 'main';
+  return servers.some((entry) => entry.id === 'main') ? 'main' : servers[0]?.id || 'main';
+}
+
+/** Only the fresh, anonymous title connection may fail over; never interrupt login or a restored game. */
+export function installTitleServerFallback({ connection = net, account = identity, app = store, state = serversState, timers = globalThis } = {}) {
+  let timer = null, disposed = false;
+  const cancel = () => { if (timer !== null) timers.clearTimeout(timer); timer = null; };
+  const eligible = () => {
+    const s = app.get(), current = state.get();
+    return !disposed && !current.switching && current.directory?.current === 'main'
+      && account.getServer() === 'main' && connection.status === 'reconnecting'
+      && !connection.name && !connection._loginAttempt && !connection.pendingCount
+      && !account.getToken() && !account.wasEntered() && !s.session?.entered
+      && !s.room && !s.spectator && !s.ui?.restoring && !s.ui?.pendingJoin
+      && !Object.values(s.match || {}).some(Boolean);
+  };
+  const off = connection.on('status', () => {
+    cancel();
+    if (!eligible()) return;
+    timer = timers.setTimeout(() => {
+      timer = null;
+      if (!eligible()) return;
+      const directory = state.get().directory;
+      const target = directory.servers.find((entry) => entry.id === 'secondary');
+      if (!target) return;
+      dispose();
+      connection.closeForServerSwitch();
+      account.selectServer('secondary');
+      state.set({ directory: { ...directory, current: 'secondary' }, error: '' });
+      connection.url = socketUrl(target);
+      connection.connect();
+    }, 250);
+  });
+  function dispose() { if (disposed) return; disposed = true; cancel(); off(); }
+  return dispose;
 }
 
 export function roomServer(code) {
@@ -43,11 +76,14 @@ export function parseRoomTarget(input) {
   return { code, serverId, ...(origin ? { origin } : {}) };
 }
 
-function parseDirectory(value) {
-  if (!value || !['main', 'secondary'].includes(value.current) || !Array.isArray(value.servers) || value.servers.length !== 2) {
+export function parseDirectory(value) {
+  if (isResourceOnlyOrigin(location.origin)) throw new Error('此地址仅提供资源预载，请从原游戏入口访问');
+  if (!value || !['main', 'secondary'].includes(value.current) || !Array.isArray(value.servers)
+      || !value.servers.length || value.servers.length > 2
+      || value.servers.some(entry => !['main', 'secondary'].includes(entry?.id))) {
     throw new Error('服务器目录格式不正确，请重试');
   }
-  const servers = ['main', 'secondary'].map((id) => {
+  const servers = ['main', 'secondary'].filter(id => value.servers.some(entry => entry.id === id)).map((id) => {
     const entries = value.servers.filter((entry) => entry?.id === id);
     const entry = entries[0];
     if (entries.length !== 1 || typeof entry.url !== 'string' || !(entry.url === '/' || /^https?:\/\//i.test(entry.url))) {
@@ -57,15 +93,24 @@ function parseDirectory(value) {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
       throw new Error('服务器公开地址无效，请重试');
     }
-    return { id, name: REGION_NAMES[id], origin: url.origin,
+    if (isResourceOnlyOrigin(url.origin)) throw new Error('资源预载地址不能作为游戏服务器');
+    const aliases = entry.aliases ?? [];
+    if (!Array.isArray(aliases) || aliases.length > 8 || aliases.some(alias => {
+      try { const u = new URL(alias); return u.origin !== alias || !['http:', 'https:'].includes(u.protocol) || isResourceOnlyOrigin(u.origin); }
+      catch { return true; }
+    })) throw new Error('服务器入口别名无效，请重试');
+    return { id, name: REGION_NAMES[id], origin: url.origin, aliases,
       load: ['idle', 'normal', 'busy'].includes(entry.load) ? entry.load : 'unknown' };
   });
-  if (servers[0].origin === servers[1].origin || servers[0].origin !== location.origin) {
-    throw new Error('请从华东统一页面入口访问游戏');
+  if (new Set(servers.map(entry => entry.origin)).size !== servers.length
+      || !servers.some((entry) => entry.origin === location.origin || entry.aliases.includes(location.origin))) {
+    throw new Error('请从华东或华南游戏入口访问游戏');
   }
   if (location.protocol === 'https:' && servers.some((entry) => !entry.origin.startsWith('https:'))) {
     throw new Error('HTTPS 游戏入口需要两服均配置 HTTPS/WSS 地址');
   }
+  if (!servers.some(entry => entry.id === value.current)) throw new Error('当前游戏服务器未启用');
+  if (!servers.some(entry => entry.id === identity.getServer())) identity.selectServer(preferredServer(servers));
   return { current: identity.getServer(), servers };
 }
 
@@ -127,11 +172,13 @@ export async function prepareServerConnection(directoryReady = loadServers()) {
   // 仅首次未登录首页自动选服；断线凭据、已进入状态和用户手选不受刷新影响。
   if (!initialSelectionDone) {
     initialSelectionDone = true;
-    if (!net.name && !identity.getToken() && !identity.wasEntered()) {
-      const preferred = preferredServer(directory.servers);
+    if (!net.name && !identity.getToken() && !identity.wasEntered() && !identity.hasSelectedServer()) {
+      const pendingTarget = store.get().ui?.pendingJoin?.serverId;
+      const preferred = ['main', 'secondary'].includes(pendingTarget) ? pendingTarget : preferredServer(directory.servers);
       if (preferred !== directory.current) identity.selectServer(preferred);
       directory.current = preferred;
       serversState.set({ directory });
+      if (!pendingTarget) stopAutomaticFallback = installTitleServerFallback();
     }
   }
   net.url = socketUrl(directory.servers.find((entry) => entry.id === directory.current));
@@ -185,6 +232,7 @@ export async function switchServer(id, { name: desiredName, join = null, watch =
   const target = directory?.servers.find((entry) => entry.id === id);
   if (!target) throw new Error('请先加载有效的服务器目录');
   initialSelectionDone = true;
+  stopAutomaticFallback?.(); stopAutomaticFallback = null;
   if (id === directory.current) return false;
   const s = store.get();
   if (s.spectator || s.room?.inMatch || Object.values(s.match).some(Boolean) || s.ui.restoring) {
@@ -269,6 +317,7 @@ export function watchMatch(input) {
     const directory = serversState.get().directory || await loadServers();
     if (!directory) throw new Error(serversState.get().error);
     const entry = directory.servers.find((item) => item.id === target.serverId);
+    if (!entry) throw new Error('该服务器已下线，请刷新观战列表');
     if (target.origin && target.origin !== entry.origin && target.origin !== directory.servers[0].origin) {
       throw new Error('观战目标不属于已配置的服务器');
     }
@@ -302,6 +351,7 @@ export function joinRoom(input) {
     const directory = serversState.get().directory || await loadServers();
     if (!directory) throw new Error(serversState.get().error);
     const entry = directory.servers.find((item) => item.id === target.serverId);
+    if (!entry) throw new Error('该服务器已下线，请使用当前服务器的同盟邀请');
     if (target.origin && target.origin !== entry.origin && target.origin !== directory.servers[0].origin) {
       throw new Error('邀请链接不属于已配置的服务器');
     }

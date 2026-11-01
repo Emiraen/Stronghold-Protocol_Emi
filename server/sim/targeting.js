@@ -232,7 +232,12 @@ export function sortEnemyTargets(battle, attacker, cands, priority) {
  * character keeps an earlier aggro order). Special priorities
  * (优先攻击…) are the enemies' own content: `e.profile.canTarget` filters, key sorts broken by `aggroCmp`.
  */
-export function sortAllyTargets(enemy, cands) {
+export function sortAllyTargets(enemy, cands, battle = null) {
+  if (/^mode_(single|multi)_annihilation$/.test(battle?.modeId || '') && battle.flags.chaosTargeting && cands.length > 1) {
+    const shuffled = battle.rng.shuffle(cands);
+    if (shuffled !== cands) cands.splice(0, cands.length, ...shuffled);
+    return cands;
+  }
   if (cands.length <= 1) return cands;
   const bl = enemy.profile && enemy.profile.blockFree ? null : enemy.blockedBy;   // 索敌不受阻挡影响: no blocker first
   cands.sort((a, b) => {

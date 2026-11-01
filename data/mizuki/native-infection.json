@@ -1,0 +1,56 @@
+{
+  "source": {
+    "bundle": "battle/prefabs/[uc]envsystems.ab",
+    "serializedFile": "CAB-63d3144cebdd9c7c80a7d0b4f965ca02",
+    "pathId": "5896648793732786632",
+    "sha256": "03882efd25cabcf63f4eb19479a7381762aea45c84a192da822158afdab8ded0",
+    "manager": "Rogue2InfectionManager",
+    "item": "rogue_2_relic_fight_159",
+    "actions": ".cache/mizuki-native-rules/mutation-template-actions.json:rogue_2_enroll_3_ascension[core]"
+  },
+  "maxInfectionCount": 2,
+  "gridCheckList": [
+    {
+      "row": 1,
+      "col": -1
+    },
+    {
+      "row": 1,
+      "col": 0
+    },
+    {
+      "row": 1,
+      "col": 1
+    },
+    {
+      "row": 0,
+      "col": -1
+    },
+    {
+      "row": 0,
+      "col": 1
+    },
+    {
+      "row": -1,
+      "col": -1
+    },
+    {
+      "row": -1,
+      "col": 0
+    },
+    {
+      "row": -1,
+      "col": 1
+    }
+  ],
+  "nearbyDistance": 1.5,
+  "protection": 0.35,
+  "defPenetration": 0.35,
+  "resPenetration": 0.35,
+  "projectileKey": "projectile_rogue_2_enroll_3_infection",
+  "projectileEffect": "rogue_2_infect_trail",
+  "projectileHitEffect": "rogue_2_infect_hit",
+  "projectileSpeed": 5,
+  "infectionEffect": "rogue_2_infect_birth",
+  "ascensionEffect": "rogue_2_soar_buff"
+}

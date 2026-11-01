@@ -1,0 +1,2761 @@
+{
+  "source": {
+    "kind": "local_official_client",
+    "extractedAt": "2026-10-27",
+    "gameAssemblySha256": "5d0ffcb8be5d385e069442f0b3e8ad674cbb707cf796f692657a25e876f181ec",
+    "metadataSha256": "5992e2be0e4280dccf2547065100de573ed48c8761f557b761d62695db82f80c",
+    "bundles": [
+      {
+        "path": "pkgrps/btl_pfb_tokens_0.ab",
+        "sha256": "3aa8959610c992071e002c5d71d26e2928856edd62b0fd2de814e4795c12c17e"
+      },
+      {
+        "path": "pkgrps/btl_pfb_tokens_4.ab",
+        "sha256": "44cd5a078b319a38cf6010870a11c027639b2b6bb70a19973a2e6c8bec4189df"
+      },
+      {
+        "path": "pkgrps/btl_pfb_tokens_5.ab",
+        "sha256": "ff4124ad31cea8c0c8957b829cab75a7487c217344f1a0d991e9ed885d0b4b33"
+      },
+      {
+        "path": "charpack/char_003_kalts.ab",
+        "sha256": "829b2a6b38b7d6f33fdc7cb9b190483829d64d5fe71498a845801d683892e03f"
+      },
+      {
+        "path": "charpack/char_010_chen.ab",
+        "sha256": "8205a0c5cef001588c88abaf1a8300867d96b8a6784f975acc7d933949c1fd3e"
+      },
+      {
+        "path": "charpack/char_017_huang.ab",
+        "sha256": "b20d6d7307d2efad594f0000fb27050fe69ab6b645f87744c6de7e5a31e4da62"
+      },
+      {
+        "path": "charpack/char_1012_skadi2.ab",
+        "sha256": "b72e31aafdcf5aa389f8c0750b6ba90807e7d8b927f551a709eef0e38f81be2d"
+      },
+      {
+        "path": "charpack/char_1013_chen2.ab",
+        "sha256": "07e232f145c6b227721d0346f0cf1050d98fb9e09ae8f5e1152918009d63fd32"
+      },
+      {
+        "path": "charpack/char_1014_nearl2.ab",
+        "sha256": "84511b92678d92b88c38454d97907efdb93d12df193a943e62408b83b2ede6a2"
+      },
+      {
+        "path": "charpack/char_1015_aglna2.ab",
+        "sha256": "555f78ce8d82e72e346245eedad2480bed65b53be2bcf384ffb95aa5bc4e2dc3"
+      },
+      {
+        "path": "charpack/char_1016_agoat2.ab",
+        "sha256": "191e06c89e97aca861077cbf93c1bd99b5e9866039ad0eb51314b3801e2cd416"
+      },
+      {
+        "path": "charpack/char_1019_siege2.ab",
+        "sha256": "9e09d7ec18fa11d0ee0e7eb78fa59a097d6a59c1a39d92ed8abf70809fe7af58"
+      },
+      {
+        "path": "charpack/char_1020_reed2.ab",
+        "sha256": "c7c2bf6623c6d2a87459aed6ea0d6d3f44d8208e9db19655c10363058cd1a39d"
+      },
+      {
+        "path": "charpack/char_1021_kroos2.ab",
+        "sha256": "5917a50165af385ded1ff26748ac9dcdb7f5bd2a74f8b95e32694eaea40d13e9"
+      },
+      {
+        "path": "charpack/char_1023_ghost2.ab",
+        "sha256": "5f8f1a78d457ae8588086effdb9b52fc81ad7a1136f4d2a1bcda068d337ac5b1"
+      },
+      {
+        "path": "charpack/char_1026_gvial2.ab",
+        "sha256": "5243d4e51aea53c9c2abf9b716ac90d320cb432978d2c84d187acf115cef6e52"
+      },
+      {
+        "path": "charpack/char_1028_texas2.ab",
+        "sha256": "a08cf325e9df27359145972ad5970f5d74e754a7c3a4d6e0cbc94eec1665e61c"
+      },
+      {
+        "path": "charpack/char_102_texas.ab",
+        "sha256": "134149bd67f7fdcfc555c70c157b890d23306382b1939e9325c779d542da3f55"
+      },
+      {
+        "path": "charpack/char_1031_slent2.ab",
+        "sha256": "195e84a93d6118d950465387c33a8308afa2e64583c2d7f2edd690f795d570fb"
+      },
+      {
+        "path": "charpack/char_1032_excu2.ab",
+        "sha256": "7fd81540dff4128a2952e4644d4de7705523902ba12b31da4675eb7724c00f93"
+      },
+      {
+        "path": "charpack/char_1033_swire2.ab",
+        "sha256": "8dfb2928411324bfc81cbf357160441f07bcb3f4058e8088970488bf655e10d1"
+      },
+      {
+        "path": "charpack/char_1034_jesca2.ab",
+        "sha256": "3683373295d015135a5a10ce057704777a691aa0f30b5020d54fa0e0a24adf57"
+      },
+      {
+        "path": "charpack/char_1035_wisdel.ab",
+        "sha256": "0d28cccc3c361127739011edac2905ca74f312270fd448704ad6c90b8b65ac3d"
+      },
+      {
+        "path": "charpack/char_1038_whitw2.ab",
+        "sha256": "66c2b801c28d06a0d05259c208c126e6b03b58201f0d57703ea6ae05f7f74de1"
+      },
+      {
+        "path": "charpack/char_1039_thorn2.ab",
+        "sha256": "c05d1468df2954e2aff5bde57a8714c045e4243743c6d0cb4b8b96c54c4df019"
+      },
+      {
+        "path": "charpack/char_103_angel.ab",
+        "sha256": "c43eff640365c54bb0170b7ee390b5dc7bd771faf72ee2c22221d942260f4f26"
+      },
+      {
+        "path": "charpack/char_1040_blaze2.ab",
+        "sha256": "32965607b3b09be05343aa9769ef11a1880cb93aa2a1121c8ac97736bb33143f"
+      },
+      {
+        "path": "charpack/char_1041_angel2.ab",
+        "sha256": "e28ca18e109d5adedad05d46f34e3ed1b99e3b4b6ab48c8b53222b37fde44044"
+      },
+      {
+        "path": "charpack/char_1042_phatm2.ab",
+        "sha256": "7199aca4f231434138121ef4f4f26868b075b6bc9ea14805d9511063a80e553c"
+      },
+      {
+        "path": "charpack/char_1043_leizi2.ab",
+        "sha256": "303224cae6dfa6c62cded791aa0d2beaad41891530ac2f7e21a11f0d31f47fd6"
+      },
+      {
+        "path": "charpack/char_1044_hsgma2.ab",
+        "sha256": "d2520f6b378b97fd1056ad462a506eb58663679713a533815188dcead41a4acd"
+      },
+      {
+        "path": "charpack/char_1045_svash2.ab",
+        "sha256": "70b31d59d939945fe222169dea4a752aabbcfb5d8b0a283bcd755e46699c894e"
+      },
+      {
+        "path": "charpack/char_1046_sbell2.ab",
+        "sha256": "7022866cc16bb5c6a7c1a758ab641d1109d629df3630950a506b4f506dc2f520"
+      },
+      {
+        "path": "charpack/char_1047_halo2.ab",
+        "sha256": "53b94ffa12b02bdbedd33689f4b6b3ffc45026535442bc24d86791ba60c36833"
+      },
+      {
+        "path": "charpack/char_1050_chen3.ab",
+        "sha256": "f66ed14ebdbbaca7468464d8636d575ad178b1dd6bbed758ffcef18a2ff57837"
+      },
+      {
+        "path": "charpack/char_1051_headb2.ab",
+        "sha256": "8edc794b22b31c0291e162c90ee21d4c904a38a38b8b51724e439131b401d8f1"
+      },
+      {
+        "path": "charpack/char_1052_kalts2.ab",
+        "sha256": "2c9433363a1ab1057418b57958b1b57fb331fd836fcc231589b4ac5b4167dfa1"
+      },
+      {
+        "path": "charpack/char_107_liskam.ab",
+        "sha256": "c73dc5a5c8435c90a80602c615226e0d1d6bc974a21363e18b72998c31833597"
+      },
+      {
+        "path": "charpack/char_108_silent.ab",
+        "sha256": "13f416f10900fe427a9748680920eab4ecf5d3cc6bc8dcc0133c017ea69fe6b5"
+      },
+      {
+        "path": "charpack/char_112_siege.ab",
+        "sha256": "14c37eb07bf375237f3ff85a9ef6ecf94b316d3b8a99db37ca3bfb0b06ad71c5"
+      },
+      {
+        "path": "charpack/char_113_cqbw.ab",
+        "sha256": "914637b23dbc97a159db9bbdf37e10a9f790b2e17032f900529e1c0ec95372cf"
+      },
+      {
+        "path": "charpack/char_126_shotst.ab",
+        "sha256": "2372723f04c2a92813163b6621ae2c4fa0b9786dd45b5f6ce6c922d128818b46"
+      },
+      {
+        "path": "charpack/char_127_estell.ab",
+        "sha256": "2860eccd5b147146d2c718633c0c82b9450384537f04f6e8af7e1dc940ad5405"
+      },
+      {
+        "path": "charpack/char_128_plosis.ab",
+        "sha256": "b7254423e6282fa0847aee2aae1bc8a9fcdfd8c458338b6d123986c94b304def"
+      },
+      {
+        "path": "charpack/char_134_ifrit.ab",
+        "sha256": "0c79b240e4f23f6822c9d2f5b4ac1a79dab92d2e5756a893dc39457e17c65879"
+      },
+      {
+        "path": "charpack/char_136_hsguma.ab",
+        "sha256": "a9a36ecc43569bc092c6b3732ff02cb389439d533da0c714132c18b9cf7098bb"
+      },
+      {
+        "path": "charpack/char_140_whitew.ab",
+        "sha256": "b7e83514ea39cc3d2773bdfee6c80fb91b4bcbe5b424d295f9e47556a9602ff6"
+      },
+      {
+        "path": "charpack/char_143_ghost.ab",
+        "sha256": "65ec290891ca3f7e0dba8272409528452559b63d09d4f4c420da57272f7f9cd9"
+      },
+      {
+        "path": "charpack/char_145_prove.ab",
+        "sha256": "08399655df393610b4f0f21a34f6840d64a3d4831a7b549f345e0ff09ce784e7"
+      },
+      {
+        "path": "charpack/char_147_shining.ab",
+        "sha256": "a7a820694e23c9832578b5c3f56cc0e3652ededdc2aaf457d22d0866883a2566"
+      },
+      {
+        "path": "charpack/char_1502_crosly.ab",
+        "sha256": "ad7094474d1d5bd21c45e6f5fb18741193f20c53be8c369c88cf082ea6cc212c"
+      },
+      {
+        "path": "charpack/char_150_snakek.ab",
+        "sha256": "a9138d4e3f1c353f70e4148a654e585ed68dd64b36eae0a432b907af0d42f64e"
+      },
+      {
+        "path": "charpack/char_171_bldsk.ab",
+        "sha256": "1cb8e64cb11de04388b6ec1f096f96b00b412e6b9cfe5fd8b7c0fe9386fb32ac"
+      },
+      {
+        "path": "charpack/char_172_svrash.ab",
+        "sha256": "7996537acad33d54ee074a2c433700490d9f1cbef1172112a76411e4205aeaa3"
+      },
+      {
+        "path": "charpack/char_173_slchan.ab",
+        "sha256": "3cd97980d5a0c0256b167d22c08e41a71a2fabcd3cf6c40bf3bade1b3cf98342"
+      },
+      {
+        "path": "charpack/char_174_slbell.ab",
+        "sha256": "392007f8be6d4f7b55c534f2117bfe8e3b00ddb1c592f566955fe0908adfc366"
+      },
+      {
+        "path": "charpack/char_179_cgbird.ab",
+        "sha256": "9aab9c214e9790ccaefc2c03784021617822b7e23ea799bd2bb6c56ef1cfaec9"
+      },
+      {
+        "path": "charpack/char_180_amgoat.ab",
+        "sha256": "261a5f3d143f0d4d58e6ece9d3e388339a11f85427891df3392e9382757995ab"
+      },
+      {
+        "path": "charpack/char_181_flower.ab",
+        "sha256": "3f38ccd40f1755f9c381f8647d9ca7744a0838b785322982f8ed41f8e9dc9a14"
+      },
+      {
+        "path": "charpack/char_183_skgoat.ab",
+        "sha256": "355e1188e296b0d3f0c88e2068a0ed8d1038e8c828917bf8ad6e815927ed90d5"
+      },
+      {
+        "path": "charpack/char_188_helage.ab",
+        "sha256": "1d687416a0e11d098536c6307b36fa77315a8ee20bcd709dca6bdba8588686be"
+      },
+      {
+        "path": "charpack/char_196_sunbr.ab",
+        "sha256": "f6110d7838dd4a00d3cb52d2d8997f81bfc4eb4813bca4b31bcbbffcba381c39"
+      },
+      {
+        "path": "charpack/char_197_poca.ab",
+        "sha256": "5d568e21927d50e3ce463a6eccf1e4fddcf843c26f2a7787340fe8453425ada3"
+      },
+      {
+        "path": "charpack/char_199_yak.ab",
+        "sha256": "bbd047a12437897bd1f755e7b39ede67f6ae8ba5a992d579d6d5cef81d717660"
+      },
+      {
+        "path": "charpack/char_2012_typhon.ab",
+        "sha256": "73251e0d5ad509b7cb8898a6375d4632f699a2d38d1402e03b96adaa24fbab57"
+      },
+      {
+        "path": "charpack/char_2013_cerber.ab",
+        "sha256": "a14b13ff8cf5025ff63a7dfe749061271033caad94784cbe5885226f96dbb2b6"
+      },
+      {
+        "path": "charpack/char_2014_nian.ab",
+        "sha256": "e0a97110a1462acb668b5300dc3b1e530a3fc1c4a6ed8bb8680eeb6a1c0cd385"
+      },
+      {
+        "path": "charpack/char_2015_dusk.ab",
+        "sha256": "0010abfe68485f48b017e75ff3dec28004cef6c6e2db1cf136f8075bec1428ec"
+      },
+      {
+        "path": "charpack/char_2023_ling.ab",
+        "sha256": "579cdefde3c34065f07f0258e7997d74f749a4c2d6a19e120602fe8e7a794799"
+      },
+      {
+        "path": "charpack/char_2024_chyue.ab",
+        "sha256": "b4275ca0f1f269061daec60452ced1aca36b39e0323fd698ecb4b0d78152af21"
+      },
+      {
+        "path": "charpack/char_2025_shu.ab",
+        "sha256": "4b3da576ef80650d80253078e920f065c437c9ec4d17d6c9d41b516714e4a025"
+      },
+      {
+        "path": "charpack/char_2026_yu.ab",
+        "sha256": "9d05e241677a932ae71093a3457eb7ed92cdaa784822828c09c60e09509c8cd3"
+      },
+      {
+        "path": "charpack/char_2027_wang.ab",
+        "sha256": "0191a15433cb83e43f1719d2b8397ad1c7c61639358721a86666933f9deb9530"
+      },
+      {
+        "path": "charpack/char_202_demkni.ab",
+        "sha256": "2d9f9afc5e3c34d7be85fab7d4b9aeca8838135e3d22743950d5ce209532e0a9"
+      },
+      {
+        "path": "charpack/char_206_gnosis.ab",
+        "sha256": "18769450621a351759d1e3e5f5d4680fc6dc5842bf20dba8d92f469ad724d3e3"
+      },
+      {
+        "path": "charpack/char_213_mostma.ab",
+        "sha256": "f3f4e8f6dd1c8b331c2fdaef9305a8b1935cce219ef6ce9af88e72a8840e8681"
+      },
+      {
+        "path": "charpack/char_222_bpipe.ab",
+        "sha256": "01a61dc9f73c2226a1260b053ec684c97d373e67f7d77e7c5bc2bc1fa0f9d22a"
+      },
+      {
+        "path": "charpack/char_225_haak.ab",
+        "sha256": "2dd9e61bcc6bc0233a8b836582df28b3f984e2f0f4e20ece83d848934cc33c54"
+      },
+      {
+        "path": "charpack/char_237_gravel.ab",
+        "sha256": "59a35ee54c3cfef158bf9719cb9a28736fa935c1d6af34971fd39686312de4a0"
+      },
+      {
+        "path": "charpack/char_245_cello.ab",
+        "sha256": "b680631cd9d24939df6640b49f28ad41919f264b5a230787c6b944553183e1b7"
+      },
+      {
+        "path": "charpack/char_248_mgllan.ab",
+        "sha256": "bcae511002504287cd89e2fd2b4dd15c8112b429bf21ecd0ddfccbb952f66f96"
+      },
+      {
+        "path": "charpack/char_249_mlyss.ab",
+        "sha256": "9bea1e2e929c811d50e83dc0999dbf3f2c103db459d81183cae0d5dda8f4c5d2"
+      },
+      {
+        "path": "charpack/char_250_phatom.ab",
+        "sha256": "2c7715925108e3bbb272ded14f4c96109d9eb8d7f9bc7a55c5116b326d18c13f"
+      },
+      {
+        "path": "charpack/char_253_greyy.ab",
+        "sha256": "9ebd55f56e023d069a5f7249d3567470d870eb3df9aee08bcba3908f3360a70f"
+      },
+      {
+        "path": "charpack/char_254_vodfox.ab",
+        "sha256": "4994997921627200fab4248a4444a9111f5ead53f6a0c134a8e903437949d7c3"
+      },
+      {
+        "path": "charpack/char_258_podego.ab",
+        "sha256": "df25afe28c6c68c9dc89e064352bd0e2494683e3f021cc5001b126f62cbf20cf"
+      },
+      {
+        "path": "charpack/char_263_skadi.ab",
+        "sha256": "d75b730a8a56821fa5e7dcd8ad5db0e98370887f27d77f09a4109e73c944f1f3"
+      },
+      {
+        "path": "charpack/char_264_f12yin.ab",
+        "sha256": "ef27c017b73e7fe1c34c4cd8067542f156bef8b83cf7c775c8e1ae9bbd40cfc4"
+      },
+      {
+        "path": "charpack/char_279_excu.ab",
+        "sha256": "8017f5544a39c086ac99f777bab2ff6265f6d26759fada1256fcd201b4cda7bc"
+      },
+      {
+        "path": "charpack/char_290_vigna.ab",
+        "sha256": "a29cc06748ab9b0f50dcc9fea339d2629aa523c20b09e5fc83fced0618e14653"
+      },
+      {
+        "path": "charpack/char_291_aglina.ab",
+        "sha256": "54461ff73d84c67745ba52852ac23b037005ec0582e840f1005e1c7de804ceeb"
+      },
+      {
+        "path": "charpack/char_293_thorns.ab",
+        "sha256": "f726c7cb9a7a86829d5a1046eead4780db8b33b05ca219e47763353783786823"
+      },
+      {
+        "path": "charpack/char_294_ayer.ab",
+        "sha256": "7ad109d7d85f76681b4a1176cb4979934cb60614d0ed1a9912b7b590fe2e77d3"
+      },
+      {
+        "path": "charpack/char_300_phenxi.ab",
+        "sha256": "89b89e9f408791c4f17a1025fb72e1a8a3cf1046a1607d11d363e9f5f80c6e4c"
+      },
+      {
+        "path": "charpack/char_306_leizi.ab",
+        "sha256": "f1bceee211b3ff59a90ed57747bb7683c4663f652746db6495cb19430f189c5c"
+      },
+      {
+        "path": "charpack/char_308_swire.ab",
+        "sha256": "7201de538458cf1e3fa11772cd45f48b0d4e9b1d533c360f65a05c5e6268dc8c"
+      },
+      {
+        "path": "charpack/char_311_mudrok.ab",
+        "sha256": "d9e52bbc033d8d08d0abb9f50c8ba45c9ddd1c5c4efe13d3ec6c9dd66644261d"
+      },
+      {
+        "path": "charpack/char_322_lmlee.ab",
+        "sha256": "7232dae69a4bb27e3135cf48fec096b46263418fe53c665e20481ae11794823b"
+      },
+      {
+        "path": "charpack/char_332_archet.ab",
+        "sha256": "99ade28d62931a7b51d17d2739acfb89a63a1f75a677fcf3c1dd9051ad500793"
+      },
+      {
+        "path": "charpack/char_337_utage.ab",
+        "sha256": "f521b08881154839a1491a77e629f9c14ae287d720f00e49d3128e6fe6d092e5"
+      },
+      {
+        "path": "charpack/char_340_shwaz.ab",
+        "sha256": "09a7b4eed9c78b08715afeae00b82dba18fccd703191a28544394b6913a0e39f"
+      },
+      {
+        "path": "charpack/char_341_sntlla.ab",
+        "sha256": "24b9f1cb507308bcfba358262770419197bfd6a55cc767907c15fc93bc6d702c"
+      },
+      {
+        "path": "charpack/char_344_beewax.ab",
+        "sha256": "76fd652f55c6c84464463a7598fc0fc23d1785669d1d9d3d8b8b763ccb4c66c9"
+      },
+      {
+        "path": "charpack/char_350_surtr.ab",
+        "sha256": "2965017c8e393616f249465fd0bc5c522e5468fae775b25df1b5cff779680aa7"
+      },
+      {
+        "path": "charpack/char_358_lisa.ab",
+        "sha256": "43ef3050bf20a7838b301abd4fcb8d37c773ac7ff9dbb0d01af95ef4c62a35a7"
+      },
+      {
+        "path": "charpack/char_362_saga.ab",
+        "sha256": "22e380fa7d26d0ced031040c48701243235d44e23fb5787587ebc2d9893391d1"
+      },
+      {
+        "path": "charpack/char_373_lionhd.ab",
+        "sha256": "954cec8392e0181fccf7fb1cf4bc9b249cb9cfbeb9c048396300f3efa1446d90"
+      },
+      {
+        "path": "charpack/char_377_gdglow.ab",
+        "sha256": "eead0a0095fd5f695dd36237e7ede22ca5873b01777b6cdefaf96c04df20d173"
+      },
+      {
+        "path": "charpack/char_381_bubble.ab",
+        "sha256": "73713d66e3ebd0cd8143d9e3eb99a4b50d5e6cd98b1cb777f893a6c73e9d14f1"
+      },
+      {
+        "path": "charpack/char_388_mint.ab",
+        "sha256": "d6bc62cd34e9a6229053b8361a426191411a6c1040a01ee81cd7e496581fd438"
+      },
+      {
+        "path": "charpack/char_391_rosmon.ab",
+        "sha256": "8aa5202ce485b3265b8f82df0687267acf0417c37155db38b1e0876adf258667"
+      },
+      {
+        "path": "charpack/char_4009_irene.ab",
+        "sha256": "20f98b1cc81637d3790c44c5ca14ce89fee980d0cd0010152c6c93b483eae308"
+      },
+      {
+        "path": "charpack/char_400_weedy.ab",
+        "sha256": "e7835315f24c88e0e167d85d913aef31e576eecdc825a837ac34f5c3b972cbb1"
+      },
+      {
+        "path": "charpack/char_4010_etlchi.ab",
+        "sha256": "988150874df1ebe6223fe6965f66cc9b9eb09c311a7a00912562aabaa03281f5"
+      },
+      {
+        "path": "charpack/char_4011_lessng.ab",
+        "sha256": "f8d541303b67bd52d81e210adb12d18af4d1a9aa350d836a6f79ec80c2ff5ff3"
+      },
+      {
+        "path": "charpack/char_4013_kjera.ab",
+        "sha256": "ad777eb5d8454e49e28f0cd10b74b3bc6add52efa4ae85ac29814e15bd90ef74"
+      },
+      {
+        "path": "charpack/char_4016_kazema.ab",
+        "sha256": "798c2fd89456bbaf6140c25b7524b015294148fbd0020ecc2a0774bd212b8f4b"
+      },
+      {
+        "path": "charpack/char_4026_vulpis.ab",
+        "sha256": "f47c642dd4cc990f8264e1516077d39377ae663bea1aac9cece9b15e6351c88f"
+      },
+      {
+        "path": "charpack/char_4027_heyak.ab",
+        "sha256": "65a187e7ca602d9a3532e300018d550b5d0672a33ffb64787f82f3bc01edf33a"
+      },
+      {
+        "path": "charpack/char_4036_forcer.ab",
+        "sha256": "f56d17e648f4f379b4dd58bfd2e23e1ec944061f1ab70432c14ff26b95595130"
+      },
+      {
+        "path": "charpack/char_4037_demetr.ab",
+        "sha256": "a9627bd8b3a4a5e485dd68b16e0d525d4833d1dfba79830ae63c65f0f5021f52"
+      },
+      {
+        "path": "charpack/char_4039_horn.ab",
+        "sha256": "3205df1a5f69336cb58f74c4ac2ee4ca388895afc943923da8632f7d8630396f"
+      },
+      {
+        "path": "charpack/char_4040_rockr.ab",
+        "sha256": "23fe253ef8bf855b79b075bbf250a37a0aa37bbfcd531653dd2dc4a32362ca45"
+      },
+      {
+        "path": "charpack/char_4042_lumen.ab",
+        "sha256": "5a25705f2c3b912ac487fa00ab528335ca44ac6e4183634492e00149a2776249"
+      },
+      {
+        "path": "charpack/char_4046_ebnhlz.ab",
+        "sha256": "938e10806543facfdc85753949dd02cfe84bf3d6e2d048bf273251b12ee65d38"
+      },
+      {
+        "path": "charpack/char_4048_doroth.ab",
+        "sha256": "9f9ad5cb0cc71840ffa5f15e5fc21a4cc63625505d36f75ca06133ca796dff7d"
+      },
+      {
+        "path": "charpack/char_4051_akkord.ab",
+        "sha256": "2994f3a71306cfd3d60353286aaff8d24c17cc0a55aa42d2b7d5763879c1f451"
+      },
+      {
+        "path": "charpack/char_4054_malist.ab",
+        "sha256": "2cbf674d1f2b9e983a5f6f87416860ae85687e966567d57c832c3625f2de248a"
+      },
+      {
+        "path": "charpack/char_4055_bgsnow.ab",
+        "sha256": "1e1ed6ccffaa0c5c33f0e7e12e2b2182f2333eee2714d2fab03d324a641996f8"
+      },
+      {
+        "path": "charpack/char_4056_titi.ab",
+        "sha256": "bd069088d5fae0fd833673af2f1408630dd457647c4b324a4da79be82c2afb93"
+      },
+      {
+        "path": "charpack/char_4058_pepe.ab",
+        "sha256": "b5b24daa26143e1c4e76430488818bb485fd61dd830ce37b2a9f3c88a5fa7dd0"
+      },
+      {
+        "path": "charpack/char_4064_mlynar.ab",
+        "sha256": "fbc451bde2d022e0b713e0c2521a85e464a6948f3db1d9d05163418ab99a847b"
+      },
+      {
+        "path": "charpack/char_4065_judge.ab",
+        "sha256": "590c43f3b625e82fe41f9606e90c74077d35779b9af0e323cdbbee34622ae7e2"
+      },
+      {
+        "path": "charpack/char_4072_ironmn.ab",
+        "sha256": "19ecf466fa9d933eb637ae681513b049773d8af7816c3d1ba34c2f2f54b71585"
+      },
+      {
+        "path": "charpack/char_4079_haini.ab",
+        "sha256": "01b584d2ce00a7c7c9c1b5237e1f199b4c3c57b53849cc736d0e95c83daa4cdc"
+      },
+      {
+        "path": "charpack/char_4080_lin.ab",
+        "sha256": "30cdf8d48dd859eacc9f10a6b24221261d3a7a8c376199dbcbd47bf31faed3f6"
+      },
+      {
+        "path": "charpack/char_4082_qiubai.ab",
+        "sha256": "31908b548371e69e51448bbecda9cc66a78df85a3a2bbf0013c95a599700eccd"
+      },
+      {
+        "path": "charpack/char_4087_ines.ab",
+        "sha256": "882f7ad1aedb8d206bbb9da0fc4197e1308c9093ef9477122a2aee63362a5ef9"
+      },
+      {
+        "path": "charpack/char_4088_hodrer.ab",
+        "sha256": "1f06e62ec6b782069268931b63bf177bda4370d7c6deca37e9a8047390bc8010"
+      },
+      {
+        "path": "charpack/char_4098_vvana.ab",
+        "sha256": "9d33dbbdf477fae0f60e5f5445ba2065332d93d977987dc158414f8207e2eae5"
+      },
+      {
+        "path": "charpack/char_4100_caper.ab",
+        "sha256": "3013aed9b65c814b02e55032d56f419fb3c2c882bd8e805ae53bd5fd97945044"
+      },
+      {
+        "path": "charpack/char_4114_harold.ab",
+        "sha256": "352c74c49e1aaebe72e8a92f8fb15f477a55c23858370d9b542e1a044bea8117"
+      },
+      {
+        "path": "charpack/char_4116_blkkgt.ab",
+        "sha256": "1072fe858d2e152dd3cdae6db1688d7c6ef63f63ead464606835297eeecbe616"
+      },
+      {
+        "path": "charpack/char_4117_ray.ab",
+        "sha256": "ce6ca8c4f985a112929f77f4197f3887c81461058f15425048634f937e82c5fb"
+      },
+      {
+        "path": "charpack/char_4121_zuole.ab",
+        "sha256": "718b369363dae26e69c5232d830acd01b7f2c7465b7fa0e83bd6fdd03f5fea84"
+      },
+      {
+        "path": "charpack/char_4122_grabds.ab",
+        "sha256": "db6ff476ec71df32f94876a5ad59619947cd9732472ce6a99bd184e252886f7a"
+      },
+      {
+        "path": "charpack/char_4132_ascln.ab",
+        "sha256": "312330af50718dfa7833a66530b12523a2819209128d618eedaa8723c9bd68ef"
+      },
+      {
+        "path": "charpack/char_4133_logos.ab",
+        "sha256": "e36c6c576f5afe657e924cae389093196e5e05084b10ae1c3d93afc56f7b7fc7"
+      },
+      {
+        "path": "charpack/char_4134_cetsyr.ab",
+        "sha256": "d4cb586886d06ae59663bb06f90e25453a4a123f3947dafc760ee94aaae624ea"
+      },
+      {
+        "path": "charpack/char_4137_udflow.ab",
+        "sha256": "0596d4616709754e44f9bf2a22ca3f9ab30075f368f6a2172a65f618aeaeaea9"
+      },
+      {
+        "path": "charpack/char_4138_narant.ab",
+        "sha256": "a5e26e7e9b2c9f646e21387386c1360ac6e4658fcc615c5449a064e0ecd277ea"
+      },
+      {
+        "path": "charpack/char_4139_papyrs.ab",
+        "sha256": "fdd0bd731108ab11198760634dc9722192f95bc4d6d6081283c2faf5a3e6cdcc"
+      },
+      {
+        "path": "charpack/char_4145_ulpia.ab",
+        "sha256": "a7cd1f96c7e1541fb9b125a38600e28ef60f7fbe23344236e84d0b76c44d653b"
+      },
+      {
+        "path": "charpack/char_4146_nymph.ab",
+        "sha256": "91a3db68f7d248aea9a232d6a6a0f92e9c121b4d2fb6f02310193297fe6e4435"
+      },
+      {
+        "path": "charpack/char_4148_philae.ab",
+        "sha256": "239ce7fc7dd50afdff98ed5e2367bfc0b4b14ba538b073639b55cd797e9adff6"
+      },
+      {
+        "path": "charpack/char_4151_tinman.ab",
+        "sha256": "ad5b51383c1583b98fe5c742083232dae8e11b0b584140221a011c7bc767ee24"
+      },
+      {
+        "path": "charpack/char_4162_cathy.ab",
+        "sha256": "7e6bbd22142f502ecd74f42b8c37e566b1bf1116d019ce4767aeb2c0e633a64b"
+      },
+      {
+        "path": "charpack/char_4163_rosesa.ab",
+        "sha256": "d68bb05852c6175501a692b8c8ca14e81e235c90ca55d042a35ffa4644b066ad"
+      },
+      {
+        "path": "charpack/char_416_zumama.ab",
+        "sha256": "5e1e168d821b896e2bd8b0ee55d07aaf5923c7ab82a73b6eea07a230723e75c7"
+      },
+      {
+        "path": "charpack/char_4179_monstr.ab",
+        "sha256": "6f4cfc4874ac9c6e1c37a500ee08c831b7361d0ea12154180f3ee88795e84d25"
+      },
+      {
+        "path": "charpack/char_4191_tippi.ab",
+        "sha256": "c675160855ee1fce1f49a1b20513f7c7f06d53d6114b8b8cc717c075bc193049"
+      },
+      {
+        "path": "charpack/char_4193_lemuen.ab",
+        "sha256": "1afb81ef8029ed82a007d1e0130eeae1d48c2b1d9437d49afac89e894db1625b"
+      },
+      {
+        "path": "charpack/char_4194_rmixer.ab",
+        "sha256": "3c7518d55e64ecbf858f298a5a5155fcaebfe705984c58225fdfda8297376e22"
+      },
+      {
+        "path": "charpack/char_4195_radian.ab",
+        "sha256": "0fd7b45fc70d3f52a478a2d742a7f9662bd6d23483cf19c2908777927847fe20"
+      },
+      {
+        "path": "charpack/char_4196_reckpr.ab",
+        "sha256": "19bdeb06e793d4d7558c25febc3dfb6984aedcbdfaf61d9eb63f5f938088d25b"
+      },
+      {
+        "path": "charpack/char_4202_haruka.ab",
+        "sha256": "f4b32348ed25198c5f5ccf2fd96486307d57569aeec4518f991e5a308d3f4fbb"
+      },
+      {
+        "path": "charpack/char_4204_mantra.ab",
+        "sha256": "76329fd7a8b5c0e9a2969d2106733a2eadcd8fec6df42e879cc65166eefab674"
+      },
+      {
+        "path": "charpack/char_4207_branch.ab",
+        "sha256": "cfcb75705827643343aa2f7f72d46c7920833f3cd13f82699510f69a965d3e81"
+      },
+      {
+        "path": "charpack/char_420_flamtl.ab",
+        "sha256": "f23e706f42ab5b20903829cbe34ff4bebaa46a03e61831085a20f04ccf9e4e88"
+      },
+      {
+        "path": "charpack/char_4211_snhunt.ab",
+        "sha256": "6e77b0e146348db4da00e9c977dfbcb7ead7f92ee030ede04f1459c251b04c10"
+      },
+      {
+        "path": "charpack/char_4212_nasti.ab",
+        "sha256": "afe8a5af815edae63e1aaf86dd751115e292fe67f9c7edb4e9daf5a41cdda0ee"
+      },
+      {
+        "path": "charpack/char_4226_veen.ab",
+        "sha256": "c6db79eaaec3a6d50977beaf8545d717ced6f37017edadd9897238eb46752636"
+      },
+      {
+        "path": "charpack/char_4228_closur.ab",
+        "sha256": "b35c39d75d662038071f4b7ddb33df4ac77ab1a6a7cd6631a45288b2908e6b52"
+      },
+      {
+        "path": "charpack/char_4229_aphris.ab",
+        "sha256": "d62aeac07685bab2f3a42755dd0a25784790aa3b644f4d7bd116029d32779ae7"
+      },
+      {
+        "path": "charpack/char_4230_mcnist.ab",
+        "sha256": "b5b6544cc964fdd683d04223c819a5ff1a3750470073c38cd8d77700ad08619b"
+      },
+      {
+        "path": "charpack/char_4235_thumpy.ab",
+        "sha256": "666655463dfd5c202b03f4becbd73e7d34caf64941859bf18caf8d732c79a48b"
+      },
+      {
+        "path": "charpack/char_423_blemsh.ab",
+        "sha256": "3193497485970e43669622bce2b701c02c128f4c0f32a1b5cb9c535a140f3bfb"
+      },
+      {
+        "path": "charpack/char_426_billro.ab",
+        "sha256": "7c16abb9c54fa6f7de3b316f2f4e69171df2cd58f0aa02c00eac6076b590763d"
+      },
+      {
+        "path": "charpack/char_427_vigil.ab",
+        "sha256": "338846851ba80987b2d8a1da6125776dc8a1230a075497b8e646eafc076f12ef"
+      },
+      {
+        "path": "charpack/char_430_fartth.ab",
+        "sha256": "6415bf4bc47f6d24c850e17476c259099e831db2931715a577335993afaf057b"
+      },
+      {
+        "path": "charpack/char_431_ashlok.ab",
+        "sha256": "e7a28959f77fe65f4a9fbdad4d22f43a304af1eb6e67f1e615be6fe8c1d27c2e"
+      },
+      {
+        "path": "charpack/char_437_mizuki.ab",
+        "sha256": "1e5eaac06729ae138f1f5d66f87d74145ec50978ba8d0995b9431226126db6b6"
+      },
+      {
+        "path": "charpack/char_440_pinecn.ab",
+        "sha256": "9ac1e329992104892a5b24de3b2f2dddb5fef2be97a331c2c56be9f7a2abb73f"
+      },
+      {
+        "path": "charpack/char_446_aroma.ab",
+        "sha256": "f4901917ced0c3e15ae3cf690f8114f60de70bf4a8c942e52f19ea1afc05c5a4"
+      },
+      {
+        "path": "charpack/char_450_necras.ab",
+        "sha256": "3b9bf9126828165b6b0c2a5dd74768f1db30b5b69681f349a15aec93b73d0288"
+      },
+      {
+        "path": "charpack/char_469_indigo.ab",
+        "sha256": "1090f2ae0c821c583f42d3195ca106d6283154f0507d08163a36a4ad73cd047c"
+      },
+      {
+        "path": "charpack/char_472_pasngr.ab",
+        "sha256": "f5dc5e988c2ec9d46ca06b956bec79d2c004ccd687d6995fba51710db4e5e72c"
+      },
+      {
+        "path": "charpack/char_474_glady.ab",
+        "sha256": "196806a7ad2ad8b686ad133cf7655aae2e0299eb315f14afeadff276fe69072b"
+      },
+      {
+        "path": "charpack/char_479_sleach.ab",
+        "sha256": "54c154cc8fbdf4dcf4aca55587940a97bb36dbc06b1923a1403eab7480298e37"
+      },
+      {
+        "path": "charpack/char_485_pallas.ab",
+        "sha256": "7a6b60c47a1983e1862130cdd9addf2bf8f24c1d2f1df9b9082d974696e8dd0c"
+      },
+      {
+        "path": "charpack/char_491_humus.ab",
+        "sha256": "9db7d5a00618080febc15ad4216f089d5d7c488c5ee453effcfacf4bf9da65c1"
+      },
+      {
+        "path": "charpack/char_494_vendla.ab",
+        "sha256": "21ecab5033fca22b9a62aaea3bc983142fa9a9dd2011d787e3ceb93c4575f286"
+      },
+      {
+        "path": "charpack/char_496_wildmn.ab",
+        "sha256": "1fb87fb2134eb9e84026de756e22a36b01f280ed205438585e1036d633df754a"
+      },
+      {
+        "path": "charpack/char_498_inside.ab",
+        "sha256": "85e76c1d939dcdd702e7ecacdd8e7baf1556176cd55f3aad28a831e9e11e74f4"
+      },
+      {
+        "path": "charpack/char_600_cpione.ab",
+        "sha256": "8a2ed5b3668f9f86999645b7b127b091edbb8db5a5d356720e18cdbb08677d97"
+      },
+      {
+        "path": "charpack/char_601_cguard.ab",
+        "sha256": "4de11f085b2c45cdb58ffa3f686a59d9c0fcf9e902d7648498d8787c0e95c6e6"
+      },
+      {
+        "path": "charpack/char_602_cdfend.ab",
+        "sha256": "392af8ac9ead45b4d9adff9b7a07f53f2ec87b1ad9b6c27e401bd93edc86795e"
+      },
+      {
+        "path": "charpack/char_603_csnipe.ab",
+        "sha256": "f187df946642fe8691b757dae0e092b7936130b242b2f2833d2c100430f0bab3"
+      },
+      {
+        "path": "charpack/char_604_ccast.ab",
+        "sha256": "5fd568a9fc558143fbc186ca687b540677f6d5cf041b1edebda87013fc82fa5b"
+      },
+      {
+        "path": "charpack/char_605_cmedic.ab",
+        "sha256": "41327d901413c40c477198d7432bd8a8ea0bdac452ab83e89a3adf602b626bff"
+      },
+      {
+        "path": "charpack/char_606_csuppo.ab",
+        "sha256": "448bacd1dfe9887ce166fa993e1d424d004ca01f3cff533f17e42e444459c010"
+      },
+      {
+        "path": "charpack/char_607_cspec.ab",
+        "sha256": "953323d051e43622b9973109f5f2c949a8ebe427f82b3f0fefffa674872383e8"
+      },
+      {
+        "path": "charpack/char_608_acpion.ab",
+        "sha256": "602128589555c885974ae1861d68789c22aee77adfe9e529ba3d9df669a201e9"
+      },
+      {
+        "path": "charpack/char_609_acguad.ab",
+        "sha256": "a0ecb058d16062f84b9cd2688207e983a234caa4095eb5a084efac7369768da6"
+      },
+      {
+        "path": "charpack/char_610_acfend.ab",
+        "sha256": "2876bdec1a3bdb66e5a12c53e2d25d7d64c872d1dbb82f70c8412c7cbf694825"
+      },
+      {
+        "path": "charpack/char_611_acnipe.ab",
+        "sha256": "c81e73855ce38a8070e17a652834ad2ac9d80a67b7361e805bf7198f867ad9f0"
+      },
+      {
+        "path": "charpack/char_612_accast.ab",
+        "sha256": "ff1970b0762eb527399716df21d5ae1fe000d3dc1a1ae1e0d861650df9425db9"
+      },
+      {
+        "path": "charpack/char_613_acmedc.ab",
+        "sha256": "03a513a8489b29dde51bdde104a9ed3bffcd7366426ba797b43c1b497434d704"
+      },
+      {
+        "path": "charpack/char_614_acsupo.ab",
+        "sha256": "26b91002677f5fd0b73d50c11edfb9f7e896d4e8bb302d8cc187ded4117fa5da"
+      },
+      {
+        "path": "charpack/char_615_acspec.ab",
+        "sha256": "7ff771ca90f7576b9da288d3e2afc6be9e2d8e83e1350644cca0fe450edb31e9"
+      },
+      {
+        "path": "charpack/char_616_pithst.ab",
+        "sha256": "4d2c4ffdc5f962cdd934d62d0023bbd57bb011d0a3a7058f8592b13b25ae69ba"
+      },
+      {
+        "path": "charpack/char_617_sharp2.ab",
+        "sha256": "697489609307db588dd827d67fedb6f2791ee7438ca7f3f41badfd0147f82334"
+      },
+      {
+        "path": "config/buff_template_holder.ab",
+        "sha256": "7b564314564333731209f1c522e9d332dfe1016619f5f8e0400e92964765afb5"
+      }
+    ],
+    "methods": {
+      "Card.get_rawCost": "0x1806a9860",
+      "Character.Withdraw": "0x1809f2ce0",
+      "Token.get_allowWithdrawGainCost": "0x180a591e0",
+      "Card.constructor": "0x1806a7b30",
+      "TransferRemainingCharacterCntVolume.Execute": "0x180fe6970",
+      "Character.set_originRemainingCharacterCntVolume": "0x1809fcc30",
+      "SetWithdrawCostRecoverRatio.Execute": "0x1810e5b20"
+    },
+    "buffTemplatePathId": "6070581171229484677"
+  },
+  "respawnCostMultiplier": 0.5,
+  "respawnCostMaxMultiplier": 2,
+  "entities": {
+    "token_10043_necras_skeltn": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -8493436737972975817,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10020_ling_soul2": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -6459863026978473021,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10019_nearl2_sword": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -6441875690030589171,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10025_doroth_recttp": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -6362774377349281731,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10005_mgllan_drone1": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -6022056654831303860,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10029_slent2_protrb": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -5202899342101043299,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10040_siege2_vlion": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -5146560263001141338,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10041_cathy_catsld": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -4711614595115352673,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10007_phatom_twin": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -4423784787976888003,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10028_vigil_wolf": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -3264388375348295857,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10024_ebnhlz_rcube": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -2816065147026417861,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10034_ray_sndbst": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -2468620494337328075,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10030_mlyss_wtrman": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -2203269439485355925,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10009_weedy_cannon": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -1810275678654996240,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10002_kalts_mon3tr": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -1412019776481939327,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10017_skadi2_dedant": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -243673713988147153,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10000_silent_healrb": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": -61191816510330475,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10026_bgsnow_subbow": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 831397842328985953,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10032_jesca2_jckshd": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 1628380726038222064,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10027_ironmn_pile1": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 2021056180867738138,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10015_dusk_drgn": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 2194531589984869784,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10006_vodfox_doll": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 2822222654880755265,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10008_cqbw_box": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 3214189596076377800,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10005_mgllan_drone2": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 3383066826909765818,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10020_ling_soul3": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 3416675089523381948,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10050_monstr_prosts": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 3549317659382103584,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10053_radian_tower3": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 3945268681089495951,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10012_rosmon_shield": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 4110751172866130270,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10052_radian_tower2": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 4237700582519217105,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10011_beewax_oblisk": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 4478405087682832558,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10027_ironmn_pile3": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 4722706509366982244,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10027_ironmn_pile2": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 4883956919950146152,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10056_angel2_target": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 5469880532721077243,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10055_phatm2_mndclv": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 6352044219529720151,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10031_swire2_gdtrap": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 6574921324621103369,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10039_ulpia_block": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 7459542808134154890,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10035_wisdel_wward": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 7531983340995195566,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10005_mgllan_drone3": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 8032229342842227100,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10020_ling_soul1": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 8252108247094130176,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10051_radian_tower1": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 8532660068973183570,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10003_cgbird_bird": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 8860484327227050235,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10022_kazema_shadow": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 9000260970329334690,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10054_phatm2_encdool": {
+      "bundle": "pkgrps/btl_pfb_tokens_0.ab",
+      "pathId": 9056605678497710654,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10064_wang_stone1": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": -9065475664010583528,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10057_svash2_eagle2": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": -7064233017188295085,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10061_nasti_nstbld": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": -6257090008822943658,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10068_kalts2_mtship": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": -3924234592717776804,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10057_svash2_eagle1": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 380476325898339838,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10060_nasti_nstchr": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 769433690442553026,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10058_sbell2_icetgt": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 4478637341591777750,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10059_nasti_nstdef": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 5300537389745390979,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10057_svash2_eagle3": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 5749026307021591723,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10065_demetr_dmtpos": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 6820163501037890243,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10066_closur_ourbase": {
+      "bundle": "pkgrps/btl_pfb_tokens_4.ab",
+      "pathId": 9056934687418337401,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10070_aphris_pc": {
+      "bundle": "pkgrps/btl_pfb_tokens_5.ab",
+      "pathId": -8739687973461992897,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10069_mcnist_mcgraf": {
+      "bundle": "pkgrps/btl_pfb_tokens_5.ab",
+      "pathId": 1311138106172917043,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "token_10071_aglna2_agairp": {
+      "bundle": "pkgrps/btl_pfb_tokens_5.ab",
+      "pathId": 8604623123338247876,
+      "occupiedRemainingCharacterCnt": 0,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_003_kalts": {
+      "bundle": "charpack/char_003_kalts.ab",
+      "pathId": 8257593285132245543,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_010_chen": {
+      "bundle": "charpack/char_010_chen.ab",
+      "pathId": 4319991828641273287,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_017_huang": {
+      "bundle": "charpack/char_017_huang.ab",
+      "pathId": 3927010187160072605,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1012_skadi2": {
+      "bundle": "charpack/char_1012_skadi2.ab",
+      "pathId": -3662291628995893316,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1013_chen2": {
+      "bundle": "charpack/char_1013_chen2.ab",
+      "pathId": 2582046188966669381,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1014_nearl2": {
+      "bundle": "charpack/char_1014_nearl2.ab",
+      "pathId": 1348462066751927683,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1015_aglna2": {
+      "bundle": "charpack/char_1015_aglna2.ab",
+      "pathId": 404458462443600731,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1016_agoat2": {
+      "bundle": "charpack/char_1016_agoat2.ab",
+      "pathId": -7468060767643637885,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1019_siege2": {
+      "bundle": "charpack/char_1019_siege2.ab",
+      "pathId": 2040307976879685196,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1020_reed2": {
+      "bundle": "charpack/char_1020_reed2.ab",
+      "pathId": 7212123871538671950,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1021_kroos2": {
+      "bundle": "charpack/char_1021_kroos2.ab",
+      "pathId": -4868272578108630785,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1023_ghost2": {
+      "bundle": "charpack/char_1023_ghost2.ab",
+      "pathId": -3031253034076552259,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1026_gvial2": {
+      "bundle": "charpack/char_1026_gvial2.ab",
+      "pathId": 2562644740956822519,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1028_texas2": {
+      "bundle": "charpack/char_1028_texas2.ab",
+      "pathId": 2389836821978940072,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_102_texas": {
+      "bundle": "charpack/char_102_texas.ab",
+      "pathId": 6423699587879851671,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1031_slent2": {
+      "bundle": "charpack/char_1031_slent2.ab",
+      "pathId": 1093004225701117832,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1032_excu2": {
+      "bundle": "charpack/char_1032_excu2.ab",
+      "pathId": -1184189259715953530,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1033_swire2": {
+      "bundle": "charpack/char_1033_swire2.ab",
+      "pathId": 4031899472847314984,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1034_jesca2": {
+      "bundle": "charpack/char_1034_jesca2.ab",
+      "pathId": 364393503525311689,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1035_wisdel": {
+      "bundle": "charpack/char_1035_wisdel.ab",
+      "pathId": 7220730069727538655,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1038_whitw2": {
+      "bundle": "charpack/char_1038_whitw2.ab",
+      "pathId": 8715423614000005437,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1039_thorn2": {
+      "bundle": "charpack/char_1039_thorn2.ab",
+      "pathId": -4691107398116605031,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_103_angel": {
+      "bundle": "charpack/char_103_angel.ab",
+      "pathId": 5855672440561764627,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1040_blaze2": {
+      "bundle": "charpack/char_1040_blaze2.ab",
+      "pathId": -2733604621509106951,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1041_angel2": {
+      "bundle": "charpack/char_1041_angel2.ab",
+      "pathId": 3071348187384636655,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1042_phatm2": {
+      "bundle": "charpack/char_1042_phatm2.ab",
+      "pathId": -3355981103856142070,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1043_leizi2": {
+      "bundle": "charpack/char_1043_leizi2.ab",
+      "pathId": -6983216110788028402,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1044_hsgma2": {
+      "bundle": "charpack/char_1044_hsgma2.ab",
+      "pathId": -3238334189534830110,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1045_svash2": {
+      "bundle": "charpack/char_1045_svash2.ab",
+      "pathId": -4972930283529945811,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1046_sbell2": {
+      "bundle": "charpack/char_1046_sbell2.ab",
+      "pathId": 6303529638706318153,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1047_halo2": {
+      "bundle": "charpack/char_1047_halo2.ab",
+      "pathId": -4328064502902223176,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1050_chen3": {
+      "bundle": "charpack/char_1050_chen3.ab",
+      "pathId": -5901374470717816253,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1051_headb2": {
+      "bundle": "charpack/char_1051_headb2.ab",
+      "pathId": 7599377608965604254,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1052_kalts2": {
+      "bundle": "charpack/char_1052_kalts2.ab",
+      "pathId": 1384548417202445919,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_107_liskam": {
+      "bundle": "charpack/char_107_liskam.ab",
+      "pathId": -1825524403522757361,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_108_silent": {
+      "bundle": "charpack/char_108_silent.ab",
+      "pathId": -1708490825198881458,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_112_siege": {
+      "bundle": "charpack/char_112_siege.ab",
+      "pathId": 6396510675182412746,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_113_cqbw": {
+      "bundle": "charpack/char_113_cqbw.ab",
+      "pathId": 6626351725316373380,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_126_shotst": {
+      "bundle": "charpack/char_126_shotst.ab",
+      "pathId": -3198986658995965076,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_127_estell": {
+      "bundle": "charpack/char_127_estell.ab",
+      "pathId": -2121127548365093093,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_128_plosis": {
+      "bundle": "charpack/char_128_plosis.ab",
+      "pathId": 5905979480863349313,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_134_ifrit": {
+      "bundle": "charpack/char_134_ifrit.ab",
+      "pathId": -6755416865669384760,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_136_hsguma": {
+      "bundle": "charpack/char_136_hsguma.ab",
+      "pathId": 2100739333708926732,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_140_whitew": {
+      "bundle": "charpack/char_140_whitew.ab",
+      "pathId": -2733970871556299343,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_143_ghost": {
+      "bundle": "charpack/char_143_ghost.ab",
+      "pathId": -3753109357703913105,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_145_prove": {
+      "bundle": "charpack/char_145_prove.ab",
+      "pathId": -6687198575835519033,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_147_shining": {
+      "bundle": "charpack/char_147_shining.ab",
+      "pathId": -9199187812117929400,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_1502_crosly": {
+      "bundle": "charpack/char_1502_crosly.ab",
+      "pathId": 996438281086748418,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_150_snakek": {
+      "bundle": "charpack/char_150_snakek.ab",
+      "pathId": 5093570177699449095,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_171_bldsk": {
+      "bundle": "charpack/char_171_bldsk.ab",
+      "pathId": -8509029535651146911,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_172_svrash": {
+      "bundle": "charpack/char_172_svrash.ab",
+      "pathId": 5102878104766761438,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_173_slchan": {
+      "bundle": "charpack/char_173_slchan.ab",
+      "pathId": 2226441996130632733,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_174_slbell": {
+      "bundle": "charpack/char_174_slbell.ab",
+      "pathId": 6327807658118161189,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_179_cgbird": {
+      "bundle": "charpack/char_179_cgbird.ab",
+      "pathId": -6534453621645456030,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_180_amgoat": {
+      "bundle": "charpack/char_180_amgoat.ab",
+      "pathId": -9088785073334467613,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_181_flower": {
+      "bundle": "charpack/char_181_flower.ab",
+      "pathId": 402319092500627023,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_183_skgoat": {
+      "bundle": "charpack/char_183_skgoat.ab",
+      "pathId": -6282325910955582514,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_188_helage": {
+      "bundle": "charpack/char_188_helage.ab",
+      "pathId": 9037656521088648756,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_196_sunbr": {
+      "bundle": "charpack/char_196_sunbr.ab",
+      "pathId": -4026560225998151919,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_197_poca": {
+      "bundle": "charpack/char_197_poca.ab",
+      "pathId": 6897844967652137897,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_199_yak": {
+      "bundle": "charpack/char_199_yak.ab",
+      "pathId": -59186557495709032,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2012_typhon": {
+      "bundle": "charpack/char_2012_typhon.ab",
+      "pathId": 2934013846680646652,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2013_cerber": {
+      "bundle": "charpack/char_2013_cerber.ab",
+      "pathId": -3743146558006374834,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2014_nian": {
+      "bundle": "charpack/char_2014_nian.ab",
+      "pathId": 4122936740783379836,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2015_dusk": {
+      "bundle": "charpack/char_2015_dusk.ab",
+      "pathId": 2147357489597451208,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2023_ling": {
+      "bundle": "charpack/char_2023_ling.ab",
+      "pathId": -4544604141428380671,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2024_chyue": {
+      "bundle": "charpack/char_2024_chyue.ab",
+      "pathId": 780804540577494255,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2025_shu": {
+      "bundle": "charpack/char_2025_shu.ab",
+      "pathId": -5441914612618988253,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2026_yu": {
+      "bundle": "charpack/char_2026_yu.ab",
+      "pathId": -835087265059286,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_2027_wang": {
+      "bundle": "charpack/char_2027_wang.ab",
+      "pathId": 4857679031659405128,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_202_demkni": {
+      "bundle": "charpack/char_202_demkni.ab",
+      "pathId": -7067279561330524005,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_206_gnosis": {
+      "bundle": "charpack/char_206_gnosis.ab",
+      "pathId": 637420532178708222,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_213_mostma": {
+      "bundle": "charpack/char_213_mostma.ab",
+      "pathId": 876310937311015588,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_222_bpipe": {
+      "bundle": "charpack/char_222_bpipe.ab",
+      "pathId": 8917764284333092947,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 1.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_225_haak": {
+      "bundle": "charpack/char_225_haak.ab",
+      "pathId": -669200192594290451,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_237_gravel": {
+      "bundle": "charpack/char_237_gravel.ab",
+      "pathId": 1039191086177686422,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_245_cello": {
+      "bundle": "charpack/char_245_cello.ab",
+      "pathId": 4707968538079119609,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_248_mgllan": {
+      "bundle": "charpack/char_248_mgllan.ab",
+      "pathId": 4175485000156831783,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_249_mlyss": {
+      "bundle": "charpack/char_249_mlyss.ab",
+      "pathId": -1870585797375882038,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_250_phatom": {
+      "bundle": "charpack/char_250_phatom.ab",
+      "pathId": -5315568994386383642,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_253_greyy": {
+      "bundle": "charpack/char_253_greyy.ab",
+      "pathId": -9100242845997358463,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_254_vodfox": {
+      "bundle": "charpack/char_254_vodfox.ab",
+      "pathId": 4545589066623671487,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_258_podego": {
+      "bundle": "charpack/char_258_podego.ab",
+      "pathId": -1988318333970736081,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_263_skadi": {
+      "bundle": "charpack/char_263_skadi.ab",
+      "pathId": -4892403809590291190,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_264_f12yin": {
+      "bundle": "charpack/char_264_f12yin.ab",
+      "pathId": 1897887727186068658,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_279_excu": {
+      "bundle": "charpack/char_279_excu.ab",
+      "pathId": 5854907570916008283,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_290_vigna": {
+      "bundle": "charpack/char_290_vigna.ab",
+      "pathId": -5117792521882892755,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 1.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_291_aglina": {
+      "bundle": "charpack/char_291_aglina.ab",
+      "pathId": -9183856909415367125,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_293_thorns": {
+      "bundle": "charpack/char_293_thorns.ab",
+      "pathId": -1831007503590359163,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_294_ayer": {
+      "bundle": "charpack/char_294_ayer.ab",
+      "pathId": 7096870378471341781,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_300_phenxi": {
+      "bundle": "charpack/char_300_phenxi.ab",
+      "pathId": -2641080426541392911,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_306_leizi": {
+      "bundle": "charpack/char_306_leizi.ab",
+      "pathId": 8460925906461963308,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_308_swire": {
+      "bundle": "charpack/char_308_swire.ab",
+      "pathId": -554822600831007458,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_311_mudrok": {
+      "bundle": "charpack/char_311_mudrok.ab",
+      "pathId": -1968475389821955920,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_322_lmlee": {
+      "bundle": "charpack/char_322_lmlee.ab",
+      "pathId": 6853308804176029692,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_332_archet": {
+      "bundle": "charpack/char_332_archet.ab",
+      "pathId": 433343228116882720,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_337_utage": {
+      "bundle": "charpack/char_337_utage.ab",
+      "pathId": -7638153123789731668,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_340_shwaz": {
+      "bundle": "charpack/char_340_shwaz.ab",
+      "pathId": -1028048506279040144,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_341_sntlla": {
+      "bundle": "charpack/char_341_sntlla.ab",
+      "pathId": 2014206675427503689,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_344_beewax": {
+      "bundle": "charpack/char_344_beewax.ab",
+      "pathId": 2950158718638116750,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_350_surtr": {
+      "bundle": "charpack/char_350_surtr.ab",
+      "pathId": 4743259884435579147,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_358_lisa": {
+      "bundle": "charpack/char_358_lisa.ab",
+      "pathId": -7277329369353092863,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_362_saga": {
+      "bundle": "charpack/char_362_saga.ab",
+      "pathId": 5021742546301006917,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_373_lionhd": {
+      "bundle": "charpack/char_373_lionhd.ab",
+      "pathId": 3385980517006815461,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_377_gdglow": {
+      "bundle": "charpack/char_377_gdglow.ab",
+      "pathId": -842146737306153169,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_381_bubble": {
+      "bundle": "charpack/char_381_bubble.ab",
+      "pathId": -2592679074336952396,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_388_mint": {
+      "bundle": "charpack/char_388_mint.ab",
+      "pathId": 485246306630486299,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_391_rosmon": {
+      "bundle": "charpack/char_391_rosmon.ab",
+      "pathId": 8771445816003885851,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4009_irene": {
+      "bundle": "charpack/char_4009_irene.ab",
+      "pathId": 5107911078946368835,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_400_weedy": {
+      "bundle": "charpack/char_400_weedy.ab",
+      "pathId": -5790876563766450736,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4010_etlchi": {
+      "bundle": "charpack/char_4010_etlchi.ab",
+      "pathId": 8272212950974201806,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4011_lessng": {
+      "bundle": "charpack/char_4011_lessng.ab",
+      "pathId": 6969077661670674572,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4013_kjera": {
+      "bundle": "charpack/char_4013_kjera.ab",
+      "pathId": 8982731156359581251,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4016_kazema": {
+      "bundle": "charpack/char_4016_kazema.ab",
+      "pathId": 4047513090873591910,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4026_vulpis": {
+      "bundle": "charpack/char_4026_vulpis.ab",
+      "pathId": 6034605863204566977,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4027_heyak": {
+      "bundle": "charpack/char_4027_heyak.ab",
+      "pathId": -1173730083416502867,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4036_forcer": {
+      "bundle": "charpack/char_4036_forcer.ab",
+      "pathId": 5686647469064282123,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4037_demetr": {
+      "bundle": "charpack/char_4037_demetr.ab",
+      "pathId": 1749412653319366880,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4039_horn": {
+      "bundle": "charpack/char_4039_horn.ab",
+      "pathId": -2474691905021035645,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4040_rockr": {
+      "bundle": "charpack/char_4040_rockr.ab",
+      "pathId": 3113314275311682790,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4042_lumen": {
+      "bundle": "charpack/char_4042_lumen.ab",
+      "pathId": -3484806662802856248,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4046_ebnhlz": {
+      "bundle": "charpack/char_4046_ebnhlz.ab",
+      "pathId": -4516876467234459788,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4048_doroth": {
+      "bundle": "charpack/char_4048_doroth.ab",
+      "pathId": -6482034740234643975,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4051_akkord": {
+      "bundle": "charpack/char_4051_akkord.ab",
+      "pathId": 7660873831520007907,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4054_malist": {
+      "bundle": "charpack/char_4054_malist.ab",
+      "pathId": 4487698420425838140,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4055_bgsnow": {
+      "bundle": "charpack/char_4055_bgsnow.ab",
+      "pathId": 3837039821894941499,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4056_titi": {
+      "bundle": "charpack/char_4056_titi.ab",
+      "pathId": -5755376895993170646,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4058_pepe": {
+      "bundle": "charpack/char_4058_pepe.ab",
+      "pathId": -2223591726639546788,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4064_mlynar": {
+      "bundle": "charpack/char_4064_mlynar.ab",
+      "pathId": -2884588080059584221,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4065_judge": {
+      "bundle": "charpack/char_4065_judge.ab",
+      "pathId": -672035780863607523,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4072_ironmn": {
+      "bundle": "charpack/char_4072_ironmn.ab",
+      "pathId": 239598766754423195,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4079_haini": {
+      "bundle": "charpack/char_4079_haini.ab",
+      "pathId": 6320629679625034829,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4080_lin": {
+      "bundle": "charpack/char_4080_lin.ab",
+      "pathId": -7094793000922053507,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4082_qiubai": {
+      "bundle": "charpack/char_4082_qiubai.ab",
+      "pathId": -3775119981832163020,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4087_ines": {
+      "bundle": "charpack/char_4087_ines.ab",
+      "pathId": 3379574174479220613,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4088_hodrer": {
+      "bundle": "charpack/char_4088_hodrer.ab",
+      "pathId": 1108878109874433460,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4098_vvana": {
+      "bundle": "charpack/char_4098_vvana.ab",
+      "pathId": -8970619088159085093,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4100_caper": {
+      "bundle": "charpack/char_4100_caper.ab",
+      "pathId": 1160274191562471525,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4114_harold": {
+      "bundle": "charpack/char_4114_harold.ab",
+      "pathId": -7813329591729645330,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4116_blkkgt": {
+      "bundle": "charpack/char_4116_blkkgt.ab",
+      "pathId": -86810357615539718,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4117_ray": {
+      "bundle": "charpack/char_4117_ray.ab",
+      "pathId": 1493180137579191050,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4121_zuole": {
+      "bundle": "charpack/char_4121_zuole.ab",
+      "pathId": -8909113756186521822,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4122_grabds": {
+      "bundle": "charpack/char_4122_grabds.ab",
+      "pathId": -8345049834443201654,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4132_ascln": {
+      "bundle": "charpack/char_4132_ascln.ab",
+      "pathId": -8758193365351304428,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4133_logos": {
+      "bundle": "charpack/char_4133_logos.ab",
+      "pathId": -7559563096521402933,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4134_cetsyr": {
+      "bundle": "charpack/char_4134_cetsyr.ab",
+      "pathId": 1493490605794099418,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4137_udflow": {
+      "bundle": "charpack/char_4137_udflow.ab",
+      "pathId": 2959962011213060842,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4138_narant": {
+      "bundle": "charpack/char_4138_narant.ab",
+      "pathId": 3044932452929399406,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4139_papyrs": {
+      "bundle": "charpack/char_4139_papyrs.ab",
+      "pathId": 399770964133917448,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4145_ulpia": {
+      "bundle": "charpack/char_4145_ulpia.ab",
+      "pathId": -320561100469243426,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4146_nymph": {
+      "bundle": "charpack/char_4146_nymph.ab",
+      "pathId": 1315311228480272941,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4148_philae": {
+      "bundle": "charpack/char_4148_philae.ab",
+      "pathId": -4840271918879743525,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4151_tinman": {
+      "bundle": "charpack/char_4151_tinman.ab",
+      "pathId": -2374285412544882766,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4162_cathy": {
+      "bundle": "charpack/char_4162_cathy.ab",
+      "pathId": -5806393750269576594,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4163_rosesa": {
+      "bundle": "charpack/char_4163_rosesa.ab",
+      "pathId": -4597453197356615046,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_416_zumama": {
+      "bundle": "charpack/char_416_zumama.ab",
+      "pathId": 3388762314351863763,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4179_monstr": {
+      "bundle": "charpack/char_4179_monstr.ab",
+      "pathId": 1480001912937277416,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4191_tippi": {
+      "bundle": "charpack/char_4191_tippi.ab",
+      "pathId": 6874620698869221580,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4193_lemuen": {
+      "bundle": "charpack/char_4193_lemuen.ab",
+      "pathId": -1531341846275761637,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4194_rmixer": {
+      "bundle": "charpack/char_4194_rmixer.ab",
+      "pathId": 5714447133063016408,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4195_radian": {
+      "bundle": "charpack/char_4195_radian.ab",
+      "pathId": 7700492725596810555,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4196_reckpr": {
+      "bundle": "charpack/char_4196_reckpr.ab",
+      "pathId": 7425522614260621,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4202_haruka": {
+      "bundle": "charpack/char_4202_haruka.ab",
+      "pathId": -7495416644204409324,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4204_mantra": {
+      "bundle": "charpack/char_4204_mantra.ab",
+      "pathId": 7422413533458203550,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4207_branch": {
+      "bundle": "charpack/char_4207_branch.ab",
+      "pathId": 6497422275200480538,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_420_flamtl": {
+      "bundle": "charpack/char_420_flamtl.ab",
+      "pathId": -8777793813818353628,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4211_snhunt": {
+      "bundle": "charpack/char_4211_snhunt.ab",
+      "pathId": 4770463335279255669,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4212_nasti": {
+      "bundle": "charpack/char_4212_nasti.ab",
+      "pathId": -186450030728597161,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4226_veen": {
+      "bundle": "charpack/char_4226_veen.ab",
+      "pathId": -8794688158254185636,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4228_closur": {
+      "bundle": "charpack/char_4228_closur.ab",
+      "pathId": -5629892074974294510,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4229_aphris": {
+      "bundle": "charpack/char_4229_aphris.ab",
+      "pathId": -7422000034470305698,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4230_mcnist": {
+      "bundle": "charpack/char_4230_mcnist.ab",
+      "pathId": -169268309489610280,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_4235_thumpy": {
+      "bundle": "charpack/char_4235_thumpy.ab",
+      "pathId": -1145086291429996927,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_423_blemsh": {
+      "bundle": "charpack/char_423_blemsh.ab",
+      "pathId": 3660888048280096046,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_426_billro": {
+      "bundle": "charpack/char_426_billro.ab",
+      "pathId": -4699224431073656911,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_427_vigil": {
+      "bundle": "charpack/char_427_vigil.ab",
+      "pathId": 6634761913213287225,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_430_fartth": {
+      "bundle": "charpack/char_430_fartth.ab",
+      "pathId": -7477592977976687981,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_431_ashlok": {
+      "bundle": "charpack/char_431_ashlok.ab",
+      "pathId": 864796955632595997,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_437_mizuki": {
+      "bundle": "charpack/char_437_mizuki.ab",
+      "pathId": -1719253384787081140,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_440_pinecn": {
+      "bundle": "charpack/char_440_pinecn.ab",
+      "pathId": 1624723102911468377,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_446_aroma": {
+      "bundle": "charpack/char_446_aroma.ab",
+      "pathId": 7121370526030941379,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_450_necras": {
+      "bundle": "charpack/char_450_necras.ab",
+      "pathId": -2895655202277410724,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_469_indigo": {
+      "bundle": "charpack/char_469_indigo.ab",
+      "pathId": 3181639632952176130,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_472_pasngr": {
+      "bundle": "charpack/char_472_pasngr.ab",
+      "pathId": 3734401255625043445,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_474_glady": {
+      "bundle": "charpack/char_474_glady.ab",
+      "pathId": -7160035173357079821,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_479_sleach": {
+      "bundle": "charpack/char_479_sleach.ab",
+      "pathId": 6654351300150231925,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_485_pallas": {
+      "bundle": "charpack/char_485_pallas.ab",
+      "pathId": -6160245203358764180,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_491_humus": {
+      "bundle": "charpack/char_491_humus.ab",
+      "pathId": -8708091353534809690,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_494_vendla": {
+      "bundle": "charpack/char_494_vendla.ab",
+      "pathId": -5727053032967838823,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_496_wildmn": {
+      "bundle": "charpack/char_496_wildmn.ab",
+      "pathId": 2174730060211031599,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 1.0,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_498_inside": {
+      "bundle": "charpack/char_498_inside.ab",
+      "pathId": 7217383999026170720,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_600_cpione": {
+      "bundle": "charpack/char_600_cpione.ab",
+      "pathId": 2898935205657290854,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_601_cguard": {
+      "bundle": "charpack/char_601_cguard.ab",
+      "pathId": -2915814513814810713,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_602_cdfend": {
+      "bundle": "charpack/char_602_cdfend.ab",
+      "pathId": 6592156908031776809,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_603_csnipe": {
+      "bundle": "charpack/char_603_csnipe.ab",
+      "pathId": -3837661016881047854,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_604_ccast": {
+      "bundle": "charpack/char_604_ccast.ab",
+      "pathId": -4094288725989823000,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_605_cmedic": {
+      "bundle": "charpack/char_605_cmedic.ab",
+      "pathId": -2327354579210017475,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_606_csuppo": {
+      "bundle": "charpack/char_606_csuppo.ab",
+      "pathId": -7733575294769210273,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_607_cspec": {
+      "bundle": "charpack/char_607_cspec.ab",
+      "pathId": -7995154962261268963,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_608_acpion": {
+      "bundle": "charpack/char_608_acpion.ab",
+      "pathId": -5632916298302872981,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_609_acguad": {
+      "bundle": "charpack/char_609_acguad.ab",
+      "pathId": -680675362654787100,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_610_acfend": {
+      "bundle": "charpack/char_610_acfend.ab",
+      "pathId": 539103944050200373,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_611_acnipe": {
+      "bundle": "charpack/char_611_acnipe.ab",
+      "pathId": 6605993106592068857,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_612_accast": {
+      "bundle": "charpack/char_612_accast.ab",
+      "pathId": 2822177582054771142,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_613_acmedc": {
+      "bundle": "charpack/char_613_acmedc.ab",
+      "pathId": 8401193408845852374,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_614_acsupo": {
+      "bundle": "charpack/char_614_acsupo.ab",
+      "pathId": 1577686402150072323,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_615_acspec": {
+      "bundle": "charpack/char_615_acspec.ab",
+      "pathId": 1667670185580949016,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_616_pithst": {
+      "bundle": "charpack/char_616_pithst.ab",
+      "pathId": -4419741630716764481,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    },
+    "char_617_sharp2": {
+      "bundle": "charpack/char_617_sharp2.ab",
+      "pathId": -72617121663785406,
+      "occupiedRemainingCharacterCnt": 1,
+      "withdrawCostRecoverRatio": 0.5,
+      "maxWithdrawCostRatioOfRawCost": 1.0
+    }
+  },
+  "deploySlotOverrides": {
+    "token_10020_ling_soul3": {
+      "state": "lingAdvanced",
+      "volume": 2,
+      "sourceTemplates": [
+        "ling_soul3_evolution[self]",
+        "ling_soul3_evolution[another]"
+      ]
+    }
+  },
+  "moduleWithdrawPolicy": {
+    "dontLimitMaxWithdrawCost": true,
+    "sourceTemplates": [
+      "bpipe_e_trait[gaincost]",
+      "wildmn_e_trait[gaincost]",
+      "grani_e_trait[gaincost]",
+      "sddrag_e_trait[gaincost]",
+      "vigna_e_trait[gaincost]",
+      "phatom_e_trait",
+      "gravel_e_trait",
+      "waaifu_e_trait"
+    ]
+  }
+}

@@ -84,7 +84,7 @@ function initialPrep(h) {
   h.toPrep(1);
 }
 
-function realSoloAuthority(t) {
+async function realSoloAuthority(t) {
   const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', humans: 1, spectators,
     instant: false, clientCombat: true, pace: 'paced', captureFrames: false });
   try {
@@ -108,7 +108,7 @@ function realSoloAuthority(t) {
     m.startFinalAssault(false);
     const f = m.fields[0];
     const max = m.bossPool.maxHp;
-    assert.equal(max, Math.round(DATA.bosses.boss_1.bloodPoint.FUNNY * 0.25));
+    assert.equal(max, DATA.bosses.boss_1.bloodPoint.FUNNY, 'solo keeps one full bloodPoint share');
     assert.equal(f.authority, 'p_0');
     const client = h.clients.get('p_0');
     assert.ok(h.run(() => {
@@ -129,7 +129,7 @@ function realSoloAuthority(t) {
     assert.ok(dealt > 0);
     assert.equal(local.sharedBoss.hp, 0);
     assert.ok(h.run(() => m.phase !== 'FINAL_ASSAULT', { maxSteps: 4000 }));
-    const result = h.runToEnd({ maxSteps: 4000 });
+    const result = (await h.runToEnd({ maxSteps: 4000 }));
     h.sched.advance(1000);
     const outgoing = client.log.filter((msg) => msg.battleId === f.battleId);
     assert.ok(outgoing.some((msg) => msg.t === 'b.progress' && msg.bossDmg > 0));
@@ -152,9 +152,9 @@ function realSoloAuthority(t) {
   } finally { h.clients.closeAll(); h.m.dispose(); }
 }
 
-test('版本：Emi修改#34，APP仍为0.1.3', () => {
-  assert.equal(APP_VERSION, '0.1.3');
-  assert.equal(EMI_BUILD, 'Emi修改#34');
+test('工作副本版本：0.2.1 / Emi修改#41（不冒充mod版本）', () => {
+  assert.equal(APP_VERSION, '0.2.1');
+  assert.equal(EMI_BUILD, 'Emi修改#41');
 });
 
 for (const mode of ['solo', 'coop']) for (const difficulty of difficulties) {
@@ -166,7 +166,7 @@ for (const mode of ['solo', 'coop']) for (const difficulty of difficulties) {
     for (const [id, boss] of Object.entries(DATA.bosses)) {
       const hp = [];
       for (let alive = 1; alive <= 4; alive++) {
-        const share = mode === 'solo' ? 0.25 * alive : 1;
+        const share = mode === 'solo' ? 1 : alive;
         const want = Math.max(1, Math.round(boss.bloodPoint[difficulty] * share));
         assert.equal(gd.bossPoolShare(alive), share);
         assert.equal(gd.bossPoolHp(id, alive), want);
@@ -273,7 +273,7 @@ for (const mode of ['solo', 'coop']) for (const alive of [1, 2, 3, 4]) {
         m.teamLp = 100;
         m.startFinalAssault(hidden);
         const id = hidden ? m.hiddenBossId : m.bossId;
-        const want = Math.round(DATA.bosses[id].bloodPoint.HARD * (mode === 'solo' ? 0.25 * alive : 1));
+        const want = Math.round(DATA.bosses[id].bloodPoint.HARD * (mode === 'solo' ? 1 : alive));
         assert.equal(m.alivePlayers().length, alive);
         assert.equal(m.bossPool.maxHp, want);
         assert.equal(m.fields.flatMap((f) => f.players).length, alive);
@@ -296,7 +296,7 @@ for (const mode of ['solo', 'coop']) for (const alive of [1, 2, 3, 4]) {
   });
 }
 
-test('同盟开局1/2/3：真实Boss阶段为四人份；既有可选aliveScaling分支保留', (t) => {
+test('同盟开局1/2/3：Boss按开战存活人数；显式关闭perPlayer时保留aliveScaling分支', (t) => {
   const rows = [];
   for (const humans of [1, 2, 3]) {
     const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans, spectators, fake: true, instant: false, clientCombat: true, clients: false });
@@ -306,28 +306,28 @@ test('同盟开局1/2/3：真实Boss阶段为四人份；既有可选aliveScalin
       m.round = m.gd.bossRound; m.bossId = 'boss_1';
       m.startFinalAssault(false);
       const base = DATA.bosses.boss_1.bloodPoint.NORMAL;
-      assert.equal(m.bossPool.maxHp, base);
-      assert.equal(m.bossPool.maxHp / (base / 4), 4);
-      rows.push({ initial: humans, hp: m.bossPool.maxHp, singleShareMultiplier: 4 });
+      assert.equal(m.bossPool.maxHp, base * humans);
+      assert.equal(m.bossPool.maxHp / base, humans);
+      rows.push({ initial: humans, hp: m.bossPool.maxHp, singleShareMultiplier: humans });
     } finally { h.m.dispose(); }
   }
   const gd = new GameData(DATA, 'mode_multi_hard');
-  gd.mode = { ...gd.mode, bossHpScale: { ...gd.mode.bossHpScale, aliveScaling: true } };
+  gd.mode = { ...gd.mode, bossHpScale: { ...gd.mode.bossHpScale, perPlayer: false, aliveScaling: true } };
   for (const alive of [1, 2, 3, 4]) assert.equal(gd.bossPoolShare(alive), alive / 4);
   observe(t, { check: 'coopShortStartAndOptionalScaling', rows });
 });
 
-test('无GameData倍率接口时独立fallback同样乘存活人数；省略人数仍为单人份', () => {
+test('无GameData倍率接口时独立fallback保持单人一份，不因冗余人数改变单人规则', () => {
   const gd = new GameData(DATA, 'mode_single_hard');
   const base = DATA.bosses.boss_1.bloodPoint.HARD;
-  assert.equal(gd.bossPoolHp('boss_1'), base / 4);
+  assert.equal(gd.bossPoolHp('boss_1'), base);
   gd.bossPoolShare = undefined;
-  for (const alive of [1, 2, 3, 4]) assert.equal(bossPoolHp(gd, 'boss_1', alive), base / 4 * alive);
-  assert.equal(bossPoolHp(gd, 'boss_1'), base / 4);
+  for (const alive of [1, 2, 3, 4]) assert.equal(bossPoolHp(gd, 'boss_1', alive), base);
+  assert.equal(bossPoolHp(gd, 'boss_1'), base);
 });
 
 for (const mode of ['solo', 'coop']) {
-  test(`${mode}客户端真实计账通道：清空血池，胜利且不重复记伤`, (t) => {
+  test(`${mode}客户端真实计账通道：清空血池，胜利且不重复记伤`, async (t) => {
     const h = makeMatch({ mode, difficulty: 'FUNNY', humans: 3, spectators, fake: true, instant: false, clientCombat: true,
       script: (b) => b.kind === 'boss' ? { bossDps: 1000000 } : { duration: 2 } });
     try {
@@ -340,13 +340,13 @@ for (const mode of ['solo', 'coop']) {
       assert.equal(m.bossPool.hp, 0);
       assert.equal(m._finalEnding, 'cleared');
       assert.equal([...m.bossPool.byPlayer.values()].reduce((a, b) => a + b, 0), max);
-      assert.equal(h.runToEnd().victory, true);
+      assert.equal((await h.runToEnd()).victory, true);
       assert.equal(m.errorCount, 0);
       const fields = m.fields.map((f) => ({ fieldId: f.fieldId, battleId: f.battleId, authority: f.authority }));
       assert.ok([...h.clients.values()].some((client) => client.log.some((msg) => msg.t === 'b.progress' && msg.bossDmg > 0)));
       observe(t, { check: 'clientCreditVictory', mode, alive: 3, max, finalHp: 0, fields });
     } finally { h.clients.closeAll(); h.m.dispose(); }
-    if (mode === 'solo') realSoloAuthority(t);
+    if (mode === 'solo') (await realSoloAuthority(t));
   });
 }
 
@@ -359,33 +359,42 @@ test('服务端接管CreditPool保留已确认伤害去重', () => {
   assert.equal(pool.hp, 860);
 });
 
-test('少人补分完整保留：1/2/3/4人权重1.3/1.2/1.1/1.0及失败、死亡、跳段', (t) => {
+test('开局人数补偿：胜利30/20/10/0，失败21/14/7/0抵剩余扣分，表现门槛9/11回合', (t) => {
   let cases = 0;
   const examples = [];
   for (const difficulty of ['NORMAL', 'HARD', 'ABYSS']) for (const pointsBefore of [600, 1000, 1500, 2300]) {
-    for (const humanCount of [1, 2, 3, 4]) for (const mmr of [500, 1000, 1800]) {
-      const input = { difficulty, pointsBefore, humanCount, mmr, win: true, alive: true, roundsPassed: 14, layers: 240, assists: 4, hiddenCleared: true, dominantStreakBefore: 1 };
-      const base = pointsBefore < 900 ? 100 : pointsBefore < 1200 ? 70 : pointsBefore < 2100 ? 60 : 48;
-      const mult = { NORMAL: 0.55, HARD: 1, ABYSS: 1.45 }[difficulty];
-      const perf = Math.min(1.15, 0.75 + 0.015 * 14 + 0.0004 * 240 + 0.02 * 4 + 0.05);
-      const mmrMult = Math.min(1.15, Math.max(0.85, 1 + (mmr - 1000) / 6666));
-      const comp = 1 + 0.1 * (4 - humanCount);
-      const weight = base * mult * perf * mmrMult * comp;
-      const skipBonus = difficulty === 'NORMAL' ? 0 : 100;
+    for (const startingParticipantCount of [1, 2, 3, 4]) for (const mmr of [500, 1000, 1800]) {
+      const input = { difficulty, pointsBefore, startingParticipantCount, mmr, win: true, alive: true, roundsPassed: 14,
+        rankedDamage: 20_000_000, bossDamage: 250_000, rankedPerfectRounds: 14, layers: 240, assists: 4, dominantStreakBefore: 1 };
+      const budget = { NORMAL: 25, HARD: 40, ABYSS: 50 }[difficulty];
+      const score = Math.round(budget * (0.35 * 14 / 15 + 0.32 + 0.12 + 0.08 * 240 / 999 + 0.08 * 14 / 15 + 0.05 * 4 / 10));
+      const shortage = 10 * (4 - startingParticipantCount);
+      const skipBonus = difficulty === 'NORMAL' ? 0 : 50;
       const actual = rankDelta(input);
-      assert.deepEqual(actual, { delta: Math.round(50 * weight / (weight + 60)) + skipBonus, kind: 'win', skipBonus });
-      const loss = pointsBefore >= 2100 ? -Math.round({ NORMAL: 55, HARD: 40, ABYSS: 30 }[difficulty] * 1.1) : 0;
-      assert.deepEqual(rankDelta({ ...input, win: false }), { delta: loss, kind: 'lossSurvived', skipBonus: 0 });
-      assert.deepEqual(rankDelta({ ...input, alive: false }), { delta: loss, kind: 'lossSurvived', skipBonus: 0 });
-      assert.deepEqual(rankDelta({ ...input, roundsPassed: 8 }), { delta: loss, kind: 'earlyDeath', skipBonus: 0 });
+      assert.equal(actual.kind, 'win');
+      assert.equal(actual.calculatedPerformance, score);
+      assert.equal(actual.shortageBonus, shortage);
+      assert.equal(actual.skipBonus, skipBonus);
+      assert.equal(actual.delta, score + shortage + skipBonus);
+      const loss = pointsBefore >= 2100 ? Math.max(30, Math.round({ NORMAL: 55, HARD: 40, ABYSS: 30 }[difficulty] * 1.1)) : 0;
+      for (const extra of [{ win: false }, { alive: false }, { roundsPassed: 8 }]) {
+        const r = rankDelta({ ...input, ...extra });
+        const perf = extra.roundsPassed === 8 ? 0 : score;
+        assert.equal(r.kind, extra.roundsPassed === 8 ? 'earlyDeath' : 'lossSurvived');
+        assert.equal(r.actualLoss, loss);
+        assert.equal(r.appliedPerformance, perf);
+        assert.equal(r.shortageBonus, Math.min(Math.max(0, loss - perf), shortage * 0.7));
+        assert.equal(r.skipBonus, 0);
+        assert.equal(r.delta, perf + r.shortageBonus - loss);
+      }
       cases += 4;
-      if (difficulty === 'HARD' && pointsBefore === 1500 && mmr === 1000) examples.push({ humanCount, comp, delta: actual.delta, skipBonus });
+      if (difficulty === 'HARD' && pointsBefore === 1500 && mmr === 1000) examples.push({ startingParticipantCount, delta: actual.delta, skipBonus });
     }
   }
   observe(t, { check: 'rankFormula', cases, examples });
 });
 
-test('真实排位结算：观众/机器人不计数，死亡真人计数，离开及全离开回退保留，store file:null', (t) => {
+test('真实排位结算：观众不计数、机器人计入开局人数，死亡或离开真人保留开局人数，store file:null', async (t) => {
   const observed = [];
   for (const humans of [1, 2, 3, 4]) for (const leftCount of [0, humans]) {
     const h = makeMatch({ mode: 'coop', difficulty: 'HARD', humans, bots: 4 - humans, spectators });
@@ -405,10 +414,10 @@ test('真实排位结算：观众/机器人不计数，死亡真人计数，离�
       }
       const counts = [];
       const settle = store.settleMatch.bind(store);
-      store.settleMatch = (who, ctx, perf) => { counts.push(ctx.humanCount); return settle(who, ctx, perf); };
+      store.settleMatch = (who, ctx, perf) => { counts.push(ctx.startingParticipantCount); return settle(who, ctx, perf); };
       const result = { players: rows };
-      m._settleRanked(result);
-      assert.deepEqual(counts, Array(humans).fill(humans));
+      await m._settleRanked(result);
+      assert.deepEqual(counts, Array(humans).fill(4), 'starting seats include the AI participants, never spectators');
       assert.equal(store.file, null);
       assert.equal(store.size, humans);
       assert.ok(result.players.every((r) => r.rank));
@@ -423,9 +432,9 @@ test('真实排位结算：观众/机器人不计数，死亡真人计数，离�
     h.ps('p_0').aid = 'isolated_partial';
     let count;
     const settle = store.settleMatch.bind(store);
-    store.settleMatch = (who, ctx, perf) => { count = ctx.humanCount; return settle(who, ctx, perf); };
-    m._settleRanked({ players: [{ playerId: 'p_0', roundsPassed: 14, stats: {} }] });
-    assert.equal(count, 2);
+    store.settleMatch = (who, ctx, perf) => { count = ctx.startingParticipantCount; return settle(who, ctx, perf); };
+    await m._settleRanked({ players: [{ playerId: 'p_0', roundsPassed: 14, stats: {} }] });
+    assert.equal(count, 3, 'leaving does not change the starting participant count');
     observed.push({ humans: 3, leftCount: 1, deadButPresent: 1, count });
   } finally { h.m.dispose(); }
   observe(t, { check: 'rankedSettlementCounting', storeFile: null, observed });

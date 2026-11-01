@@ -31,7 +31,7 @@
 //   syntheticResult(players, progress)     stand-in when a boss field's client never reported
 import { TICK, SNAPSHOT_EVERY } from '../sim/constants.js';
 import { markSend } from '../sendMetadata.js';
-import { layerGainRoom } from '../../shared/constants.js';
+import { layerGainRoom, canStackBond } from '../../shared/constants.js';
 import { uniteLeft } from '../sim/spec.js';
 import { GRANTED_CAP_OVERRIDE } from '../sim/content/garrisons/battle.js';
 
@@ -494,6 +494,9 @@ function derivedKeys(gd, key) {
     try { text = JSON.stringify(rec); } catch { text = ''; }
     for (const k of text.match(ENEMY_KEY_RE) || []) if (k !== key && gd.enemy(k)) out.add(k);
   }
+  // Lucian's blink summons are scripted in content/bosses.js rather than named in his data record.
+  // Reuse the existing finite derived-enemy budget; ordinary enemies still cannot exceed their total.
+  if (key === 'enemy_2016_csphtm' && gd.enemy('enemy_2017_csphts')) out.add('enemy_2017_csphts');
   const list = [...out];
   m.set(key, list);
   return list;
@@ -773,7 +776,7 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       return true;
     };
     const takeSource = (key, src) => takeFrom(sourceLeft, key, src);
-    // a content-spawned enemy (split, summon): billed only to a leaker who sent in a parent, within its offspring bound
+    // A split/summon retains its source and offspring bound, but is not a scheduled LP charge.
     const takeDerived = (key, src) => B.derived.has(key) && takeFrom(derivedLeft, key, src);
     let coinsSum = 0, cyclopsCoinsAllowance = 0;
     const perPlayer = {};
@@ -812,14 +815,19 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         const modsOf = (s) => (s && s.mods ? { ...s.mods } : null);
         const mods = match ? modsOf(match) : parent ? modsOf(parent) : modsOf(src);
         let sourcePlayerId = typeof l.sourcePlayerId === 'string' ? l.sourcePlayerId : null;
+        let uniteRuntime = false;
         if (spec.kind === 'unite') {
           if (!sourcePlayerId || !B.sources.has(sourcePlayerId)) sourcePlayerId = src && typeof src.sourcePlayerId === 'string' ? src.sourcePlayerId : null;
           // whose LP a surviving enemy costs: never more of (key, leaker) than that leaker sent into the 联防 — or, for a
           // split / summon, than the enemies that leaker sent in can leave behind
-          if (!takeSource(key, sourcePlayerId) && !takeDerived(key, sourcePlayerId)) return bad('leak source');
+          if (!takeSource(key, sourcePlayerId)) {
+            if (!takeDerived(key, sourcePlayerId)) return bad('leak source');
+            uniteRuntime = true;
+          }
         } else if (sourcePlayerId !== pid && !B.players.has(sourcePlayerId)) sourcePlayerId = pid;
         const lpr = finiteIn(l.lpr, 0, 1000) ? l.lpr : 1;
         const e = { enemyKey: key, mods, lpr, sourcePlayerId, tag: src ? (src.tag ?? null) : (typeof l.tag === 'string' ? l.tag : null), counted, spawned: true };
+        if (uniteRuntime) e.uniteRuntime = true;
         e.rankedHpRatio = finiteIn(l.rankedHpRatio, 0, 1) ? l.rankedHpRatio : 0;
         if (l.boss) e.boss = true;
         leaked.push(e);
@@ -829,6 +837,7 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       if (typeof p.perfect !== 'boolean' || p.perfect !== (countedLeaks === 0)) return bad('perfect');
       const layerGains = {};
       for (const [bondId, n] of Object.entries(p.layerGains || {})) {
+        if (n > 0 && !canStackBond(bondId)) return bad('non-stacking bond');
         // Per-battle and trait allowances apply in every mode; only endless bypasses the total-layer ceiling.
         const cap = spec.flags?.uncappedBondLayers ? Infinity : undefined;
         const bound = Math.min(B.layerCap + (own.layerAllow.get(bondId) || 0), layerGainRoom(own.startLayers.get(bondId) || 0, Infinity, cap));

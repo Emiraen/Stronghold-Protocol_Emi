@@ -88,7 +88,7 @@ test('layout planner: legal distinct tiles; blockers on the enemy road, ranged u
   m.dispose();
 });
 
-test('rehearsal: candidate layouts are simulated without side effects; the chosen plan is one of them', () => {
+test('rehearsal: candidate layouts are simulated without side effects; the chosen plan is one of them', async () => {
   const h = soloBot({ seed: 4, botRehearsal: 3 }).start();
   const m = h.m;
   h.run(() => m.phase === PHASE.PREP && m.round === 3);
@@ -104,13 +104,13 @@ test('rehearsal: candidate layouts are simulated without side effects; the chose
   assert.equal(m.errorCount, 0);
   checkInvariants(m);
   // the whole match still runs deterministically with rehearsal on
-  const run = () => { const x = soloBot({ seed: 11, botRehearsal: 3, difficulty: 'FUNNY' }).start(); return JSON.stringify({ ...x.runToEnd(), durationMs: 0 }); };
-  assert.equal(run(), run());
+  const run = async () => { const x = soloBot({ seed: 11, botRehearsal: 3, difficulty: 'FUNNY' }).start(); return JSON.stringify({ ...(await x.runToEnd()), durationMs: 0, matchId: '<session>' }); };
+  assert.equal((await run()), (await run()));
   m.dispose();
 });
 
-test('rehearsal runs in bounded slices between scheduler callbacks and plays exactly like the one-shot run', () => {
-  const run = (botSliceMs) => {
+test('rehearsal runs in bounded slices between scheduler callbacks and plays exactly like the one-shot run', async () => {
+  const run = async (botSliceMs) => {
     const h = soloBot({ seed: 11, botRehearsal: 3, difficulty: 'FUNNY', botSliceMs }).start();
     const m = h.m;
     /** scheduler callback → rehearsal ticks stepped in it */
@@ -124,13 +124,13 @@ test('rehearsal runs in bounded slices between scheduler callbacks and plays exa
       }
       return b;
     };
-    const end = h.runToEnd();
+    const end = (await h.runToEnd());
     assert.equal(m.errorCount, 0);
     m.dispose();
-    return { result: JSON.stringify({ ...end, durationMs: 0 }), perCallback };
+    return { result: JSON.stringify({ ...end, durationMs: 0, matchId: '<session>' }), perCallback };
   };
-  const whole = run(undefined);
-  const sliced = run(1e-6);
+  const whole = (await run(undefined));
+  const sliced = (await run(1e-6));
   assert.ok(whole.perCallback.size > 0, 'sanity: the bot rehearsed');
   assert.ok(Math.max(...whole.perCallback.values()) > 500, 'unbounded: a whole rehearsal in one callback (virtual time)');
   assert.ok(Math.max(...sliced.perCallback.values()) <= 4, `sliced: ≤ 4 ticks per callback (got ${Math.max(...sliced.perCallback.values())})`);
@@ -138,7 +138,7 @@ test('rehearsal runs in bounded slices between scheduler callbacks and plays exa
   assert.equal(sliced.result, whole.result, 'same decisions, same match');
 });
 
-test('the prep routine itself (shop, lineup, layout planning) runs in bounded slices and plays exactly like the one-shot run', () => {
+test('the prep routine itself (shop, lineup, layout planning) runs in bounded slices and plays exactly like the one-shot run', async () => {
   const seats = [0, 1].map((i) => ({ seat: i, playerId: `ai_${i}`, name: `AI${i}`, isBot: true, connected: true }));
   const run = (botSliceMs) => {
     const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', seats, seed: 13, fake: true, botRehearsal: 3, botSliceMs }).start();
@@ -166,8 +166,8 @@ test('the prep routine itself (shop, lineup, layout planning) runs in bounded sl
     m.dispose();
     return { state, perPrep: [...cbs.values()].map((s) => s.size) };
   };
-  const whole = run(undefined);
-  const sliced = run(1e-6);
+  const whole = (await run(undefined));
+  const sliced = (await run(1e-6));
   assert.ok(Math.max(...whole.perPrep) <= 1, `unbounded (virtual time): a whole prep in one callback (${whole.perPrep})`);
   assert.ok(Math.min(...sliced.perPrep) >= 3 && Math.max(...sliced.perPrep) >= 8, `sliced: every prep spread over many callbacks (${sliced.perPrep})`);
   assert.equal(sliced.state, whole.state, 'same decisions, same boards');

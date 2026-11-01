@@ -67,7 +67,7 @@
 .gtop__center--east-layout .roundbox__label { font-size: .2rem; color: #d8dcdc; letter-spacing: .1em; }
 .gtop__center--east-layout .roundbox__num { min-width: .48rem; height: .34rem; padding: 0 .07rem; font-size: .28rem; background: #cfd3d3; color: #121516; border-radius: .03rem; clip-path: none; }
 .gtop__center--east-layout .lp--lg { font-size: .32rem; gap: .03rem; }
-.gtop__center--east-layout .lp--lg:not(.lp--danger):not(.lp--team) .lp__val { color: #eef2f2; }
+.gtop__center--east-layout .lp--lg:not(.lp--danger):not(.lp--team):not(.is-pending) .lp__val { color: #eef2f2; }
 .gtop__center--east-layout .lp--lg .lp__icon { width: .34rem; height: .34rem; }
 .gtop__cap { position: relative; z-index: 2; display: flex; padding: .08rem .13rem; }
 .gtop__cap::before, .gtop__cap::after { content: ''; position: absolute; pointer-events: none;

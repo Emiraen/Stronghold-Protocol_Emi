@@ -1,3 +1,10 @@
+import { checkZhajingLoadout } from '../shared/zhajing-loadout.js';
+import { ZHAJING_VARIANT, ZHAJING_DIFFICULTY, ZHAJING_CAPACITIES } from '../shared/zhajing-constants.js';
+import { Match as ZhajingMatch, getZhajingData } from './modes/zhajing/Match.js';
+import { MIZUKI_VARIANT, MIZUKI_MODE_ID, MIZUKI_CAPACITIES, MIZUKI_DEFAULT_SEATS } from '../shared/mizuki-constants.js';
+import { Match as MizukiMatch } from './modes/mizuki/Match.js';
+import { FriendsService } from './friends.js';
+import { ANNIHILATION_VARIANT, ANNIHILATION_CAPACITIES, EROSION_MAX } from '../shared/annihilation-constants.js';
 // server/lobby.js — rooms, seats, host, AI seats, ready/start, reconnect, and room → Match wiring
 // (DESIGN §2, §6.1 LOBBY, §8.1). Implements the handler interface consumed by server/net.js.
 //
@@ -131,10 +138,11 @@ export class Room {
   constructor(code, mode, difficulty, now, ranked = false, variant = null, capacity = ENTERTAINMENT_DEFAULT_SEATS) {
     this.code = code;
     this.mode = mode;
-    this.variant = mode === 'coop' && (variant === 'entertainment_multi' || variant === 'entertainment_cyclops' || variant === ENDLESS_VARIANT) ? variant : null;
-    this.capacity = this.variant === 'entertainment_cyclops' ? (CYCLOPS_CAPACITIES.includes(capacity) ? capacity : CYCLOPS_DEFAULT_SEATS)
+    this.variant = variant === ZHAJING_VARIANT || variant === ANNIHILATION_VARIANT ? variant : mode === 'coop' && (variant === 'entertainment_multi' || variant === 'entertainment_cyclops' || variant === ENDLESS_VARIANT || variant === MIZUKI_VARIANT) ? variant : null;
+    this.capacity = this.variant === ZHAJING_VARIANT ? (mode === 'solo' ? 1 : ZHAJING_CAPACITIES.includes(capacity) ? capacity : 4) : this.variant === MIZUKI_VARIANT ? (MIZUKI_CAPACITIES.includes(capacity) ? capacity : MIZUKI_DEFAULT_SEATS) : this.variant === ANNIHILATION_VARIANT ? (mode === 'solo' ? 1 : ANNIHILATION_CAPACITIES.includes(capacity) ? capacity : 4) : this.variant === 'entertainment_cyclops' ? (CYCLOPS_CAPACITIES.includes(capacity) ? capacity : CYCLOPS_DEFAULT_SEATS)
       : this.variant ? capacity : MAX_SEATS;
     this.difficulty = difficulty;
+    if (this.variant === MIZUKI_VARIANT) this.mizukiDifficultyGrade = 0;
     this.aiPicksLast = false;
     /** 排位意愿：跨难度保留；只有险境~终极的实际对局计分。 */
     this.ranked = !this.variant && !!ranked;
@@ -182,7 +190,7 @@ export class Room {
   activeHumans() { return this.seats.filter((s) => s && !s.isBot && !s.left); }
 
   /** `room.state` frame (DESIGN §8.1) plus `inMatch`. */
-  toState(rankedStore = null) {
+  toState(rankedStore = null, players = null) {
     return {
       t: 'room.state',
       code: this.code,
@@ -190,6 +198,8 @@ export class Room {
       hostId: this.hostId,
       mode: this.mode,
       variant: this.variant,
+      ...(this.variant === ANNIHILATION_VARIANT ? { erosion: this.erosion } : {}),
+      ...(this.variant === MIZUKI_VARIANT ? { mizukiDifficultyGrade: this.mizukiDifficultyGrade } : {}),
       capacity: this.capacity,
       difficulty: this.difficulty,
       ranked: !!this.ranked,
@@ -219,6 +229,7 @@ export class Room {
         const rank = summary?.rank;
         return {
           seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot,
+          ...(!s.isBot ? { profileId: players?.profiles.get(s.aid)?.id || null } : {}),
           card: s.card || '',
           cardSkin: s.cardSkin || '',
           ready: s.ready, connected: s.connected && !s.left,
@@ -262,6 +273,8 @@ export class Lobby {
     this.ranked = ranked || new RankedStore({ file: null, now, log });
     this.history = history || new HistoryStore({ file: null, now, log });
     this.players = players || new PlayerStore({ file: null, now, log });
+    this.friends = profiles ? null : new FriendsService({ players: this.players, ranked: this.ranked, history: this.history, now, log,
+      cardSkin: (card, presentation) => this.cardSkinFor(card, presentation?.skins, presentation?.portraits) });
     this.chat = new ChatHub({ memberSink: (frame) => {
       for (const peer of this.registry.all()) if (peer.connected) sendSession(peer, frame);
     } });
@@ -399,9 +412,13 @@ export class Lobby {
       const ops = checkedOperatorSettings(stored?.ops, data);
       loadoutResult = this.applySessionLoadout(session, freezeLoadout(checked.loadout || {}), freezeOperatorSettings(ops.ops || {}));
     }
+    const zjStored = this.players.getLoadout(session.aid, 'zhajing');
+    const zjChecked = checkZhajingLoadout(zjStored?.entries || {}, zjStored?.ops, getZhajingData());
+    this.applySessionZhajingLoadout(session, freezeLoadout(zjChecked.loadout || {}), freezeOperatorSettings(zjChecked.ops || {}));
     await this.initializePresentation(session);
     if (!active()) return;
     session.profileReady = true;
+    this.sendSpectatorNotice(session);
     this.sendRecruitment(session);
     this.sendLoadoutState(session, { locked: loadoutResult.error === ERR.WRONG_PHASE || loadoutResult.error === ERR.ROOM_STARTED });
     this.applySessionPresentation(session, this.presentationFor(session));
@@ -410,6 +427,7 @@ export class Lobby {
       sendSession(session, { t: 'rank.me', ...this.ranked.summary(session.aid, session.name, session.debugAuthorized === true),
         profileId: this.players.profiles.get(session.aid)?.id || null });
     }
+    void this.syncFriends().catch(error => this.log.error('[friends] 初始状态同步失败', error));
     // Empty chat needs no frame; preserve the existing result-replay order on reconnect.
     if (!repeat) {
       const items = this.profiles ? await this.profiles.chatHistory() : this.chat.history();
@@ -453,6 +471,21 @@ export class Lobby {
     this.resync(session, true);
   }
 
+  /** Restore only presentation frames skipped during a bounded lease recovery; never re-run login or settlement. */
+  onLeaseRecovered(session) {
+    if (!session?.connected || session.profileReady === false || this.registry.byId(session.playerId) !== session
+      || (this.profiles && !this.profiles.validSession(session))) return;
+    this.sendSpectatorNotice(session);
+    if (session.spectatorCode) {
+      if (this.spectatorRoom(session)) this.resync(session, true);
+      else this.leaveSpectator(session, true, 'ended');
+      return;
+    }
+    const room = this.roomOf(session);
+    if (!room) { this.sendPendingResult(session); return; }
+    this.sendState(room, session);
+    this.resync(session, true);
+  }
   /**
    * Validated client message from an identified session.
    * @param {import('./net.js').Session} session
@@ -509,6 +542,7 @@ export class Lobby {
         if (session.connected && session.ws === socket) sendSession(session, { t: 'rank.list', rid: msg.rid, items, radiantThreshold });
         return OK;
       }
+      case 'friends.action': return this.friendsAction(session, msg);
       case 'history.list': return this.historyList(session, msg);
       case 'history.detail': return this.historyDetail(session, msg);
       default:
@@ -535,7 +569,7 @@ export class Lobby {
 
   spectatorRoom(session) {
     const room = this.rooms.get(session.spectatorCode);
-    if (!room?.match || room.matchCtx?.matchId !== session.spectatorMatchId || !room.spectators.has(session.playerId)) {
+    if (room?.variant === MIZUKI_VARIANT || !room?.match || room.matchCtx?.matchId !== session.spectatorMatchId || !room.spectators.has(session.playerId)) {
       if (room) { room.spectators.delete(session.playerId); room.match?.removeObserver?.(session.playerId); }
       session.spectatorCode = null;
       session.spectatorMatchId = null;
@@ -544,11 +578,56 @@ export class Lobby {
     return room;
   }
 
+  /** Regional social snapshots contain only authenticated connected players; leases stay inside the bridge. */
+  friendPresence() {
+    return [...this.registry.all()].filter(session => session.connected && session.profileBound && session.profileReady !== false
+      && (!this.profiles || this.profiles.validSession(session))).map(session => {
+      const room = this.roomOf(session), live = !!room?.match && room.matchCtx?.ended !== true;
+      return { lease: session.loginLease, profileId: this.players.profiles.get(session.aid)?.id, playerId: session.playerId,
+        state: live ? 'playing' : session.spectatorCode ? 'spectating' : room ? 'room' : 'online',
+        ...(room ? { room: { code: room.code, mode: room.mode, variant: room.variant, ranked: !!room.ranked,
+          createdAt: room.createdAt,
+          capacity: room.capacity, humans: room.seats.filter(seat => seat && !seat.isBot && !seat.left).length,
+          joinable: !room.match && !room.disposed && !room.matchCandidate && room.mode === 'coop' && room.freeSeat() >= 0 && !room.test,
+          spectatable: live && !room.test && room.variant !== MIZUKI_VARIANT && typeof room.match.addObserver === 'function',
+          ...(live && room.matchCtx?.matchId ? { matchId: room.matchCtx.matchId } : {}) } } : {}) };
+    });
+  }
+
+  async syncFriends() {
+    if (this.profiles) return this.profiles.syncFriends();
+    const frames = await this.friends.sync(this.serverId, this.friendPresence().filter(row => row.profileId)
+      .map(row => ({ ...row, lease: { owner: row.playerId, generation: 0 } })));
+    for (const frame of frames) {
+      const peer = this.registry.byId(frame.lease.owner);
+      if (peer?.connected) sendSession(peer, { t: 'friends.state', ...frame.state });
+    }
+  }
+
+  async friendsAction(session, msg) {
+    const socket = session.ws, aid = session.aid;
+    if (!session.profileBound || session.profileReady === false) return fail(ERR.BAD_TARGET, '玩家档案尚未就绪，请稍后重试');
+    if (msg.action === 'invite') {
+      const room = this.roomOf(session);
+      if (!room || room.match || room.disposed || room.matchCandidate || room.test) return fail(ERR.WRONG_PHASE, '请在未开始的房间内邀请好友');
+      if (room.mode !== 'coop' || room.freeSeat() < 0) return fail(ERR.ROOM_FULL);
+    }
+    try {
+      const { t, rid, ...value } = msg;
+      if (!this.profiles) await this.syncFriends();
+      const result = this.profiles ? await this.profiles.friends(session, value) : await this.friends.action(aid, value);
+      if (session.connected && session.ws === socket && session.aid === aid
+        && (!this.profiles || this.profiles.validSession(session))) sendSession(session, { t: 'friends.result', rid, action: value.action, result });
+      void this.syncFriends().catch(error => this.log.error('[friends] 状态同步失败，将重试', error));
+      return OK;
+    } catch (err) { return fail(ERR.BAD_TARGET, err.message || '好友服务暂不可用'); }
+  }
+
   spectatorItems() {
     const items = [];
     for (const room of this.rooms.values()) {
       if (!room.match || !room.matchCtx?.live || typeof room.match.addObserver !== 'function') continue;
-      if (room.test) continue;
+      if (room.test || room.variant === MIZUKI_VARIANT) continue;
       const pub = room.match.publicView();
       if (!pub || !Array.isArray(pub.players)) continue; // Hosted matches publish their first view asynchronously.
       items.push({ serverId: this.serverId, code: room.code, matchId: room.matchCtx.matchId, mode: room.mode, variant: room.variant, difficulty: room.difficulty,
@@ -561,7 +640,9 @@ export class Lobby {
   listSpectators(session, msg) {
     const localItems = this.spectatorItems();
     const directory = this.profiles?.spectatorDirectory?.(localItems) || { items: localItems };
-    sendSession(session, { t: 'spectator.list', ...(Number.isInteger(msg.rid) ? { rid: msg.rid } : {}), ...directory });
+    const visibleDirectory = Array.isArray(directory.items)
+      ? { ...directory, items: directory.items.filter((item) => item.variant !== MIZUKI_VARIANT) } : directory;
+    sendSession(session, { t: 'spectator.list', ...(Number.isInteger(msg.rid) ? { rid: msg.rid } : {}), ...visibleDirectory });
     return OK;
   }
 
@@ -577,6 +658,7 @@ export class Lobby {
     if (this.roomOf(session)) return fail(ERR.ROOM_STARTED, '请先离开同盟再观战');
     const room = this.rooms.get(code);
     if (room?.test) return fail(ERR.TEST_CONFIRM, '测试房只允许已确认加入的成员；不发布外部观战');
+    if (room?.variant === MIZUKI_VARIANT) return fail(ERR.SPECTATOR, '水月联合探索不开放大厅观战');
     if (!room?.match || room.matchCtx?.matchId !== matchId || typeof room.match.addObserver !== 'function') return fail(ERR.BAD_TARGET, '本局已结束');
     if (room.spectators.size >= 64 && !room.spectators.has(session.playerId)) return fail(ERR.RATE);
     this.leaveSpectator(session, false);
@@ -592,12 +674,13 @@ export class Lobby {
   }
 
   leaveSpectator(session, notify = true, reason = 'left') {
+    session.spectatorNotice = null;
     clearDeferred(session.ws);
     const room = this.rooms.get(session.spectatorCode);
     if (room) { room.spectators.delete(session.playerId); room.match?.removeObserver?.(session.playerId); }
     session.spectatorCode = null;
     session.spectatorMatchId = null;
-    if (notify) sendSession(session, { t: 'spectator.closed', reason });
+    if (notify && !sendSession(session, { t: 'spectator.closed', reason })) session.spectatorNotice = reason;
     return OK;
   }
 
@@ -619,7 +702,7 @@ export class Lobby {
       const seats = room.seats.filter((seat) => seat && !seat.left)
         .map(({ seat, playerId, name, isBot }) => ({ seat, playerId, name, isBot }));
       rooms.push({ serverId: this.serverId, code, mode: room.mode, variant: room.variant,
-        modeId: room.variant === ENDLESS_VARIANT ? ENDLESS_MODE_ID : room.content?.modeId || modeIdFor(room.mode, room.difficulty),
+        modeId: room.variant === MIZUKI_VARIANT ? MIZUKI_MODE_ID : room.variant === ANNIHILATION_VARIANT ? modeIdFor(room.mode, 'ANNIHILATION') : room.variant === ENDLESS_VARIANT ? ENDLESS_MODE_ID : room.content?.modeId || modeIdFor(room.mode, room.difficulty),
         // 跨服公开目录遵守固定字段契约；插件内容身份由入房后的 room.state 传递。
         difficulty: room.difficulty,
         ranked: !!room.ranked, hostId: room.hostId,
@@ -999,6 +1082,7 @@ export class Lobby {
   /** The session's reconnect window elapsed (already removed from the registry). */
   onExpire(session) {
     if (session.spectatorCode) this.leaveSpectator(session, false);
+    session.spectatorNotice = null;
     session.notice = null;
     session.pendingResult = null;
     this.clearResync(session.playerId);
@@ -1029,15 +1113,23 @@ export class Lobby {
   // room.* handlers
   // ---------------------------------------------------------------------------------------------------
 
-  create(session, { mode, difficulty, ranked, variant, capacity, test }) {
+  create(session, { mode, difficulty, ranked, variant, capacity, test, erosion, mizukiDifficultyGrade }) {
     if (test === true && !this.testEnabled) return fail(ERR.TEST_DISABLED);
     if (test === true && ranked === true) return fail(ERR.BAD_MSG, '测试房不能开启排位');
     const entertainment = variant === 'entertainment_multi' || variant === ENDLESS_VARIANT;
     const cyclops = variant === 'entertainment_cyclops';
-    const anyVariant = entertainment || cyclops;
-    if ((variant !== undefined && !anyVariant) || (anyVariant && (mode !== 'coop' || ranked === true))
+    const annihilation = variant === ANNIHILATION_VARIANT;
+    const mizuki = variant === MIZUKI_VARIANT;
+    const zhajing = variant === ZHAJING_VARIANT;
+    const anyVariant = entertainment || cyclops || annihilation || mizuki || zhajing;
+    if ((difficulty === ZHAJING_DIFFICULTY) !== zhajing) return fail(ERR.BAD_MSG);
+    if (mizuki && difficulty !== 'NORMAL') return fail(ERR.BAD_MSG, '水月联合探索通过N0–N18设置探索难度。');
+    if (mizukiDifficultyGrade !== undefined && (!mizuki || !Number.isInteger(mizukiDifficultyGrade)
+      || mizukiDifficultyGrade < 0 || mizukiDifficultyGrade > 18)) return fail(ERR.BAD_MSG, '水月探索难度必须为N0至N18。');
+    if ((difficulty === 'ANNIHILATION') !== annihilation || (erosion !== undefined && (!annihilation || !Number.isInteger(erosion) || erosion < 1 || erosion > EROSION_MAX))) return fail(ERR.BAD_MSG);
+    if ((variant !== undefined && !anyVariant) || (anyVariant && ((mode !== 'coop' && !annihilation && !zhajing) || ranked === true))
         || (capacity !== undefined && (!anyVariant
-          || (entertainment ? !ENTERTAINMENT_CAPACITIES.includes(capacity) : !CYCLOPS_CAPACITIES.includes(capacity))))) {
+          || (zhajing ? !ZHAJING_CAPACITIES.includes(capacity) : mizuki ? !MIZUKI_CAPACITIES.includes(capacity) : annihilation ? !ANNIHILATION_CAPACITIES.includes(capacity) : entertainment ? !ENTERTAINMENT_CAPACITIES.includes(capacity) : !CYCLOPS_CAPACITIES.includes(capacity))))) {
       return fail(ERR.BAD_MSG, '娱乐模式仅支持非排位多人同盟；原模式不可扩容');
     }
     const cur = this.roomOf(session);
@@ -1058,8 +1150,10 @@ export class Lobby {
     const roomDifficulty = variant === ENDLESS_VARIANT ? 'NORMAL' : difficulty;
     const room = new Room(code, mode, roomDifficulty, this.now(), !!ranked, variant, capacity);
     room.test = test === true;
+    if (annihilation) room.erosion = erosion ?? 1;
+    if (mizuki) room.mizukiDifficultyGrade = mizukiDifficultyGrade ?? 0;
     room.content = this.vanilla;
-    if (!ranked && variant !== ENDLESS_VARIANT) {
+    if (!ranked && !annihilation && !mizuki && !zhajing && variant !== ENDLESS_VARIANT) {
       const defaults=this.plugins?.defaults?.() || [];
       if (defaults.length) { const r=this.resolveContent(room,defaults); if (!r.error) {room.content=r.content;this.holdContent(room.content);} else this.log.warn('[plugins] default room set refused: '+r.detail); }
     }
@@ -1225,6 +1319,9 @@ export class Lobby {
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     if (room.match) return fail(ERR.ROOM_STARTED);
     this.dropReplay(room, session.playerId);
+    if (room.variant === ZHAJING_VARIANT) return fail(ERR.BAD_TARGET, '炸惊模拟使用独立规则');
+    if (room.variant === ANNIHILATION_VARIANT || difficulty === 'ANNIHILATION') return fail(ERR.BAD_TARGET, '湮灭模拟使用独立蚀流协议');
+    if (room.variant === MIZUKI_VARIANT && difficulty !== 'NORMAL') return fail(ERR.BAD_TARGET, '水月联合探索首版使用标准难度');
     if (room.variant === ENDLESS_VARIANT && difficulty !== 'NORMAL') return fail(ERR.BAD_TARGET, '无尽模式固定使用标准难度');
     if (room.difficulty !== difficulty || room.content?.modeId) {
       if (room.content?.modeId) { const c={...room.content}; delete c.modeId; room.content=Object.freeze(c); }
@@ -1242,7 +1339,7 @@ export class Lobby {
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     if (room.match) return fail(ERR.ROOM_STARTED);
     if (!room.variant
-      || (room.variant === 'entertainment_cyclops' ? !CYCLOPS_CAPACITIES.includes(capacity) : !ENTERTAINMENT_CAPACITIES.includes(capacity))) return fail(ERR.BAD_MSG);
+      || (room.variant === ZHAJING_VARIANT ? room.mode === 'solo' || !ZHAJING_CAPACITIES.includes(capacity) : room.variant === MIZUKI_VARIANT ? !MIZUKI_CAPACITIES.includes(capacity) : room.variant === ANNIHILATION_VARIANT ? room.mode === 'solo' || !ANNIHILATION_CAPACITIES.includes(capacity) : room.variant === 'entertainment_cyclops' ? !CYCLOPS_CAPACITIES.includes(capacity) : !ENTERTAINMENT_CAPACITIES.includes(capacity))) return fail(ERR.BAD_MSG);
     if (room.seats.slice(capacity).some(Boolean)) return fail(ERR.ROOM_FULL, '请先清空超出新容量的席位');
     if (capacity === room.capacity) return OK;
     this.dropReplay(room, session.playerId);
@@ -1275,6 +1372,7 @@ export class Lobby {
     if (room.match) return fail(ERR.ROOM_STARTED);
     if (room.matchFill) return fail(ERR.BAD_MSG, '匹配中请先全员同意 AI 补齐或取消匹配');
     this.dropReplay(room, session.playerId);
+    if (room.variant === MIZUKI_VARIANT) return fail(ERR.BAD_TARGET, '水月联合探索使用真人手操，首版不支持 AI 队友');
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo rooms cannot have AI teammates');
     const idx = room.freeSeat();
     if (idx < 0) return fail(ERR.ROOM_FULL);
@@ -1319,8 +1417,9 @@ export class Lobby {
     const replay = this.replayFor(room, target.playerId);
     this.removeMember(room, target.playerId);
     if (wasHere) {
-      if (kicked.connected) sendSession(kicked, { t: 'room.closed', reason: 'kicked' });
-      else { kicked.notice = 'kicked'; kicked.pendingResult = replay; }
+      if (!kicked.connected || !sendSession(kicked, { t: 'room.closed', reason: 'kicked' })) {
+        kicked.notice = 'kicked'; kicked.pendingResult = replay;
+      }
     }
     this.log.info(`[lobby] ${room.code} ${target.name} removed by the host`);
     return OK;
@@ -1339,6 +1438,7 @@ export class Lobby {
       if (s.playerId !== room.hostId && (!s.connected || !s.ready)) return fail(ERR.NOT_READY);
     }
     const bots = room.seats.filter((s) => s && s.isBot);
+    if (room.variant === MIZUKI_VARIANT && (bots.length || humans.length !== room.capacity || !MIZUKI_CAPACITIES.includes(humans.length))) return fail(ERR.NOT_READY, '水月联合探索需坐满所选的 1–4 个真人席位；可在房间设置调整人数。');
     if (humans.length < 1 || (room.mode === 'solo' && (humans.length !== 1 || bots.length > 0))) {
       return fail(ERR.BAD_MSG, 'invalid seat configuration');
     }
@@ -1453,41 +1553,63 @@ export class Lobby {
     room?.match?.setSkins?.(session.playerId, session.skins);
   }
 
-  sendLoadoutState(session, extra = {}) {
+  sendLoadoutState(session, extra = {}, scope = null) {
     const profile = this.players.profiles.get(session.aid);
     if (!profile) return;
+    if (scope === 'zhajing') {
+      const stored = this.players.getLoadout(session.aid, scope);
+      const checked = checkZhajingLoadout(stored?.entries || {}, stored?.ops, getZhajingData());
+      sendSession(session, { t: 'loadout.state', v: 1, scope, profileId: profile.id, initialized: stored !== null,
+        entries: loadoutEntriesForWire(checked.loadout || {}), ops: checked.ops || {}, locked: false, ...extra });
+      return;
+    }
     const stored = this.players.getLoadout(session.aid);
     const data = this.safeData();
     const checked = checkLoadout(stored?.entries || {}, (id) => lookup('chess', id, data));
     sendSession(session, { t: 'loadout.state', v: 1, profileId: profile.id, initialized: stored !== null,
       entries: loadoutEntriesForWire(checked.loadout || {}), ops: checkedOperatorSettings(stored?.ops, data).ops || {}, locked: false, ...extra });
+    this.sendLoadoutState(session, {}, 'zhajing');
   }
 
-  async profileLoadout(session, { v, profileId, entries, ops, editId }) {
+  async profileLoadout(session, { v, profileId, entries, ops, editId, scope }) {
     const profile = this.players.profiles.get(session.aid);
     if (!session.profileBound || !profile || v !== 1 || profile.id !== profileId) return fail(ERR.BAD_TARGET, '档案已变化');
     const data = this.safeData();
-    const checked = checkLoadout(entries, (id) => lookup('chess', id, data));
+    const z = scope === 'zhajing';
+    const previousOps = this.players.getLoadout(session.aid, scope)?.ops;
+    const checked = z ? checkZhajingLoadout(entries, ops ?? previousOps, getZhajingData())
+      : checkLoadout(entries, (id) => lookup('chess', id, data));
     if (checked.error) return fail(checked.error, checked.detail);
-    const checkedOps = checkedOperatorSettings(ops === undefined ? this.players.getLoadout(session.aid)?.ops : ops, data);
+    const checkedOps = z ? checked : checkedOperatorSettings(ops === undefined ? previousOps : ops, data);
     if (checkedOps.error) return fail(checkedOps.error, checkedOps.detail);
     const loadout = freezeLoadout(checked.loadout);
     const operatorSettings = freezeOperatorSettings(checkedOps.ops);
     const aid = session.aid;
-    try { await (this.profiles || this.players).setLoadout(aid, { v: 1, entries: loadoutEntriesForWire(loadout), ops: operatorSettings }, session); }
+    try { await (this.profiles || this.players).setLoadout(aid, { v: 1, ...(z ? { scope } : {}), entries: loadoutEntriesForWire(loadout), ops: operatorSettings }, session); }
     catch (e) { this.log.error('[players] loadout save failed', e); return fail(ERR.INTERNAL, '调配保存失败，请重试'); }
     let result = OK;
     // 包括断线但仍可恢复的会话：只替换下局配置，不改运行中的锁定快照。
     for (const peer of this.registry.all()) {
       if (!peer.profileBound || peer.aid !== aid) continue;
-      const applied = this.applySessionLoadout(peer, loadout, operatorSettings);
+      const applied = z ? this.applySessionZhajingLoadout(peer, loadout, operatorSettings) : this.applySessionLoadout(peer, loadout, operatorSettings);
       if (peer === session) result = applied;
       if (peer.connected) this.sendLoadoutState(peer, {
         editorId: session.playerId, editId,
         locked: applied.error === ERR.WRONG_PHASE || applied.error === ERR.ROOM_STARTED,
-      });
+      }, scope);
     }
     return result;
+  }
+
+  applySessionZhajingLoadout(session, loadout, ops) {
+    session.zhajingLoadout = loadout;
+    session.zhajingOps = ops;
+    const room = this.roomOf(session);
+    const seat = room?.seatOf(session.playerId);
+    if (seat) { seat.zhajingLoadout = loadout; seat.zhajingOps = ops; }
+    if (!room?.match || room.variant !== ZHAJING_VARIANT) return OK;
+    try { return room.match.setLoadout?.(session.playerId, loadout, ops) || fail(ERR.ROOM_STARTED); }
+    catch (e) { this.log.error('[lobby] zhajing setLoadout failed', e); return fail(ERR.INTERNAL); }
   }
 
   applySessionLoadout(session, loadout, ops = session.ops || {}) {
@@ -1497,7 +1619,7 @@ export class Lobby {
     if (!room) return OK;
     const seat = room.seatOf(session.playerId);
     if (seat) { seat.loadout = loadout; seat.ops = ops; }
-    if (!room.match) return OK;
+    if (!room.match || room.variant === ZHAJING_VARIANT) return OK;
     if (typeof room.match.setLoadout !== 'function') return fail(ERR.ROOM_STARTED, 'stored for the next match');
     let r;
     try {
@@ -1606,6 +1728,9 @@ export class Lobby {
       const checked = checkLoadout(this.players.getLoadout(aid)?.entries || {}, (id) => lookup('chess', id, this.safeData()));
       const ops = checkedOperatorSettings(this.players.getLoadout(aid)?.ops, this.safeData());
       const applied = this.applySessionLoadout(peer, freezeLoadout(checked.loadout || {}), freezeOperatorSettings(ops.ops || {}));
+      const stored = this.players.getLoadout(aid, 'zhajing');
+      const zj = checkZhajingLoadout(stored?.entries || {}, stored?.ops, getZhajingData());
+      this.applySessionZhajingLoadout(peer, freezeLoadout(zj.loadout || {}), freezeOperatorSettings(zj.ops || {}));
       this.applySessionPresentation(peer, this.presentationFor(peer));
       this.sendLoadoutState(peer, { locked: applied.error === ERR.WRONG_PHASE || applied.error === ERR.ROOM_STARTED });
       this.sendPresentationState(peer);
@@ -1631,7 +1756,12 @@ export class Lobby {
     if (host && !checkpoint) host.ready = true;
     const seats = seatEntries(room, checkpoint, this.registry);
     const data = this.dataFor(room);
-    if (room.modded && !checkpoint) for (const seat of seats) {
+    if (room.variant === ZHAJING_VARIANT && !checkpoint) for (const seat of seats) {
+      const checked = checkZhajingLoadout(seat.zhajingLoadout || {}, seat.zhajingOps, data);
+      seat.loadout = checked.loadout || {};
+      seat.ops = checked.ops || {};
+    }
+    if (room.modded && room.variant !== ZHAJING_VARIANT && !checkpoint) for (const seat of seats) {
       const checked=checkLoadout(Object.fromEntries(Object.entries(seat.loadout || {}).filter(([id])=>lookup('chess',id,data))), id=>lookup('chess',id,data));
       seat.loadout=checked.loadout || {};
       const own=checkNotOwned((seat.notOwned || []).filter(id=>lookup('chess',id,data)),id=>lookup('chess',id,data)); seat.notOwned=own.notOwned || [];
@@ -1647,10 +1777,29 @@ export class Lobby {
     try { seed = this.seedFn() >>> 0; } catch { seed = randomInt(2 ** 32); }
     if (checkpoint && Number.isInteger(checkpoint.seed)) seed = checkpoint.seed >>> 0;
     try {
+      const mizukiBankAccounts = room.variant === MIZUKI_VARIANT ? new Map(seats.map(seat => [seat.playerId,
+        !seat.isBot && seat.aid ? this.history.mizukiBank?.(seat.aid) || { current: 0, record: 0, totalPut: 0, revision: 0 }
+          : { current: 0, record: 0, totalPut: 0, revision: 0 }])) : null;
+      const mizukiBankRevisions = new Map([...(mizukiBankAccounts || [])].map(([playerId, account]) => [playerId, account.revision || 0]));
       const matchOptions = {
         roomCode: room.code,
         mode: room.mode,
         variant: room.variant,
+        ...(room.variant === ANNIHILATION_VARIANT ? { erosion: room.erosion } : {}),
+        ...(room.variant === MIZUKI_VARIANT ? { mizukiDifficultyGrade: room.mizukiDifficultyGrade,
+          endingUnlocks: this.history.mizukiEndingUnlocks?.(seats.find(seat => seat.playerId === room.hostId)?.aid) || ['ro2_ending_1'],
+          bankAccounts: mizukiBankAccounts,
+          onBankAccountUpdate: (playerId, account) => {
+            const seat = seats.find(value => value.playerId === playerId);
+            if (!seat || seat.isBot || !seat.aid) return null;
+            const revision = (mizukiBankRevisions.get(playerId) || 0) + 1;
+            if (typeof this.history.updateMizukiBank !== 'function') throw new Error('投资档案服务尚未就绪');
+            const pending = this.history.updateMizukiBank(seat.aid, { current: account.current,
+              record: account.record, totalPut: account.totalPut, revision });
+            if (pending === false) return false;
+            mizukiBankRevisions.set(playerId, revision);
+            return pending;
+          } } : {}),
         aiPicksLast: room.aiPicksLast,
         difficulty: room.difficulty,
         ranked,
@@ -1658,7 +1807,7 @@ export class Lobby {
         rankedStore: this.ranked,
         completeMatch: !room.test && this.profiles ? (job) => this.profiles.completeMatch(job) : null,
         matchId: ctx.matchId,
-        modeId: room.variant === ENDLESS_VARIANT ? ENDLESS_MODE_ID : room.content?.modeId || modeIdFor(room.mode, room.difficulty),
+        modeId: room.variant === MIZUKI_VARIANT ? MIZUKI_MODE_ID : room.variant === ANNIHILATION_VARIANT ? modeIdFor(room.mode, 'ANNIHILATION') : room.variant === ENDLESS_VARIANT ? ENDLESS_MODE_ID : room.content?.modeId || modeIdFor(room.mode, room.difficulty),
         ...(room.content ? {cs:room.content.cs} : {}),
         ...(room.content?.vs ? {vs:room.content.vs} : {}),
         ...(room.modded ? {requireCs:true} : {}),
@@ -1677,7 +1826,7 @@ export class Lobby {
         onCheckpoint: (m) => this.checkpoint(room.code, m),
         onCheckpointDoc: () => { if (ctx.live && room.matchCtx===ctx) this.checkpoint(room.code,ctx.match); },
       };
-      const match = room.modded ? this.hosts.create(room.content.cs,matchOptions,checkpoint) : new this.MatchClass(matchOptions);
+      const match = room.variant === ZHAJING_VARIANT ? new ZhajingMatch(matchOptions) : room.variant === MIZUKI_VARIANT ? new MizukiMatch(matchOptions) : room.modded ? this.hosts.create(room.content.cs,matchOptions,checkpoint) : new this.MatchClass(matchOptions);
       ctx.match = match;
       ctx.chat = new ChatHub({ frameFields: { channel: 'match', matchId: ctx.matchId }, memberSink: (frame) => {
         if (room.matchCtx === ctx && ctx.live && !ctx.ended) for (const peer of this.memberSessions(room)) sendSession(peer, frame);
@@ -1891,6 +2040,7 @@ export class Lobby {
     }
     if (!room.match) return fail(ERR.WRONG_PHASE, 'no running match');
     if (msg.t === 'g.leave') return this.leave(session);
+    if (msg.t === 'g.zhajing' && room.variant !== ZHAJING_VARIANT) return fail(ERR.BAD_MSG);
     if (msg.t === 'g.rerollVote' && room.matchCtx?.ranked) return fail(ERR.WRONG_PHASE, '排位对局不允许投票重开');
     let res;
     try {
@@ -1967,6 +2117,8 @@ export class Lobby {
       card: session.card || '',
       cardSkin: this.cardSkinFor(session.card, session.skins, session.portraits),
       loadout: session.loadout || null,
+      zhajingLoadout: session.zhajingLoadout || null,
+      zhajingOps: session.zhajingOps || null,
       ops: session.ops || null,
       notOwned: session.notOwned || null,
       diy: session.diy || null,
@@ -2058,6 +2210,15 @@ export class Lobby {
     this.broadcastRecruitment();
     if (this.rooms.get(room.code) === room) this.rooms.delete(room.code);
     const ctx = room.matchCtx;
+    // Capture owed result frames before clearing the room replay; an online socket may be lease-fenced.
+    const pendingReplays = new Map();
+    for (const seat of room.seats) {
+      if (!seat || seat.isBot || seat.left) continue;
+      try {
+        const replay = this.replayFor(room, seat.playerId);
+        if (replay) pendingReplays.set(seat.playerId, replay);
+      } catch (error) { this.log.error(`[lobby] ${room.code} pending replay ${seat.playerId} unavailable`, error); }
+    }
     room.match = null;
     room.matchCtx = null;
     room.matchKey = null;
@@ -2069,8 +2230,11 @@ export class Lobby {
       if (!session || session.roomCode !== room.code) continue;
       session.roomCode = null;
       if (s.left || reason === 'empty') continue;
-      if (session.connected) sendSession(session, { t: 'room.closed', reason });
-      else session.notice = reason;
+      if (!session.connected || !sendSession(session, { t: 'room.closed', reason })) {
+        session.notice = reason;
+        const replay = pendingReplays.get(s.playerId);
+        if (replay) session.pendingResult = replay;
+      }
     }
     if (ctx) this.disposeMatchCtx(ctx);
     this.checkpoint(room.code, null);
@@ -2109,12 +2273,12 @@ export class Lobby {
     if (room.disposed) return;
     this.broadcastRecruitment();
     if (!skipMatchCounts && !this.matchBusy) this.refreshMatchCounts();
-    const data = encode(room.toState(this.ranked));
+    const data = encode(room.toState(this.ranked, this.players));
     for (const session of this.memberSessions(room)) sendRaw(session.ws, data, { clearPool: true });
   }
 
   sendState(room, session) {
-    sendSession(session, room.toState(this.ranked));
+    sendSession(session, room.toState(this.ranked, this.players));
   }
 
   /** Match broadcast: encode once, send to every connected member. @returns {string | null} the encoded frame */
@@ -2138,6 +2302,13 @@ export class Lobby {
     return data;
   }
 
+  /** At most one failed spectator-close notice is retained across lease recovery or reconnect. */
+  sendSpectatorNotice(session) {
+    const reason = session?.spectatorNotice;
+    if (reason && sendSession(session, { t: 'spectator.closed', reason }) && session.spectatorNotice === reason) {
+      session.spectatorNotice = null;
+    }
+  }
   /** Send a disconnected player's notice/results one frame at a time; dequeue only after transport success. */
   sendPendingResult(session) {
     if (!session?.connected || this.registry.byId(session.playerId) !== session) return;

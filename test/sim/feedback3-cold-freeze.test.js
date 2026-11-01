@@ -28,7 +28,7 @@ test('cold 10s then immediately another cold 1s → freeze lasts about 10s, not 
   const e = h.enemy('enemy_dummy');
   h.b.applyStatus(e, 'cold', { duration: 10 });
   h.b.applyStatus(e, 'cold', { duration: 1 });
-  close(e.findBuff('cold').timeLeft, 10, 1e-6, 'the shorter cold does not replace the longer one');
+  assert.equal(e.findBuff('cold'), null, 'the successful enemy freeze consumes its cold pair');
   close(e.findBuff('freeze').timeLeft, 10, 1e-6, 'freeze');
   assert.equal(e.s.res, 15, 'frozen: RES −15');
   h.run(3.2);
@@ -44,7 +44,7 @@ test('cold 1s then cold 8s → freeze lasts about 8s, not 3', () => {
   const e = h.enemy('enemy_dummy');
   h.b.applyStatus(e, 'cold', { duration: 1 });
   h.b.applyStatus(e, 'cold', { duration: 8 });
-  close(e.findBuff('cold').timeLeft, 8, 1e-6);
+  assert.equal(e.findBuff('cold'), null, 'the successful enemy freeze consumes its cold pair');
   close(e.findBuff('freeze').timeLeft, 8, 1e-6);
   h.run(3.2);
   assert.ok(e.s.flags.freeze, 'still frozen past 3 s');
@@ -61,7 +61,7 @@ test('a shorter second cold does not shorten a longer remaining cold\'s freeze',
   const remain = e.findBuff('cold').timeLeft;
   assert.ok(remain > 3.5 && remain < 4.5, `about 4 s left, got ${remain}`);
   h.b.applyStatus(e, 'cold', { duration: 1 });
-  close(e.findBuff('cold').timeLeft, remain, 1e-6, 'cold');
+  assert.equal(e.findBuff('cold'), null, 'the successful enemy freeze consumes its cold pair');
   close(e.findBuff('freeze').timeLeft, remain, 1e-6, 'freeze follows the remaining cold, not 1 s and not 3 s');
   h.run(3.2);
   assert.ok(e.s.flags.freeze, 'a 1 s or 3 s freeze would have ended');
@@ -77,7 +77,7 @@ test('抵抗 still shortens the incoming duration before the max', () => {
   h.b.applyStatus(e, 'resist', { value: 0.5 });
   h.b.applyStatus(e, 'cold', { duration: 10 });
   // incoming 10 × (1 − 0.5) = 5, remaining 2 → both cold and freeze are 5, not 10 and not 2.5
-  close(e.findBuff('cold').timeLeft, 5, 1e-6, 'cold');
+  assert.equal(e.findBuff('cold'), null, 'the successful enemy freeze consumes its cold pair');
   close(e.findBuff('freeze').timeLeft, 5, 1e-6, 'freeze');
   const freeze = h.hooksOf('statusApplied').filter((c) => c.target === e && c.status === 'freeze');
   assert.equal(freeze.length, 1);

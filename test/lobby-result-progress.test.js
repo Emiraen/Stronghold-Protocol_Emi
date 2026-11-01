@@ -15,7 +15,7 @@ function fixture() {
   Object.assign(lobby, { rooms: new Map([[room.code, room]]), now: () => 0,
     log: { info() {}, error(...args) { errors.push(args); } },
     registry: { all: () => [peer], byId: pid => pid === playerId ? peer : null },
-    ranked: { summary: () => ({}) }, history: { record() {}, flush() {} },
+    players: { profiles: new Map() }, ranked: { summary: () => ({}) }, history: { record() {}, flush() {} },
     closeSpectators() {}, disposeMatchCtx() {}, broadcastState() {}, tellPluginsChanged() {}, checkpoint() {},
   });
   return { lobby, room, ctx, seat, peer, frames, errors, pending };

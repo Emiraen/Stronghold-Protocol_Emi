@@ -106,6 +106,7 @@ export const isInstalled = (charId, skinId) => isSkinCached(data.get('assets')?.
 export const loadSkinData = () => Promise.all([data.load('skins'), data.load('assets')]);
 
 export async function requestSkinInstall(_net, skinId) {
+  if (!await resourceCache.ensureManifestReady()) throw new Error('资源清单加载失败，请稍后重试');
   if (skinsStore.get().installing) return { ok: false };
   const chars = data.get('assets')?.chars || {};
   const char = Object.values(chars).find(value => value?.skins?.[skinId]);

@@ -108,6 +108,7 @@ export const GATE_NODES = Object.freeze({
 });
 
 let cached = null;
+let scopedPacks = new WeakMap();
 
 /**
  * Does the local-art manifest list the board atlas? Reads the manifest only (no images): decides whether the
@@ -120,11 +121,11 @@ export async function boardArtListed(assets) {
   return typeof u === 'string' && u.length > 0;
 }
 
-async function fetchText(url) {
-  try { const r = await cachedFetch(url); return r.ok ? await r.text() : null; } catch { return null; }
+async function fetchText(url, request = cachedFetch) {
+  try { const r = await request(url); return r.ok ? await r.text() : null; } catch { return null; }
 }
-async function fetchJson(url) {
-  try { const r = await cachedFetch(url); return r.ok ? await r.json() : null; } catch { return null; }
+async function fetchJson(url, request = cachedFetch) {
+  try { const r = await request(url); return r.ok ? await r.json() : null; } catch { return null; }
 }
 
 /**
@@ -132,7 +133,11 @@ async function fetchJson(url) {
  * @returns {Promise<object|null>}
  */
 export function loadBoardPack(assets) {
-  if (cached) return cached;
+  // Mode-private asset readers own different verified textures and metadata.
+  // Keep their pack out of the shared game's cache when switching modes.
+  const scoped = typeof assets?.fetchBoardData === 'function' ? assets : null;
+  const existing = scoped ? scopedPacks.get(scoped) : cached;
+  if (existing) return existing;
   const pending = (async () => {
     if (!assets || typeof assets.local !== 'function' || typeof assets.localUrl !== 'function' || typeof assets.image !== 'function') return null;
     const manifest = await assets.local().catch(() => null);
@@ -140,6 +145,7 @@ export function loadBoardPack(assets) {
     const url = (g, n) => { const u = assets.localUrl(g, n); return typeof u === 'string' && u ? encodeURI(u) : null; };
     const dUrl = url(...PACK_IMAGES.D);
     if (!dUrl) return null;
+    const request = typeof assets.fetchBoardData === 'function' ? assets.fetchBoardData.bind(assets) : cachedFetch;
     const images = {};
     await Promise.all(Object.entries(PACK_IMAGES).map(async ([k, [g, n]]) => {
       const u = url(g, n);
@@ -150,16 +156,16 @@ export function loadBoardPack(assets) {
     if (!images.D) return null;
     const dir = dUrl.replace(/\/[^/]*$/, '');
     const [tiles, theme, fxMats, fxPrefab, trapMats] = await Promise.all([
-      fetchJson(`${dir}/tiles.json`),
-      (async () => { const u = url('map/autochess', 'materials'); return u ? fetchJson(u) : null; })(),
-      (async () => { const u = url('map/fx', 'materials'); return u ? fetchJson(u) : null; })(),
-      (async () => { const u = url('map/fx', 'prefab'); return u ? fetchJson(u) : null; })(),
-      (async () => { const u = url('mesh/trap_110', 'materials'); return u ? fetchJson(u) : null; })(),
+      fetchJson(`${dir}/tiles.json`, request),
+      (async () => { const u = url('map/autochess', 'materials'); return u ? fetchJson(u, request) : null; })(),
+      (async () => { const u = url('map/fx', 'materials'); return u ? fetchJson(u, request) : null; })(),
+      (async () => { const u = url('map/fx', 'prefab'); return u ? fetchJson(u, request) : null; })(),
+      (async () => { const u = url('mesh/trap_110', 'materials'); return u ? fetchJson(u, request) : null; })(),
     ]);
     const meshes = { gate: {} };
     await Promise.all(Object.entries(PACK_MESHES).map(async ([k, [g, n]]) => {
       const u = url(g, n);
-      const text = u ? await fetchText(u) : null;
+      const text = u ? await fetchText(u, request) : null;
       const m = text ? parseObj(text) : null;
       if (m) meshes[k] = m;
     }));
@@ -168,7 +174,7 @@ export function loadBoardPack(assets) {
       const rec = prefab.find((p) => p && p.name === node && (node !== 'Start_back' || p.parent === '[opt]start_box'));
       const key = rec && typeof rec.mesh === 'string' ? rec.mesh : node;
       const u = url('map/fx', key);
-      const text = u ? await fetchText(u) : null;
+      const text = u ? await fetchText(u, request) : null;
       const m = text ? parseObj(text) : null;
       if (m) meshes.gate[slot] = { mesh: m, material: rec && Array.isArray(rec.materials) ? rec.materials[0] || null : null };
     }));
@@ -180,10 +186,14 @@ export function loadBoardPack(assets) {
   })().catch((err) => { console.warn('[board3d] art load failed', err); return null; }).then((pack) => {
     // A timeout / failed atlas is not proof the host lacks 3D art. A later mount or visibility change may retry.
     // An older attempt finishing after reset must not discard a newer cached request.
-    if (!pack && cached === pending) cached = null;
+    if (!pack) {
+      if (scoped && scopedPacks.get(scoped) === pending) scopedPacks.delete(scoped);
+      else if (!scoped && cached === pending) cached = null;
+    }
     return pack;
   });
-  cached = pending;
+  if (scoped) scopedPacks.set(scoped, pending);
+  else cached = pending;
   return pending;
 }
 
@@ -407,4 +417,4 @@ export function loadScenePack(assets, stageId) {
 }
 
 /** Forget the cached pack and the three.js import attempt (tests / hot reload). */
-export function resetBoardPack() { cached = null; threePromise = null; threeFailures = 0; sceneCache.clear(); }
+export function resetBoardPack() { cached = null; scopedPacks = new WeakMap(); threePromise = null; threeFailures = 0; sceneCache.clear(); }

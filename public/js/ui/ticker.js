@@ -12,11 +12,23 @@
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html } from './components.js';
 import { GIcon, RichText } from './gameComponents.js';
-import { useStore } from '../store.js';
+import { useStore, shallowEqual } from '../store.js';
 import { audio } from '../audio.js';
+import { ENDLESS_MODE_ID, ENDLESS_VARIANT, PHASE } from '../../../shared/constants.js';
 
 const TICKER_MS = 5200;
 const QUEUE_MAX = 4;
+
+/** Use the authoritative round schedule without requiring a server restart. */
+export function endlessBossNotice(pub) {
+  if (pub?.variant !== ENDLESS_VARIANT && pub?.modeId !== ENDLESS_MODE_ID) return null;
+  if (![PHASE.ROUND_START, PHASE.SP_DRAFT, PHASE.PREP].includes(pub.phase)) return null;
+  const round = pub.round, bossRound = pub.bossRound, next = round + 1;
+  if (!Number.isSafeInteger(round) || round < 1 || !Number.isSafeInteger(bossRound) || bossRound < 1) return null;
+  if (next !== bossRound && !(next > bossRound && (next - bossRound) % 5 === 0)) return null;
+  return { id: `endless-boss:${round}`, type: 'ENDLESS_BOSS_NEXT', round, playerId: null, priority: 25,
+    text: `无尽模式 · 下回合（第 ${next} 回合）将迎战 Boss，请提前做好准备` };
+}
 
 /**
  * @typedef {{ id: number, text: string, at?: number, type?: string|null, playerId?: string|null, round?: number|null, priority?: number }} TickerLine
@@ -29,7 +41,7 @@ const QUEUE_MAX = 4;
  * @param {number|null} round
  */
 export function tickerLineLive(line, round) {
-  if (!line || line.type !== 'BOSS_HIT') return true;
+  if (!line || !['BOSS_HIT', 'ENDLESS_BOSS_NEXT'].includes(line.type)) return true;
   return line.round == null || round == null || line.round === round;
 }
 
@@ -105,6 +117,12 @@ export function nextTickerLine(queue, round) {
 export function Ticker() {
   const items = useStore((s) => s.ticker);
   const round = useStore((s) => s.match?.public?.round ?? null);
+  const pub = useStore((s) => {
+    const p = s.match?.public;
+    return { round: p?.round, phase: p?.phase, bossRound: p?.bossRound, variant: p?.variant, modeId: p?.modeId };
+  }, shallowEqual);
+  const matchId = useStore((s) => s.matchChat?.matchId ?? null);
+  const bossNoticeSeen = useRef(null);
   const seen = useRef(null);
   const queue = useRef([]);
   const roundRef = useRef(round);
@@ -134,6 +152,17 @@ export function Ticker() {
     queue.current = r.queue;
     if (r.dropCur) next();
   }, [round]);
+
+  useEffect(() => {
+    const notice = endlessBossNotice(pub);
+    if (!notice) return;
+    const key = `${matchId}:${notice.round}`;
+    if (bossNoticeSeen.current === key) return;
+    bossNoticeSeen.current = key;
+    const r = enqueueTickerLines(queue.current, cur, [notice]);
+    queue.current = r.queue;
+    if (!cur || !tickerLineLive(cur, round)) next();
+  }, [matchId, round, pub?.phase, pub?.bossRound, pub?.variant, pub?.modeId]);
 
   useEffect(() => () => clearTimeout(timer.current), []);
 

@@ -13,8 +13,8 @@ const POSITIONS = [[9, 5], [9, 3], [12, 3], [12, 4], [11, 3], [10, 3]];
 const CASES = [
   { state: 'stealth', label: '叙拉古6有效隐匿：主目标排除后，周围二次选择仍免伤', hits: 0, selectable: false },
   { state: 'removed', label: '真实羁绊隐匿移除后：仍受轰炸伤害', hits: 8, selectable: true },
-  { state: 'blocked', label: '真实阻挡该甲胄：保留隐匿标记但仍受轰炸伤害', hits: 8, selectable: true },
-  { state: 'reveal', label: '反隐reveal使隐匿失效：仍受轰炸伤害', hits: 8, selectable: true },
+  { state: 'blocked', label: '真实阻挡该甲胄：普通索敌可选，但隐匿仍阻止范围轰炸', hits: 0, selectable: true },
+  { state: 'reveal', label: '敌方反隐标记不解除我方隐匿：仍免范围轰炸', hits: 0, selectable: false },
   { state: 'camou', label: '迷彩不是隐匿：主目标排除但仍受周围轰炸伤害', hits: 8, selectable: false },
 ];
 

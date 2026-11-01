@@ -87,7 +87,7 @@ export function shopBlockReason(kind, { priv, editable, slot, getChess, getItem 
     if (kind === 'reward') return trA("当前无法选择");
     return priv.ready ? trA("已准备就绪，取消准备后才能操作") : trA("当前阶段无法进行该操作");
   }
-  const funds = Number(priv.funds) || 0;
+  const funds = (Number(priv.funds) || 0) + (priv.lpPayment ? Math.max(0, (Number(priv.lp) || 0) - 1) : 0);
   const shop = priv.shop || {};
   if (kind === 'buy' || kind === 'reward') {
     if (!isObj(slot) || slot.sold) return kind === 'reward' ? trA("已选择") : trA("已售出");
@@ -108,6 +108,7 @@ export function shopBlockReason(kind, { priv, editable, slot, getChess, getItem 
 export function readyFundsPrompt(priv, { ready = true, keptBands = null, autoplay = false } = {}) {
   if (!ready || autoplay || !isObj(priv) || priv.alive === false || priv.ready) return null;
   const funds = Math.trunc(Number(priv.funds) || 0);
+  if (priv?.zhajing) return null;
   if (!(funds > 0)) return null;
   const kept = Array.isArray(keptBands) ? keptBands : ['band_cannot'];
   if (typeof priv.bandId === 'string' && kept.includes(priv.bandId)) return null;

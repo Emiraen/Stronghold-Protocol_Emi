@@ -1,3 +1,4 @@
+import { localHealthCounts, combinedHealthCounts } from './healthCounts.js';
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { createRegionAuthority, LEASE_MS, HEARTBEAT_MS, SERVER_NAMES, loadLevel, validateHeartbeat, createSpectatorCache, directoryHash, directoryReferenceUseful } from './regions.js';
@@ -14,6 +15,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { ProfileReplication } from './profileReplication.js';
 import { createRecruitmentCache } from './recruitmentDirectory.js';
 import { AccountAuth } from './accountAuth.js';
+import { FriendsService, validateSocialSync, validateSocialAction } from './friends.js';
 import { isAccountAuth } from '../shared/protocol.js';
 import { isSpecialNameCard, canUseSpecialNameCard, SPECIAL_TRICKSTER_CARD } from '../shared/nameCards.js';
 import { GOOD_BOY_LEGACY_GRANTS, isNameCardGrantMigration, TRICKSTER_GRANT_MIGRATION } from './nameCardUnlocks.js';
@@ -26,6 +28,11 @@ const aidOK = (v) => typeof v === 'string' && /^[0-9a-f]{8,64}$/.test(v);
 const matchOK = (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v);
 const playerOK = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
 const digest = (v) => createHash('sha256').update(v).digest();
+const bankUpdatesOf = (op, args) => op === 'historyRecord' && Array.isArray(args?.[0]?.bankUpdates) ? args[0].bankUpdates : [];
+const bankAccountConfirmed = (actual, expected) => actual?.revision >= expected.revision
+  && actual.record >= expected.record && actual.totalPut >= expected.totalPut
+  && (actual.revision > expected.revision || actual.current === expected.current
+    && actual.record === expected.record && actual.totalPut === expected.totalPut);
 
 export function cardSkinForPresentation(card, presentation, data) {
   if (!card || isSpecialNameCard(card)) return '';
@@ -48,6 +55,7 @@ function publicLeaderboard(ranked, players, data) {
     const presentation = player?.presentation?.value;
     const card = presentation?.card;
     const { aid: _aid, ...publicItem } = item;
+    publicItem.profileId = player?.id || null;
     if (typeof card !== 'string' || !card) return publicItem;
     const cardSkin = cardSkinForPresentation(card, presentation, data);
     return { ...publicItem, card, ...(cardSkin ? { cardSkin } : {}) };
@@ -154,7 +162,13 @@ export function profileConfig(env = process.env) {
     throw new Error('附服必须配置 SP_PROFILE_SERVICE_SECRET、SP_PROFILE_SERVICE_URL 和 SP_MAIN_PUBLIC_URL');
   }
   if (secret && !secret.trim()) throw new Error('SP_PROFILE_SERVICE_SECRET 不能只包含空白');
-  return { role, id, secret, serviceUrl, mainUrl, secondaryUrl };
+  const serverIds = (env.SP_GAME_SERVERS || 'main,secondary').split(',').map(s => s.trim());
+  if (!serverIds.includes(id) || new Set(serverIds).size !== serverIds.length || serverIds.some(s => !['main', 'secondary'].includes(s))) {
+    throw new Error('SP_GAME_SERVERS 必须包含当前服且仅包含有效游戏服务器');
+  }
+  const mainAliases = (env.SP_MAIN_PUBLIC_ALIASES || '').split(',').filter(Boolean).map(s => configuredUrl(s.trim(), 'SP_MAIN_PUBLIC_ALIASES'));
+  if (mainAliases.length > 8 || mainAliases.some(url => new URL(url).origin !== url)) throw new Error('游戏入口别名必须是 origin');
+  return { role, id, secret, serviceUrl, mainUrl, secondaryUrl, serverIds, mainAliases };
 }
 
 // 列表负载统计整机出口 TX（HTTP、WebSocket 及其他进程），不改变 WebSocket 发送预算。
@@ -191,8 +205,9 @@ function createHostLoadSampler() {
 }
 
 export function serverDirectory(config, states = {}) {
-  return { current: config.id, servers: ['main', 'secondary'].map((id) => ({
+  return { current: config.id, servers: (config.serverIds || ['main', 'secondary']).map((id) => ({
     id, name: SERVER_NAMES[id], url: id === 'main' ? config.mainUrl || '/' : config.secondaryUrl,
+    ...(id === 'main' && config.mainAliases?.length ? { aliases: config.mainAliases } : {}),
     bandwidthMbps: states[id]?.bandwidthMbps || (id === 'main' ? 5 : 3),
     load: loadLevel(states[id]),
   })) };
@@ -200,6 +215,11 @@ export function serverDirectory(config, states = {}) {
 
 function validate(op, args) {
   if (!Array.isArray(args)) throw new Error('档案请求参数无效');
+  if (op === 'social.sync') { if (args.length !== 1) throw new Error('好友状态参数无效'); validateSocialSync(args[0]); return; }
+  if (op === 'social.action') {
+    if (args.length !== 2 || !args[0] || typeof args[0] !== 'object') throw new Error('好友身份参数无效');
+    validateSocialAction(args[1]); return;
+  }
   if (op === 'account.authenticate') {
     if (args.length !== 2 || typeof args[0] !== 'string' || args[0].length > 64
       || (args[1] != null && !isAccountAuth(args[1]))) throw new Error('账户请求参数无效');
@@ -253,6 +273,15 @@ function validate(op, args) {
   }
   if (op === 'historyRecord') {
     if (!matchOK(args[0]?.matchId) || !Array.isArray(args[0]?.seats) || !Array.isArray(args[0]?.summary?.players)) throw new Error('历史请求无效');
+    if (args[0].bankUpdates !== undefined) {
+      const updates = args[0].bankUpdates;
+      if (!Array.isArray(updates) || !updates.length || updates.length > 4 || args[0].summary.players.length
+        || updates.some(update => !aidOK(update?.aid)
+          || !args[0].seats.some(seat => !seat.isBot && seat.aid === update.aid && playerOK(seat.playerId))
+          || !update.account || !['current', 'record', 'totalPut', 'revision'].every(key => Number.isSafeInteger(update.account[key]) && update.account[key] >= 0)
+          || update.account.current > 999 || update.account.record > 999 || update.account.record < update.account.current
+          || update.account.revision < 1)) throw new Error('水月银行存档无效');
+    }
     return;
   }
   if (!['read', 'record', 'loadout', 'presentation', 'historyList', 'historyDetail'].includes(op) || !aidOK(args[0])) throw new Error('档案操作无效');
@@ -272,6 +301,9 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     }
   };
   const regions = createRegionAuthority(options);
+  const friends = new FriendsService({ players, ranked, history, file: options.friendsFile || null,
+    isLeaseActive: key => !!regions.current(key),
+    cardSkin: (card, presentation) => cardSkinForPresentation(card, presentation, options.getData?.()), log: options.log });
   const snapshot = (aid) => {
     authority.replication?.assertIndependent('read', [aid]);
     const profile = ranked.profile(aid);
@@ -336,6 +368,7 @@ export function createAuthority({ players, ranked, history }, options = {}) {
       if (!regions.current(args[0])) return { error: 'BAD_TARGET', detail: '连接租约已失效，请重连' };
       return structuredClone({ aid, lease: { owner: lease.owner, generation: lease.generation,
         serverId: lease.serverId, epoch: lease.epoch }, ...snapshot(aid),
+        ...(authority.replication ? { profileVersions: authority.replication.state.versions[aid] || {} } : {}),
         ...(authority.replication && !sharedWrites ? { grant: { aid, token: authority.replication.state.owners[aid].token,
           versions: authority.replication.state.versions[aid] || {} } } : {}) });
     }
@@ -423,7 +456,7 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     }
   };
   let deferredNameCardRetry = null;
-  const authority = { regions, adminStateSource: null, replication: null,
+  const authority = { regions, friends, adminStateSource: null, replication: null,
     executeLocal: execute, snapshot,
     retryDeferredNameCards() {
       if (deferredNameCardRetry) return deferredNameCardRetry;
@@ -511,6 +544,20 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     },
     call(op, args) {
     validate(op, args);
+    if (op === 'social.sync') {
+      const value = args[0];
+      const roster = value.roster.flatMap(row => {
+        const lease = row.lease.serverId === value.serverId && regions.current(row.lease);
+        const player = lease?.aid && players.profiles.get(lease.aid);
+        return player ? [{ ...row, profileId: player.id }] : [];
+      });
+      return friends.sync(value.serverId, roster);
+    }
+    if (op === 'social.action') {
+      const lease = regions.current(args[0]);
+      if (!lease?.aid) return Promise.reject(new Error('好友操作的登录租约已失效，请重新连接'));
+      return friends.action(lease.aid, args[1], () => regions.current(args[0])?.aid === lease.aid);
+    }
     // Only the in-process migration/settlement path may grant persistent entitlements.
     if (op === 'rank.nameCards') return Promise.reject(new Error('名片迁移仅允许主服内部执行'));
     if (op === 'account.authenticate') return accounts.authenticate(args[0], args[1], { players, ranked, history });
@@ -660,6 +707,7 @@ export class PendingResults {
   constructor(file, call, receive, log) {
     this.file = file; this.call = call; this.receive = receive; this.log = log;
     this.jobs = new Map(); this.waiters = new Map(); this.running = false; this.closed = false;
+    this.firstEconomicAttempts = new WeakSet();
     if (!file) return;
     try {
       const data = JSON.parse(readFileSync(file, 'utf8'));
@@ -682,19 +730,42 @@ export class PendingResults {
     try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temp, this.file);
   }
-  submit(op, args) {
+  submit(op, args, { requireQueued = false } = {}) {
     validate(op, args);
     const matchId = op === 'complete' ? args[0].match.matchId : args[0].matchId;
     const id = `${op}:${matchId}`;
     if (!this.jobs.has(id)) {
+      const bankUpdates = bankUpdatesOf(op, args);
+      if (bankUpdates.length) {
+        const queued = [...this.jobs.values()].flatMap(job => bankUpdatesOf(job.op, job.args));
+        if (queued.length + bankUpdates.length > 4096 || bankUpdates.some(update => queued.filter(value => value.aid === update.aid).length >= 256)) {
+          const error = Object.assign(new Error('投资同步待办已满，请等待主服确认后重试'), { code: 'BANK_SYNC_QUEUE_FULL' });
+          if (requireQueued) throw error;
+          return Promise.reject(error);
+        }
+      }
       const aids = new Set((args[0]?.seats || []).filter((seat) => !seat.isBot).map((seat) => seat.aid));
       if ([...this.jobs.values()].some((job) => job.op === 'complete' && job.blocked
         && ((job.args[0]?.match?.matchId === matchId) || (job.args[0]?.seats || [])
-          .some((seat) => !seat.isBot && aids.has(seat.aid))))) return Promise.reject(this.blockedError());
-      this.jobs.set(id, { id, op, args: structuredClone(args) });
+          .some((seat) => !seat.isBot && aids.has(seat.aid))))) {
+        const error = this.blockedError();
+        if (requireQueued) throw error;
+        return Promise.reject(error);
+      }
+      // Persist the unknown-receipt guard with the initial job, before dispatch.
+      // Only this process owns its first attempt; restored jobs remain blocked.
+      const job = { id, op, args: structuredClone(args), ...(op === 'complete'
+        ? { blocked: { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' } } : {}) };
+      this.jobs.set(id, job);
       try { this.save(); } catch (error) { this.jobs.delete(id); throw error; }
+      if (op === 'complete') this.firstEconomicAttempts.add(job);
     }
-    if (this.jobs.get(id).blocked && this.activeId !== id) return Promise.reject(this.blockedError());
+    if (this.jobs.get(id).blocked && !this.firstEconomicAttempts.has(this.jobs.get(id))
+      && this.activeId !== id) {
+      const error = this.blockedError();
+      if (requireQueued) throw error;
+      return Promise.reject(error);
+    }
     const promise = new Promise((resolve, reject) => {
       const waiting = this.waiters.get(id) || []; waiting.push({ resolve, reject }); this.waiters.set(id, waiting);
     });
@@ -732,8 +803,18 @@ export class PendingResults {
     }, () => {});
     try { return await Promise.race([request, timeout]); } finally { clearTimeout(timer); }
   }
-  affectsAid(aid) {
-    return [...this.jobs.values()].some((job) => (job.args[0]?.seats || []).some((seat) => !seat.isBot && seat.aid === aid));
+  affectsAid(aid, { ignoreBank = false } = {}) {
+    return [...this.jobs.values()].some((job) => !(ignoreBank && bankUpdatesOf(job.op, job.args).length)
+      && (job.args[0]?.seats || []).some((seat) => !seat.isBot && seat.aid === aid));
+  }
+  mizukiBank(aid, confirmed) {
+    let account = confirmed;
+    for (const job of this.jobs.values()) for (const update of bankUpdatesOf(job.op, job.args)) {
+      if (update.aid === aid && update.account.revision >= account.revision) account = update.account;
+    }
+    // The fsynced pending file is the local aid-bound cache until authority
+    // confirms it. Replication must not erase a newer queued withdrawal.
+    return structuredClone(account);
   }
   activeAids() {
     return new Set([...this.jobs.values()].flatMap((job) => (job.args[0]?.seats || [])
@@ -750,14 +831,13 @@ export class PendingResults {
     try {
       for (const [id, job] of this.jobs) {
         if (this.closed) break;
-        if (job.blocked) continue;
+        if (job.blocked && !this.firstEconomicAttempts.has(job)) continue;
         try {
           this.activeId = id;
           if (job.op === 'complete') {
-            // Persist BEFORE invoking authority: a lost response or process
-            // crash must not turn the next startup into another reward grant.
-            job.blocked = { code: 'RESULT_SETTLEMENT_FAILED', receipt: 'unknown' };
-            this.save();
+            // submit already durably stored the guard. Consume this in-memory
+            // permission before authority: there is still only one attempt.
+            this.firstEconomicAttempts.delete(job);
           }
           const value = await this.dispatch(id, job);
           this.finishJob(id, job, value);
@@ -784,7 +864,7 @@ export class PendingResults {
     } finally {
       this.running = false;
       finish();
-      if ([...this.jobs.values()].some((job) => !job.blocked) && !this.closed) {
+      if ([...this.jobs.values()].some((job) => !job.blocked || this.firstEconomicAttempts.has(job)) && !this.closed) {
         this.timer = setTimeout(() => this.drain(), 5000); this.timer.unref?.();
       }
     }
@@ -801,7 +881,8 @@ export function createProfileAccess(config, stores, log) {
   const accounts = config.role === 'main' ? new AccountAuth({
     file: config.accountFile !== undefined ? config.accountFile : inMemory ? null : join(dataDir, 'account-auth.json'),
   }) : null;
-  const authority = config.role === 'main' ? createAuthority(stores, { accounts, startupGuard: !!config.secret, getData: config.getData }) : null;
+  const authority = config.role === 'main' ? createAuthority(stores, { accounts, startupGuard: !!config.secret, getData: config.getData,
+    friendsFile: config.friendsFile !== undefined ? config.friendsFile : inMemory ? null : join(dataDir, 'friends.json'), log }) : null;
   const local = authority || createAuthority(stores, { local: true, getData: config.getData });
   const announcementStore = createAnnouncementStore({
     file: authority ? config.announcementFile : null,
@@ -833,25 +914,129 @@ export function createProfileAccess(config, stores, log) {
     if (chatInitialized) for (const item of fresh) chatSink?.(item);
     chatInitialized = true;
   };
-  const stopSession = (session) => {
+  // Recovery is not authorization: business stays fenced by validSession.
+  // Keep the authority lease and heartbeat periods, with a bounded local recheck.
+  const RECOVERY_MS = 2500;
+  const recoveryQueue = new Map();
+  const diagnosticTimes = new Map();
+  let recoveryRunning = false, recoveryQueued = false;
+  const diagnostic = (stage, error) => {
+    const now = performance.now();
+    if (now - (diagnosticTimes.get(stage) ?? -Infinity) < 10_000) return;
+    diagnosticTimes.set(stage, now);
+    log.error('[profiles] ' + stage, error?.message || error || '');
+  };
+  const optional = (stage, action) => {
+    try {
+      const result = action();
+      if (result?.then) void Promise.resolve(result).catch(error => diagnostic(stage, error));
+    } catch (error) { diagnostic(stage, error); }
+  };
+  const snapshotLease = (session) => ({ session, ws: session.ws,
+    lease: session.loginLease, key: { ...session.loginLease },
+    generation: session.loginGeneration,
+    handoff: !!session.loginInFlight && session.loginHandoffLease === session.loginLease });
+  const currentLease = (row) => {
+    const { session, lease, key } = row;
+    return !closed && sessions.has(session) && session.connected && session.ws === row.ws
+      && !session.loginReleased && !session.loginRevoked && session.loginLease === lease
+      && session.loginGeneration === row.generation
+      && ['owner', 'generation', 'serverId', 'epoch'].every(field => lease?.[field] === key[field])
+      && (row.handoff ? !!session.loginInFlight && session.loginHandoffLease === lease
+        : !session.loginInFlight && lease?.generation === session.loginGeneration);
+  };
+  const renewable = (session) => {
+    if (!session.loginLease || session.loginReleased || session.loginRevoked || !session.connected) return false;
+    return currentLease(snapshotLease(session));
+  };
+  const notifyLease = (session, state) => optional('租约恢复提示暂不可用',
+    () => network?.leaseState?.(session, state, state === 'recovering' ? RECOVERY_MS : undefined));
+  const finishRecovery = (session, ok = false) => {
+    const row = session.leaseRecovery;
+    if (!row) return;
+    session.leaseRecovery = null;
+    recoveryQueue.delete(session);
+    clearTimeout(row.timer);
+    const outcome = ok ? 'recovered' : 'not_restored';
+    const now = performance.now(), diagnosticKey = 'lease_recovery:' + outcome;
+    if (now - (diagnosticTimes.get(diagnosticKey) ?? -Infinity) >= 10_000) {
+      diagnosticTimes.set(diagnosticKey, now);
+      optional('租约恢复诊断暂不可用', () => log.info?.('[profiles] lease_recovery', {
+        serverId: config.id, outcome, durationMs: Math.max(0, Math.round(now - row.started)),
+      }));
+    }
+    row.resolve(ok);
+    if (ok) notifyLease(session, 'active');
+  };
+  const clearLeaseTimer = (session) => {
+    clearTimeout(session.leaseTimer);
+    session.leaseTimer = null;
+    session.leaseTimerToken = null;
+  };
+  const stopSession = (session, expected = null) => {
+    if (expected && !currentLease(expected)) return;
     session.profileReady = false;
     session.loginRevoked = true;
-    clearTimeout(session.leaseTimer);
-    if (session.ws) terminateSocket(session.ws, 'login_lease_lost');
+    session.loginHandoffLease = null;
+    clearLeaseTimer(session);
+    finishRecovery(session);
+    if (session.ws) optional('失效租约连接关闭异常', () => terminateSocket(session.ws, 'login_lease_lost'));
   };
   const arm = (session, started) => {
-    session.leaseUntil = started + LEASE_MS - 1000;
-    clearTimeout(session.leaseTimer);
-    session.leaseTimer = setTimeout(() => stopSession(session), Math.max(0, session.leaseUntil - performance.now()));
+    const until = started + LEASE_MS - 1000;
+    if (until <= performance.now()) return false;
+    // Concurrent report, replication and lease replies may arrive out of order.
+    if (started < (session.leaseRenewalStarted ?? -Infinity)) return false;
+    session.leaseRenewalStarted = started;
+    session.leaseUntil = Math.max(session.leaseUntil || 0, until);
+    clearLeaseTimer(session);
+    // A pending login owns its 7-second deadline, not an old lease timer.
+    if (session.loginInFlight) return true;
+    const row = snapshotLease(session), token = {};
+    session.leaseTimerToken = token;
+    session.leaseTimer = setTimeout(() => {
+      if (session.leaseTimerToken !== token || !currentLease(row)) return;
+      if (performance.now() < session.leaseUntil) { arm(session, session.leaseRenewalStarted); return; }
+      void access.ensureSession(session);
+    }, Math.max(0, Math.ceil(session.leaseUntil - performance.now())));
     session.leaseTimer.unref?.();
+    if (access.validSession(session)) finishRecovery(session, true);
+    return true;
   };
   const call = authority ? (op, args) => authority.call(op, args) : (op, args) => remoteCall(config, op, args);
+  let socialSyncing = null;
+  const socialSeen = new Map();
+  const syncFriends = () => {
+    if (socialSyncing) return socialSyncing;
+    if (closed || !lobbySource) return Promise.resolve();
+    const roster = lobbySource.friendPresence().filter(row => row.lease).map(row => ({ ...row,
+      seenRevision: socialSeen.get(`${row.lease.owner}:${row.lease.generation}`) || 0 }));
+    socialSyncing = call('social.sync', [{ serverId: config.id, roster }]).then(frames => {
+      if (closed) return;
+      const peers = new Map([...sessions].map(s => [`${s.loginLease?.owner}:${s.loginLease?.generation}`, s]));
+      for (const frame of frames) {
+        const session = peers.get(`${frame.lease.owner}:${frame.lease.generation}`);
+        if (session && access.validSession(session) && sendSession(session, { t: 'friends.state', ...frame.state })) {
+          socialSeen.set(`${frame.lease.owner}:${frame.lease.generation}`, frame.state.revision);
+        }
+      }
+      const active = new Set(roster.map(row => `${row.lease.owner}:${row.lease.generation}`));
+      for (const key of socialSeen.keys()) if (!active.has(key)) socialSeen.delete(key);
+    }).finally(() => { socialSyncing = null; });
+    return socialSyncing;
+  };
   const signatures = new Map();
   const { players, ranked } = stores;
   // 共享档案的修改在权威顺序执行；附服只复制结果，不再用旧快照独立结算。
   const localCall = async (op, args) => {
     const value = await call(op, args);
     if (!authority) await sync();
+    // Rolling upgrades may leave an older authority that accepts historyRecord
+    // but ignores its new bankUpdates field. A generic successful RPC is not a
+    // bank receipt: confirm the actual authoritative/replicated account first.
+    if (bankUpdatesOf(op, args).some(update => !bankAccountConfirmed(stores.history.mizukiBank(update.aid), update.account))) {
+      throw Object.assign(new Error('主服尚未确认投资账户，已保留本地持久同步待办'), { code: 'BANK_SYNC_UNCONFIRMED' });
+    }
     return value;
   };
   const pending = new PendingResults(config.pendingFile !== undefined ? config.pendingFile : inMemory ? null
@@ -868,8 +1053,9 @@ export function createProfileAccess(config, stores, log) {
   // 登录、续租和档案复制只携带核心字段；可选展示快照另行上报。
   // 滚动更新时旧主服可拒绝新管理字段，但不能连带拒绝玩家身份和档案同步。
   const heartbeatPayload = (report = false) => ({ serverId: config.id,
-    leases: report ? [] : [...sessions].filter((s) => access.validSession(s) && !s.loginInFlight).map((s) => s.loginLease),
+    leases: report ? [] : [...sessions].filter(renewable).map((s) => s.loginLease),
     sample: hostLoad(),
+    ...(lobbySource && adminRegistry ? { health: localHealthCounts(network, adminRegistry, lobbySource) } : {}),
     ...(!legacyHeartbeat ? {
       ...(announcementStore.read().updatedAt > 0 ? { announcementVersion: announcementStore.read().updatedAt } : {}),
       ...directoryTransport.request(),
@@ -956,23 +1142,70 @@ export function createProfileAccess(config, stores, log) {
   };
   const exchangeHeartbeat = async (payload) => {
     const started = performance.now();
+    // Snapshot the exact connection and lease at send time, never at reply time.
+    const byLease = new Map([...sessions].filter(renewable).map(session => [session.loginLease, snapshotLease(session)]));
+    const rows = payload.leases.map(key => byLease.get(key));
     const value = await callHeartbeat(payload);
     if (!closed) {
-      // Optional directory recovery must not fail login renewal or profile replication.
-      // A missing reference clears advertised bases, so the next exchange gets full data.
-      try { directoryTransport.receive(value, started); }
-      catch (error) { log.error('[profiles] 目录快照暂不可用，将重取完整目录', error.message); }
-      lobbySource?.broadcastRecruitment();
-      for (const [id, sample] of Object.entries(value.states)) stateCache[id] = { ...sample, at: started - sample.ageMs };
-      if (value.announcement && !authority) {
+      // Commit ALL identity renewals before optional display/announcement callbacks.
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !currentLease(row)) continue;
+        const recoveryUntil = row.session.leaseRecovery?.until ?? row.session.leaseUntil + RECOVERY_MS;
+        if (!row.handoff && performance.now() >= recoveryUntil) { stopSession(row.session, row); continue; }
+        const accepted = value.epoch === row.key.epoch && value.renewed?.[i] === true;
+        if (value.epoch !== row.key.epoch || value.renewed?.[i] === false) {
+          // Losing a preclaim lease must not cancel its replacement login.
+          if (!row.handoff) stopSession(row.session, row);
+          continue;
+        }
+        if (accepted && (!authority || authority.regions.current(row.key))) arm(row.session, started);
+      }
+      optional('目录快照暂不可用，将重取完整目录', () => directoryTransport.receive(value, started));
+      optional('招募展示广播暂不可用', () => lobbySource?.broadcastRecruitment());
+      optional('区域负载展示暂不可用', () => {
+        for (const [id, sample] of Object.entries(value.states || {})) stateCache[id] = { ...sample, at: started - sample.ageMs };
+      });
+      if (value.announcement && !authority) optional('公告展示同步暂不可用', () => {
         const before = announcementStore.read();
         const updated = announcementStore.apply(value.announcement);
         if (updated.updatedAt > before.updatedAt) notifyAnnouncement(updated);
-      }
-      // 管理操作不阻塞登录续租；同一命令复用执行结果，回执丢失可随下一次心跳重传。
-      if (value.kickCommands?.length) void consumeKicks(value.kickCommands).catch((error) => log.error('[admin] 踢线回执暂不可用', error.message));
+      });
+      if (value.kickCommands?.length) optional('踢线回执暂不可用', () => consumeKicks(value.kickCommands));
     }
     return value;
+  };
+  const scheduleRecovery = () => {
+    if (recoveryQueued || recoveryRunning || closed) return;
+    recoveryQueued = true;
+    queueMicrotask(async () => {
+      recoveryQueued = false;
+      if (recoveryRunning || closed) return;
+      const batch = [];
+      for (const row of [...recoveryQueue.values()]) {
+        recoveryQueue.delete(row.session);
+        if (row.session.leaseRecovery !== row) continue;
+        if (currentLease(row.snapshot)) batch.push(row);
+        else finishRecovery(row.session);
+      }
+      if (!batch.length) return;
+      recoveryRunning = true;
+      try {
+        // Batch concurrent expired players without profile reads or replication.
+        await exchangeHeartbeat({ serverId: config.id,
+          leases: batch.map(row => row.snapshot.lease), sample: hostLoad() });
+      } catch (error) { diagnostic('租约受限复核失败', error); }
+      finally {
+        for (const row of batch) {
+          if (row.session.leaseRecovery !== row) continue;
+          if (!currentLease(row.snapshot)) { finishRecovery(row.session); continue; }
+          if (access.validSession(row.session)) finishRecovery(row.session, true);
+          else stopSession(row.session, row.snapshot);
+        }
+        recoveryRunning = false;
+        if (recoveryQueue.size) scheduleRecovery();
+      }
+    });
   };
   const reportRuntime = async () => {
     try { await exchangeHeartbeat(heartbeatPayload(true)); }
@@ -984,10 +1217,23 @@ export function createProfileAccess(config, stores, log) {
       ...(request ? { replication: { ...request, sharedWrites: true } } : {}) });
     if (authority) { await replication.run(() => {}); return exchange(); }
     if (!replication.initialized) await replication.initialize((request) => call('profile.bootstrap', [request]));
-    return replication.sync(exchange, drain, activeAids());
+    return replication.sync(exchange, drain, activeAids);
   };
   const access = {
     players, ranked, authority, replication, adminControls, announcement: () => announcementStore.read(), onRecovered: null,
+    syncFriends,
+    async friends(session, value) {
+      if (!access.validSession(session)) throw new Error('连接租约失效，请重新连接');
+      const lease = session.loginLease, socket = session.ws, aid = session.aid;
+      // Refresh authoritative room/presence before deriving an invitation or accepting a reservation.
+      await syncFriends();
+      if (session.ws !== socket || session.loginLease !== lease || session.aid !== aid || !access.validSession(session)) throw new Error('当前账号已变化，请重新打开好友列表');
+      const result = await call('social.action', [lease, value]);
+      if (value.action !== 'search' && value.action !== 'profile' && value.action !== 'history' && value.action !== 'recommend') {
+        void syncFriends().catch(error => diagnostic('好友状态同步失败，将自动重试', error));
+      }
+      return result;
+    },
     get initialized() { return replication.initialized; },
     async ready() {
       await sync(); await pending.drain();
@@ -1006,7 +1252,7 @@ export function createProfileAccess(config, stores, log) {
       runtimeSource = () => adminRuntime({ lobby, registry });
       if (authority) {
         authority.adminStateSource = createAdminStateSource({ snapshot: () => adminSnapshot({
-          lobby, registry, players, runtimes: authority.regions.adminRuntimes(),
+          lobby, registry, players, runtimes: authority.regions.adminRuntimes(), serverIds: config.serverIds,
         }) });
         return authority.adminStateSource;
       }
@@ -1021,8 +1267,30 @@ export function createProfileAccess(config, stores, log) {
     },
     validSession(session) {
       return replication.initialized && !closed && !session.loginReleased && !session.loginRevoked && session.connected && !!session.loginLease
+        && !session.loginInFlight && session.loginLease.generation === session.loginGeneration
         && performance.now() < session.leaseUntil
         && (!authority || !!authority.regions.current(session.loginLease));
+    },
+    ensureSession(session) {
+      if (access.validSession(session)) return Promise.resolve(true);
+      if (!replication.initialized || !renewable(session) || session.loginInFlight) return Promise.resolve(false);
+      if (session.leaseRecovery) return session.leaseRecovery.promise;
+      const now = performance.now();
+      const until = Math.min(now + RECOVERY_MS, (session.leaseUntil || 0) + RECOVERY_MS);
+      if (until <= now) { stopSession(session); return Promise.resolve(false); }
+      const row = { session, snapshot: snapshotLease(session), started: now, until };
+      row.promise = new Promise(resolve => { row.resolve = resolve; });
+      session.leaseRecovery = row;
+      row.timer = setTimeout(() => {
+        if (session.leaseRecovery !== row) return;
+        if (currentLease(row.snapshot)) stopSession(session, row.snapshot);
+        else finishRecovery(session);
+      }, Math.max(0, Math.ceil(until - performance.now())));
+      row.timer.unref?.();
+      notifyLease(session, 'recovering');
+      recoveryQueue.set(session, row);
+      scheduleRecovery();
+      return row.promise;
     },
     async authenticate(name, auth) {
       if (closed || !replication.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
@@ -1048,29 +1316,68 @@ export function createProfileAccess(config, stores, log) {
         }
       };
       session.loginInFlight = generation;
+      session.loginHandoffLease = session.loginLease || null;
+      clearLeaseTimer(session); finishRecovery(session);
+      logins.add(login);
       try {
         return await Promise.race([(async () => {
-          await pending.drain(); check();
+          check();
+          // An unrelated durable job may legitimately await a 10-second receipt; it cannot own this login's 7-second budget.
           if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
           replication.assertIndependent('login', [key.fixedAid]);
-          // 待办先完成，再用一次完整同步交接旧 grant。
-          await sync(); check();
-          logins.add(login);
+          // Flush one ordered batch for the old handoff; unrelated moving history cannot own the login deadline.
+          await sync(false); check();
+          if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
+          // Old single-writer mutations and release handoffs must be confirmed, never skipped or overwritten.
+          const independent = () => {
+            if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
+            replication.assertIndependent('login', [key.fixedAid]);
+            if (replication.state.pending.some(patch => patch.aid === key.fixedAid)
+              || replication.state.releases.some(release => release.aid === key.fixedAid)) {
+              throw new Error('档案交接尚未确认，请稍后重连');
+            }
+          };
+          independent();
+          session.loginHandoffLease = null;
           started = performance.now();
           data = await call('login', [key]); check();
-          if (data.error) return data;
+          if (data.error) { stopSession(session); return data; }
+          if (data.aid !== key.fixedAid) throw new Error('登录档案身份不匹配');
           login.aid = data.aid;
-          if (pending.affectsAid(data.aid)) throw pending.blockedError();
-          replication.assertIndependent('login', [data.aid]);
+          independent();
           if (!authority) {
-            // 登录时 main 创建/更新 identity 后，再推进到 grant 的字段版本。
-            await sync(); check();
-            check();
+            // Stop once this committed login receipt is materialized, not at a moving global head.
+            const versions = data.profileVersions ?? data.grant?.versions;
+            const fields = ['identity', 'loadout', 'presentation', 'rank', 'history'];
+            if (!versions || typeof versions !== 'object' || Array.isArray(versions)
+              || Object.entries(versions).some(([field, version]) => !fields.includes(field)
+                || !Number.isSafeInteger(version) || version < 0)) {
+              throw new Error('登录回执缺少已确认的档案版本');
+            }
+            const synchronized = () => players.profiles.has(data.aid)
+              && fields.every(field => replication.version(data.aid, field) >= (versions[field] || 0));
+            while (!synchronized()) {
+              check();
+              const cursor = replication.state.cursor;
+              await sync(false); check();
+              independent();
+              if (!synchronized() && replication.state.cursor === cursor) {
+                throw new Error('登录档案版本尚未同步，请稍后重连');
+              }
+            }
+            if (data.grant) {
+              if (data.grant.aid !== data.aid) throw new Error('登录档案授权身份不匹配');
+              await replication.acceptGrant(data.grant); check();
+            }
+            independent();
           }
           if (performance.now() >= started + LEASE_MS - 1000) throw new Error('连接租约已失效，请重连');
+          if (!data.lease || data.lease.owner !== key.owner || data.lease.generation !== generation
+            || data.lease.serverId !== config.id || typeof data.lease.epoch !== 'string') throw new Error('连接租约回执不匹配');
           session.loginLease = data.lease;
           session.loginAid = data.aid;
-          sessions.add(session); arm(session, started);
+          session.leaseUntil = 0; session.leaseRenewalStarted = -Infinity;
+          sessions.add(session);
           return { aid: data.aid };
         })(), new Promise((_, reject) => {
           timer = setTimeout(() => { expired = true; reject(new Error('登录等待超时，请重连')); }, loginTimeoutMs);
@@ -1083,14 +1390,19 @@ export function createProfileAccess(config, stores, log) {
       } finally {
         clearTimeout(timer);
         logins.delete(login);
-        if (session.loginInFlight === generation) session.loginInFlight = null;
+        if (session.loginInFlight === generation) {
+          session.loginInFlight = null; session.loginHandoffLease = null;
+          if (!session.loginRevoked && !session.loginReleased && session.connected && session.ws === socket
+            && session.loginLease === data?.lease) arm(session, started);
+        }
       }
     },
     async releaseSession(session) {
       const key = session.loginLease;
       session.profileReady = false;
       session.loginReleased = true;
-      clearTimeout(session.leaseTimer);
+      clearLeaseTimer(session); finishRecovery(session);
+      session.loginHandoffLease = null;
       sessions.delete(session);
       session.loginLease = null;
       if (key) {
@@ -1101,7 +1413,8 @@ export function createProfileAccess(config, stores, log) {
     disconnect(session) {
       const key = session.loginOwner ? { owner: session.loginOwner,
         generation: session.loginGeneration, serverId: config.id } : session.loginLease;
-      sessions.delete(session); clearTimeout(session.leaseTimer);
+      sessions.delete(session); clearLeaseTimer(session); finishRecovery(session);
+      session.loginHandoffLease = null;
       session.loginLease = null;
       if (key) void call('lease.release', [key]).then(() => closed ? undefined : sync()).catch((error) => log.error('[profiles] 断线交接失败，保留同步待办', error));
     },
@@ -1128,6 +1441,10 @@ export function createProfileAccess(config, stores, log) {
       if (!access.validSession(session)) return { error: 'BAD_TARGET', detail: '连接租约已失效，请重连' };
       try { return await call('chat.publish', [{ ...session.loginLease, playerId: session.playerId, ...value }]); }
       catch { return { error: 'INTERNAL', detail: '公共聊天暂不可用，请重试' }; }
+    },
+    healthCounters(local) {
+      const states = authority ? authority.regions.states() : stateCache;
+      return combinedHealthCounts(config.id, local, states, performance.now(), LEASE_MS, config.serverIds);
     },
     directory() {
       const states = authority ? authority.regions.states() : stateCache;
@@ -1177,6 +1494,29 @@ export function createProfileAccess(config, stores, log) {
       return Promise.resolve(publicLeaderboard(ranked, players, config.getData?.() || null));
     },
     history: {
+      mizukiCognition(aid) {
+        replication.assertIndependent('historyList', [aid]);
+        if (pending.affectsAid(aid, { ignoreBank: true })) throw pending.blockedError();
+        return stores.history.mizukiCognition(aid);
+      },
+      mizukiBank(aid) {
+        replication.assertIndependent('historyList', [aid]);
+        if (pending.affectsAid(aid, { ignoreBank: true })) throw pending.blockedError();
+        return pending.mizukiBank(aid, stores.history.mizukiBank(aid));
+      },
+      updateMizukiBank(aid, account) {
+        if (!replication.initialized) throw new Error('档案尚未初始化');
+        // The match may commit only after submit has durably queued this aid's
+        // account update. Later authority/replication failures keep the job for retry.
+        return pending.submit('historyRecord', [{ matchId: randomUUID().replaceAll('-', ''),
+          seats: [{ aid, playerId: 'mizuki-bank', isBot: false }], summary: { players: [] },
+          bankUpdates: [{ aid, account }] }], { requireQueued: true });
+      },
+      mizukiEndingUnlocks(aid) {
+        replication.assertIndependent('historyList', [aid]);
+        if (pending.affectsAid(aid, { ignoreBank: true })) throw pending.blockedError();
+        return stores.history.mizukiEndingUnlocks(aid);
+      },
       list(aid) {
         replication.assertIndependent('historyList', [aid]);
         if (pending.affectsAid(aid)) return Promise.reject(pending.blockedError());
@@ -1222,29 +1562,21 @@ export function createProfileAccess(config, stores, log) {
       const heartbeat = async () => {
         if (heartbeating || closed || !network) return;
         heartbeating = true;
-        const started = performance.now();
-        const peers = [...sessions].filter((s) => access.validSession(s) && !s.loginInFlight);
-        const keys = peers.map((s) => s.loginLease);
         try {
-          const value = await exchangeHeartbeat({ ...heartbeatPayload(), leases: keys });
-          if (closed) return;
-          for (let i = 0; i < peers.length; i++) {
-            const session = peers[i];
-            if (session.loginLease !== keys[i] || !session.connected || session.loginReleased || session.loginRevoked || session.loginInFlight) continue;
-            if (!value.renewed[i] || performance.now() >= session.leaseUntil) stopSession(session);
-            else arm(session, started);
-          }
+          await exchangeHeartbeat(heartbeatPayload());
         } catch (error) {
-          // 传输失败不能证明权威撤销；不移动原到期 timer，持续断联仍按期关闭。
+          // Unknown transport failure is not revocation. The local timer performs
+          // one bounded recheck, never silently extending business authorization.
           for (const id of Object.keys(stateCache)) delete stateCache[id];
-          log.error('[profiles] 登录心跳暂不可用，保留既有租约到期时间', error);
+          diagnostic('登录心跳暂不可用，保留既有租约到期时间', error);
         } finally { heartbeating = false; }
       };
       void heartbeat(); void report();
       access.heartbeatTimer = setInterval(() => {
         void heartbeat(); void replicate(); void report();
+        optional('好友状态同步暂不可用，将自动重试', syncFriends);
         // Also prune stale remote invitations when the profile bridge is unavailable.
-        lobbySource?.broadcastRecruitment();
+        optional('招募展示广播暂不可用', () => lobbySource?.broadcastRecruitment());
       }, HEARTBEAT_MS); access.heartbeatTimer.unref?.();
       if (!authority) {
         access.chatTimer = setInterval(async () => {
@@ -1269,7 +1601,7 @@ export function createProfileAccess(config, stores, log) {
       access.refreshTimer.unref?.();
     },
     close() {
-      closed = true; pending.close();
+      closed = true; pending.close(); recoveryQueue.clear();
       clearInterval(access.refreshTimer); clearInterval(access.heartbeatTimer); clearInterval(access.chatTimer);
       for (const session of [...sessions]) { stopSession(session); access.disconnect(session); }
     },

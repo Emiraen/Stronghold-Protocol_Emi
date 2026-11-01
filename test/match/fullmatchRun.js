@@ -15,7 +15,7 @@ export function reportSimIssues() {
   if (simIssues.size) console.log(`sim/content errors seen during full matches (not match-engine errors):\n${[...simIssues].slice(0, 20).map((x) => '  ' + x).join('\n')}`);
 }
 
-export function runFull({ mode, difficulty, humans, bots, seed, boostLp = null, clientCombat = true, pace = 'instant' }) {
+export async function runFull({ mode, difficulty, humans, bots, seed, boostLp = null, clientCombat = true, pace = 'instant' }) {
   const h = makeMatch({ mode, difficulty, humans, bots, seed, captureFrames: false, checkFrames: true, clientCombat, pace });
   h.autoHumans();
   const m = h.m;
@@ -34,8 +34,9 @@ export function runFull({ mode, difficulty, humans, bots, seed, boostLp = null, 
         for (const ps of m.players.values()) ps.lp = boostLp;
       }
     }
-    return h.ended != null;
+    return m.ended;
   }, { maxSteps: 5e6 });
+  await h.waitForEnd();
   assert.ok(h.ended, `${mode}/${difficulty}/${seed}: match did not end (${m.phase} R${m.round})`);
   assert.equal(h.endedCount, 1);
   assert.equal(m.phase, PHASE.RESULT);

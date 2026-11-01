@@ -97,12 +97,14 @@ describe('module type icons (local-client art, optional)', () => {
     assert.equal(moduleTypeIconUrl(data.get('local'), 'MAR-X'), null);
   });
 
-  test('the in-match detail panel and shop card resolve the icon from the local manifest and keep their text fallback', () => {
+  test('the in-match detail panel resolves the icon and preserves type text; loadout glyphs retain a fallback', async () => {
+    const { ModuleGlyph } = await import('../../public/js/screens/loadout.js');
+    const { Img } = await import('../../public/js/ui/gameComponents.js');
+    const imgOf = vnode => [...walk(vnode)].find(n => n.type === Img);
     const detail = readFileSync(path.join(ROOT, 'public/js/ui/detailPanel.js'), 'utf8');
     assert.match(detail, /<\$\{Img\} src=\$\{moduleTypeIconUrl\(data\.get\('local'\), lo\.module\.typeName\)\} fallback=\$\{html`<b class="num">\$\{moduleBadge\(lo\.module\)\}<\/b>`\}/);
     assert.match(detail, /<span class="dmodule__type">\$\{lo\.module\.typeName\}<\/span>/, 'the type text stays');
-    const shop = readFileSync(path.join(ROOT, 'public/js/ui/shopBar.js'), 'utf8');
-    assert.match(shop, /<\$\{Img\} src=\$\{moduleTypeIconUrl\(data\.get\('local'\), mod\.typeName\)\} class="scard__modicon" \/>\$\{mod\.typeName\}/,
-      'icon beside the type text (Img renders nothing without it)');
+    const glyph = ModuleGlyph({ m: null, rec: { uniEquipId: 'uniequip_002_x', typeName: 'MAR-X' }, id: 'uniequip_002_x' });
+    assert.equal(textOf(imgOf(glyph).props.fallback), 'X', 'missing artwork retains a readable type badge');
   });
 });

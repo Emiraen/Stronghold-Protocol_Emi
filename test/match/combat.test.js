@@ -87,7 +87,7 @@ test('SETTLE: LP −min(leaks, 10), bounty coins next round, IN_BATTLE layer gai
   m.dispose();
 });
 
-test('elimination: LP ≤ 0 → out, copies back to the pool; everyone out → RESULT defeat', () => {
+test('elimination: LP ≤ 0 → out, copies back to the pool; everyone out → RESULT defeat', async () => {
   // p_1 is perfect → 联防 re-fights p_0's leaks; all 10 survive and cost p_0 its last LP
   const h = makeMatch({ mode: 'coop', humans: 2, seed: 33, fake: true, script: (b) => (b.kind === 'unite' ? { survivors: { p_0: 10 } } : { leaks: Object.fromEntries(b.players.map((p) => [p, p === 'p_0' ? 10 : 0])) }) }).start();
   const m = h.m;
@@ -109,7 +109,8 @@ test('elimination: LP ≤ 0 → out, copies back to the pool; everyone out → R
   // the survivor keeps playing; now kill them too
   FakeBattle.script = (bt) => ({ leaks: Object.fromEntries(bt.players.map((p) => [p, 10])) });
   h.ps('p_1').lp = 3;
-  const end = h.drive(() => h.ended != null);
+  h.drive(() => m.ended);
+  const end = await h.waitForEnd();
   assert.ok(end);
   assert.equal(h.ended.victory, false);
   assert.equal(h.ended.reason, 'eliminated');

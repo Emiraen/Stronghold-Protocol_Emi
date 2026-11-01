@@ -6,7 +6,8 @@
 // Applied on <html>: `data-fit` plus --fit-l / --fit-r / --fit-t / --fit-b; css/devices.css then sets .app-root (the
 // screens' fixed box, theme.css) and the full-page panels to that box (every .screen is absolute inset 0 inside it, the
 // board is sized from its host element) and computes the layout root 1rem from it instead of the whole viewport. Fixed
-// overlays (dialogs, toasts) keep the full screen.
+// overlays (dialogs, toasts) keep the full screen. Control size changes design units, never a transform/zoom
+// on the canvas or its ancestors; resize handling remeasures HUD clearance and pointer geometry.
 
 import { html, Button, MicroLabel } from './components.js';
 import { createStore, useStore, loadPref, savePref } from '../store.js';
@@ -15,7 +16,15 @@ import { t, N_ } from '../../../shared/i18n.js';
 export const FIT_SIDES = ['l', 'r', 't', 'b'];
 /** Pixel offset range (inward positive) and the slider scale: value = MID + px / PX_PER_STEP. */
 export const FIT_MIN = -100, FIT_MAX = 100, MID = 50, PX_PER_STEP = 2;
-const NONE = { l: 0, r: 0, t: 0, b: 0 };
+export const CONTROL_SCALE_MIN = 75, CONTROL_SCALE_MAX = 150, CONTROL_SCALE_DEFAULT = 100;
+const NONE = { l: 0, r: 0, t: 0, b: 0, scale: CONTROL_SCALE_DEFAULT };
+
+/** Control size in percent; old edge-only preferences keep the original size. */
+export function sanitizeControlScale(value) {
+  const n = Math.round(Number(value));
+  return value == null || value === '' || !Number.isFinite(n)
+    ? CONTROL_SCALE_DEFAULT : Math.min(CONTROL_SCALE_MAX, Math.max(CONTROL_SCALE_MIN, n));
+}
 
 /** A stored value → four whole pixel offsets in FIT_MIN..FIT_MAX (anything else → 0). */
 export function sanitizeFit(v) {
@@ -24,6 +33,7 @@ export function sanitizeFit(v) {
     const n = Math.round(Number(v[k]));
     out[k] = Number.isFinite(n) ? Math.min(FIT_MAX, Math.max(FIT_MIN, n)) : 0;
   }
+  out.scale = sanitizeControlScale(v?.scale);
   return out;
 }
 /** The slider's 0–100 reading of a pixel offset, and back. */
@@ -36,6 +46,9 @@ export const fitStore = createStore(sanitizeFit(loadPref('screenFit', null)));
 export function applyFit(f) {
   const el = globalThis.document?.documentElement;
   if (!el) return;
+  const scale = sanitizeControlScale(f.scale);
+  if (scale === CONTROL_SCALE_DEFAULT) el.style.removeProperty('--control-scale');
+  else el.style.setProperty('--control-scale', String(scale / 100));
   const on = FIT_SIDES.some((k) => f[k] !== 0);
   if (on) {
     el.dataset.fit = '';
@@ -51,7 +64,7 @@ export function applyFit(f) {
 fitStore.subscribe((f) => { savePref('screenFit', f); applyFit(f); });
 applyFit(fitStore.get());
 
-/** @param {Partial<{l:number,r:number,t:number,b:number}>} patch pixel offsets */
+/** @param {Partial<{l:number,r:number,t:number,b:number,scale:number}>} patch pixel offsets */
 export const updateFit = (patch) => fitStore.set(sanitizeFit({ ...fitStore.get(), ...patch }));
 
 const SIDE_NAMES = { l: N_('左侧'), r: N_('右侧'), t: N_('顶部'), b: N_('底部') };
@@ -61,13 +74,23 @@ const LO = sliderOf(FIT_MIN), HI = sliderOf(FIT_MAX);
 /** The settings section: one 0–100 slider per edge (50 = unchanged), −/+ one step for a fine touch, 重置. */
 export function ScreenFitSection() {
   const f = useStore((s) => s, Object.is, fitStore);
-  const any = FIT_SIDES.some((k) => f[k] !== 0);
+  const any = FIT_SIDES.some((k) => f[k] !== 0) || f.scale !== CONTROL_SCALE_DEFAULT;
   return html`<section class="set-fit" aria-labelledby="set-fit-title" data-testid="screen-fit">
     <div class="set-keys__head">
       <span class="set-row__label" id="set-fit-title">${t('异形屏适配')}<${MicroLabel}>SCREEN FIT<//></span>
       <${Button} variant="ghost" size="sm" icon="refresh" class="set-fit__reset" disabled=${!any} onClick=${() => updateFit(NONE)}>${t('重置')}<//>
     </div>
-    <p class="set-hint">${t('只调整控件避让，背景与棋盘保持全铺。50 为不调整，左右拖动调整该边。仅保存在这台设备上。')}</p>
+    <p class="set-hint">${t('只调整控件避让，背景与棋盘保持全铺。各边 50 为不调整，左右拖动调整该边。仅保存在这台设备上。')}</p>
+    <div class="set-row set-fit__row">
+      <span class="set-row__label">${t('控件大小')}<${MicroLabel}>CONTROL SIZE<//></span>
+      <button type="button" class="set-fit__step" aria-label=${t('缩小控件')} disabled=${f.scale <= CONTROL_SCALE_MIN} onClick=${() => updateFit({ scale: f.scale - 1 })}>−</button>
+      <input class="set-range" type="range" min=${CONTROL_SCALE_MIN} max=${CONTROL_SCALE_MAX} step="1" value=${f.scale}
+        style=${`--pct:${(f.scale - CONTROL_SCALE_MIN) / (CONTROL_SCALE_MAX - CONTROL_SCALE_MIN) * 100}%`}
+        aria-label=${t('控件大小')} aria-valuetext=${`${f.scale}%`} data-testid="fit-scale" onInput=${(e) => updateFit({ scale: e.currentTarget.value })} />
+      <button type="button" class="set-fit__step" aria-label=${t('放大控件')} disabled=${f.scale >= CONTROL_SCALE_MAX} onClick=${() => updateFit({ scale: f.scale + 1 })}>+</button>
+      <span class="set-row__val num">${f.scale}%</span>
+    </div>
+    <p class="set-hint">${t('控件大小默认 100%，调整后立即生效；不缩放棋盘画布。')}</p>
     ${FIT_SIDES.map((k) => {
       const v = sliderOf(f[k]);
       return html`<div key=${k} class="set-row set-fit__row">

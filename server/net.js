@@ -1,4 +1,5 @@
 import { getSendMetadata } from './sendMetadata.js';
+import { heavyFriendAction } from '../shared/friends.js';
 export { markSend } from './sendMetadata.js';
 // server/net.js — WebSocket session layer (DESIGN §1, §8).
 //
@@ -34,6 +35,7 @@ export { markSend } from './sendMetadata.js';
 //   onMessage(session, msg) → { ok: true } | { error: ERR code, detail?: string } | undefined
 //   routeGame(session, msg) → same (optional): client-side combat reports `b.progress` / `b.result` (DESIGN §14) go
 //                                          straight to the running match through it; without it they reach onMessage
+//   onLeaseRecovered(session)              one state-only resync after bounded lease recovery
 //   onDisconnect(session)                  the session's socket closed (session kept for the reconnect window)
 //   onExpire(session)                      the session was purged (disconnected longer than the window)
 
@@ -125,6 +127,8 @@ export class Session {
     /** @type {Record<string, { skill: number, module: string|null }> | null} checked operator loadout (lobby-owned, DESIGN §16) */
     this.loadout = null;
     this.ops = null;
+    this.zhajingLoadout = null;
+    this.zhajingOps = null;
     /** @type {string | null} anonymous ranked-profile id from hello.aid (localStorage 'sp.aid'; rankedStore key) */
     this.aid = null;
     // 设备输入与公共档案分离；这些字段从不放入公开帧。
@@ -189,7 +193,7 @@ export class SessionRegistry {
         || this.byPlayerId.has(doc.playerId) || this.byTokenMap.has(doc.token)
         || this.byPlayerId.size >= this.maxSessions) return null;
     const s = new Session({ playerId: doc.playerId, token: doc.token, name: sanitizeName(doc.name), now: this.now() });
-    for (const key of ['roomCode', 'aid', 'clientAid', 'deviceId', 'profileName', 'loadout', 'ops', 'notOwned', 'diy',
+    for (const key of ['roomCode', 'aid', 'clientAid', 'deviceId', 'profileName', 'loadout', 'ops', 'zhajingLoadout', 'zhajingOps', 'notOwned', 'diy',
       'skins', 'portraits', 'card', 'addr', 'limitKey', 'notice', 'pendingResult',
       'chatStrikes', 'chatLastHitAt', 'chatMutedUntil']) {
       if (Object.hasOwn(doc, key)) s[key] = doc[key];
@@ -295,6 +299,8 @@ export class TokenBucket {
  */
 export function encode(msg) {
   try {
+    const prepared = getSendMetadata(msg).encoded;
+    if (typeof prepared === 'string') return prepared;
     // 旧文本帧保持原样；结构化消息同时给旧客户端中文 text 和新客户端词典键。
     if ((msg?.t === 'm.toast' || msg?.t === 'm.ticker') && msg.text && typeof msg.text === 'object'
       && typeof msg.text.msgid === 'string') msg = { ...msg, ...wireMessage(msg.text) };
@@ -308,31 +314,172 @@ export function encode(msg) {
 // 差量只在实际发送层计算；基准保存JSON副本，不引用会被业务修改的对象。
 const STATE_TYPES = new Set(['m.public', 'm.private', 'b.snap', 'b.pool']);
 const stateKey = (msg) => msg.t === 'b.snap' ? `b.snap:${msg.fieldId}` : msg.t;
-// Broadcast recipients share immutable wire JSON, while sequence/epoch stay per connection.
-// Retain at most one small frame; unrelated rooms cannot grow a process-wide cache.
-let lastStateFrame = null;
-function parseStateFrame(data) {
-  if (lastStateFrame?.data === data) return lastStateFrame;
-  const frame = { data, msg: JSON.parse(data), patches: new WeakMap() };
-  if (STATE_TYPES.has(frame.msg?.t) && data.length <= 1024 * 1024) lastStateFrame = frame;
+// Broadcast recipients share immutable wire JSON, while sequence/epoch stay per
+// connection. Retain a bounded short window so delayed four-field batches also
+// reuse parsing/patches across recipients. Other rooms cannot grow this cache.
+const stateFrames = new Map();
+const stateFrameCells = new WeakMap();
+const stateFrameCell = Symbol('stateFrameCell');
+const legacyStateFrames = new WeakMap();
+let stateFrameBytes = 0;
+const wireByteLengths = new Map();
+let wireByteLengthBytes = 0;
+function encodedByteLength(data) {
+  const cached = wireByteLengths.get(data);
+  if (cached !== undefined) return cached;
+  const bytes = Buffer.byteLength(data);
+  if (bytes <= 1024 * 1024) {
+    wireByteLengths.set(data, bytes); wireByteLengthBytes += bytes;
+    while (wireByteLengths.size > 64 || wireByteLengthBytes > 4 * 1024 * 1024) {
+      const oldest = wireByteLengths.keys().next().value;
+      wireByteLengthBytes -= wireByteLengths.get(oldest); wireByteLengths.delete(oldest);
+    }
+  }
+  return bytes;
+}
+// These subtrees are substantial but normally stay identical for a whole
+// battle. Native JSON equality avoids walking every legal tile, description,
+// skill option and stage cell for each idle panel update. Cache only weakly
+// held parsed objects; the exact JSON comparison cannot hide a changed value.
+const unchangedStateSubtrees = new Set(['geometry', 'meta', 'rosters', 'stage', 'covenants', 'garrisons',
+  'mizukiDifficulty', 'mizukiMutations', 'mizukiVirtues', 'officialWaves', 'officialFacilities',
+  'prep', 'exploration', 'expedition', 'roster', 'equipment', 'equipmentRules', 'trainingSource',
+  'trainingReport', 'catalogueReport', 'recruitmentRules', 'strategyOptions', 'initialSupplyOptions',
+  'recruitGroups', 'difficultyOptions', 'squads', 'selectedSquad', 'strategy', 'initialSupply', 'recruitGroup']);
+const stateSubtreeJson = new WeakMap();
+const stateSubtreeLengths = new WeakMap();
+const protectedStateKeys = new Set(['__proto__', 'prototype', 'constructor']);
+function objectKeys(value) {
+  const keys = Object.keys(value);
+  keys.hasProtected = keys.some(key => protectedStateKeys.has(key));
+  return keys;
+}
+function subtreeJson(value) {
+  let json = stateSubtreeJson.get(value);
+  if (json === undefined) { json = JSON.stringify(value); stateSubtreeJson.set(value, json); }
+  return json;
+}
+// These values belong only to JSON.parse snapshots, never live game objects.
+// Native serialization sizes a replacement without per-leaf caches or a
+// handwritten parser competing with battle simulation on the event loop.
+function subtreeJsonLength(value) {
+  if (!value || typeof value !== 'object') return JSON.stringify(value).length;
+  const cached = stateSubtreeLengths.get(value);
+  if (cached !== undefined) return cached;
+  // Parsed wire frames and equality-compared subtrees already retain their
+  // exact serialized JSON. Reuse its length instead of serializing the same
+  // immutable battle/public state again for each replacement candidate.
+  const length = subtreeJson(value).length;
+  stateSubtreeLengths.set(value, length);
+  return length;
+}
+function parseStateFrame(data, cell) {
+  if (cell?.data === data && cell.frame) return cell.frame;
+  const cached = stateFrames.get(data);
+  if (cached) {
+    stateFrames.delete(data); stateFrames.set(data, cached);
+    if (cell?.data === data) cell.frame = cached;
+    return cached;
+  }
+  const frame = { data, bytes: encodedByteLength(data), msg: JSON.parse(data), patches: new WeakMap() };
+  if (frame.msg && typeof frame.msg === 'object') stateSubtreeJson.set(frame.msg, data);
+  if (STATE_TYPES.has(frame.msg?.t) && frame.bytes <= 1024 * 1024) {
+    stateFrames.set(data, frame); stateFrameBytes += frame.bytes;
+    while (stateFrames.size > 16 || stateFrameBytes > 2 * 1024 * 1024) {
+      const oldest = stateFrames.keys().next().value;
+      stateFrameBytes -= stateFrames.get(oldest).bytes; stateFrames.delete(oldest);
+    }
+  }
+  if (cell?.data === data) cell.frame = frame;
   return frame;
 }
-function statePatch(before, after, path = []) {
-  if (before === after) return [];
+const emptyStatePatch = Object.freeze(Object.assign([], { jsonLength: 2 }));
+function replacementPatch(path, after, pathLength = JSON.stringify(path).length) {
+  const patch = [[path, after]];
+  patch.jsonLength = 5 + pathLength + subtreeJsonLength(after);
+  return patch;
+}
+function statePatch(before, after, path = [], pathLength = 2) {
+  if (before === after) return emptyStatePatch;
   const a = before && typeof before === 'object', b = after && typeof after === 'object';
   if (!a || !b || Array.isArray(before) !== Array.isArray(after)
-      || (Array.isArray(after) && before.length !== after.length)) return [[path, after]];
-  if ([...Object.keys(before), ...Object.keys(after)].some((key) => ['__proto__', 'prototype', 'constructor'].includes(key))) return [[path, after]];
+      || (Array.isArray(after) && before.length !== after.length)) return replacementPatch(path, after, pathLength);
+  const beforeKeys = objectKeys(before), afterKeys = objectKeys(after);
+  if (beforeKeys.hasProtected || afterKeys.hasProtected) return replacementPatch(path, after, pathLength);
+  if (unchangedStateSubtrees.has(path.at(-1))) {
+    const previousJson = subtreeJson(before), nextJson = subtreeJson(after);
+    if (previousJson === nextJson && !/"(?:__proto__|prototype|constructor)":/.test(nextJson)) return emptyStatePatch;
+  }
   const patch = [];
-  for (const key of Object.keys(before)) if (!Object.hasOwn(after, key)) patch.push([[...path, key]]);
-  for (const key of Object.keys(after)) {
-    if (!Object.hasOwn(before, key)) patch.push([[...path, key], after[key]]);
-    else patch.push(...statePatch(before[key], after[key], [...path, key]));
+  let jsonLength = 2;
+  let replace;
+  const append = child => {
+    if (!child.length) return;
+    jsonLength += child.jsonLength - 2 + (patch.length ? 1 : 0);
+    patch.push(...child);
+  };
+  const childPathLength = key => pathLength + (path.length ? 1 : 0) + JSON.stringify(key).length;
+  for (const key of beforeKeys) if (!Object.hasOwn(after, key)) {
+    const removedPath = [...path, key], removed = [[removedPath]];
+    removed.jsonLength = 4 + childPathLength(key); append(removed);
+    replace ||= replacementPatch(path, after, pathLength);
+    if (jsonLength >= replace.jsonLength) return replace;
+  }
+  for (const key of afterKeys) {
+    // Identical primitive leaves require neither a path allocation nor JSON
+    // sizing. This is the dominant case in twenty-Hz battle snapshots.
+    if (Object.hasOwn(before, key) && before[key] === after[key]) continue;
+    const length = childPathLength(key);
+    if (!Object.hasOwn(before, key)) append(replacementPatch([...path, key], after[key], length));
+    else append(statePatch(before[key], after[key], [...path, key], length));
+    if (patch.length) {
+      replace ||= replacementPatch(path, after, pathLength);
+      if (jsonLength >= replace.jsonLength) return replace;
+    }
   }
   // 无变化的子树无需反复序列化整棵替换候选；输出仍是同一个空差量。
-  if (!patch.length) return patch;
-  const replace = [[path, after]];
-  return JSON.stringify(patch).length < JSON.stringify(replace).length ? patch : replace;
+  if (!patch.length) return emptyStatePatch;
+  patch.jsonLength = jsonLength;
+  replace ||= replacementPatch(path, after, pathLength);
+  // Exact JSON lengths propagate bottom-up. Serializing the entire patch and
+  // replacement again at every ancestor made parallel rooms quadratic work.
+  return jsonLength < replace.jsonLength ? patch : replace;
+}
+
+function referenceBattleFields(frame, conn) {
+  const fields = frame.msg.mizuki?.fields;
+  if (!conn.compactEnabled || frame.msg.t !== 'm.public' || !Array.isArray(fields) || !fields.length) return frame;
+  let mask = '';
+  const references = fields.map(field => {
+    if (conn.streamEnabled && field?.fieldId !== (conn.streamFieldId || conn.ownFieldId)) {
+      mask += 'h';
+      frame.overviews ||= new WeakMap();
+      let overview = frame.overviews.get(field);
+      if (!overview) {
+        overview = {};
+        for (const [key, value] of Object.entries(field)) if (value == null || ['string', 'number', 'boolean'].includes(typeof value)
+          || key.startsWith('objective') || ['players', 'damageRows', 'dps', 'dp'].includes(key)) overview[key] = value;
+        frame.overviews.set(field, overview);
+      }
+      return ['$h', overview];
+    }
+    const delivered = conn.stateBases.get('b.snap:' + field?.fieldId)?.v;
+    const reusable = delivered?.battleId === field?.battleId && delivered?.fieldId === field?.fieldId
+      && delivered?.time === field?.t;
+    mask += reusable ? '1' : '0';
+    return reusable ? ['$b', field.fieldId, field.battleId] : field;
+  });
+  if (!mask.includes('1') && !mask.includes('h')) return frame;
+  frame.references ||= new Map();
+  let compact = frame.references.get(mask);
+  if (!compact) {
+    const msg = { ...frame.msg, mizuki: { ...frame.msg.mizuki, fields: references } };
+    const data = JSON.stringify(msg);
+    stateSubtreeJson.set(msg, data);
+    compact = { data, msg, bytes: Buffer.byteLength(data), patches: new WeakMap() };
+    frame.references.set(mask, compact);
+  }
+  return compact;
 }
 function prepareState(conn, data, options) {
   if (!conn?.deltaEnabled) return { data };
@@ -341,32 +488,51 @@ function prepareState(conn, data, options) {
   if (typeof options.type === 'string' && options.type !== 'welcome' && !STATE_TYPES.has(options.type)
       && !options.clearDeferred && !options.clearBattle && options.clearField == null) return { data };
   let frame;
-  try { frame = parseStateFrame(data); } catch { return { data }; }
-  const msg = frame.msg;
+  try { frame = parseStateFrame(data, options[stateFrameCell]); } catch { return { data }; }
+  let msg = frame.msg;
   if (options.clearDeferred || options.clearBattle || options.clearField != null || msg?.t === 'welcome') {
     conn.stateBases.clear();
     conn.stateEpoch++;
   }
   if (!STATE_TYPES.has(msg?.t)) return { data };
+  if (conn.streamEnabled && msg.t === 'm.private' && typeof msg.mizuki?.fieldId === 'string') {
+    const previous = conn.ownFieldId; conn.ownFieldId = msg.mizuki.fieldId;
+    if (!conn.streamManual || !conn.streamFieldId || conn.streamFieldId === previous) conn.streamFieldId = conn.ownFieldId;
+  }
+  if (conn.streamEnabled && msg.t === 'm.public' && Array.isArray(msg.mizuki?.fields)) {
+    const fields = msg.mizuki.fields;
+    if (!fields.some(field => field.fieldId === conn.streamFieldId)) {
+      conn.streamManual = false;
+      conn.streamFieldId = fields.find(field => field.fieldId === conn.ownFieldId)?.fieldId
+        || fields.find(field => field.players?.includes(conn.session?.playerId))?.fieldId || fields[0]?.fieldId || null;
+    }
+  }
+  frame = referenceBattleFields(frame, conn); msg = frame.msg; data = frame.data;
   const key = stateKey(msg), previous = conn.stateBases.get(key);
   const next = (previous?.n || 0) + 1;
+  const compactTag = conn.compactEnabled && msg.t === 'm.public' && msg.mizuki ? ',"c":1' : '';
   // data 已是完整 JSON；直接嵌入封装，避免每位收件人再序列化同一状态正文。
-  const full = `{"t":"net.state","e":${conn.stateEpoch},"k":${JSON.stringify(key)},"n":${next},"v":${data}}`;
-  let encoded = full;
+  const fullPrefix = `{"t":"net.state","e":${conn.stateEpoch},"k":${JSON.stringify(key)},"n":${next}${compactTag},"v":`;
+  const full = fullPrefix + data + '}';
+  const fullBytes = Buffer.byteLength(fullPrefix) + frame.bytes + 1;
+  let encoded = full, bytes = fullBytes;
   if (previous) {
     let patch = frame.patches.get(previous.v);
     if (!patch) {
       const operations = statePatch(previous.v, msg);
-      patch = { empty: !operations.length, json: JSON.stringify(operations) };
+      const json = JSON.stringify(operations);
+      patch = { empty: !operations.length, json, bytes: Buffer.byteLength(json) };
       frame.patches.set(previous.v, patch);
     }
     // 相同状态不占链路，也不推进差量序号；恢复/结束等带完成回调的帧仍实际发送。
     if (patch.empty && !options.onComplete) return { skip: true };
-    const delta = `{"t":"net.delta","e":${conn.stateEpoch},"k":${JSON.stringify(key)},"b":${previous.n},"n":${next},"p":${patch.json}}`;
+    const deltaPrefix = `{"t":"net.delta","e":${conn.stateEpoch},"k":${JSON.stringify(key)},"b":${previous.n},"n":${next}${compactTag},"p":`;
+    const delta = deltaPrefix + patch.json + '}';
+    const deltaBytes = Buffer.byteLength(deltaPrefix) + patch.bytes + 1;
     // 不划算的差量走全量；压缩仍作用于两种帧。
-    if (Buffer.byteLength(delta) < Buffer.byteLength(full) * 0.85) encoded = delta;
+    if (deltaBytes < fullBytes * 0.85) { encoded = delta; bytes = deltaBytes; }
   }
-  return { data: encoded, commit() {
+  return { data: encoded, bytes, commit() {
     conn.stateBases.delete(key);
     conn.stateBases.set(key, { n: next, v: msg });
     if (conn.stateBases.size > 64) conn.stateBases.delete(conn.stateBases.keys().next().value);
@@ -423,12 +589,15 @@ class BandwidthBudget {
     return this.tokens <= 0 ? NET_DEFAULTS.mediumPauseBytes + 1
       : this.tokens < this.capacity * 0.25 ? NET_DEFAULTS.lowPauseBytes + 1 : 0;
   }
-  reserve(bytes) {
+  reserve(bytes, { deferToWire = false } = {}) {
     this.sample();
-    // 先预约未压缩字节，写入回调后按TCP真实字节结算；可靠消息仍不受门禁阻塞。
-    this.tokens -= bytes;
+    // Deflate's pending input is bounded separately from the actual TCP
+    // queue. Debiting its uncompressed bytes as line traffic falsely paused
+    // every other room until hysteresis recovered after tiny compressed writes.
+    const reserved = deferToWire ? 0 : bytes;
+    this.tokens -= reserved;
     return () => {
-      this.tokens = Math.min(this.capacity, this.tokens + bytes);
+      this.tokens = Math.min(this.capacity, this.tokens + reserved);
     };
   }
   interval() { this.sample(); return Math.min(2000, this.baseMs * this.factor); }
@@ -437,16 +606,36 @@ class BandwidthBudget {
 
 // 发送调用者不变；在 terminate 同步触发 close 前记录连接的硬终止原因。
 const socketConnections = new WeakMap();
+function compressedSocket(ws) {
+  return typeof ws.extensions === 'string' && ws.extensions.split(',').some(extension => extension.trim() === 'permessage-deflate')
+    && Number.isFinite(ws._socket?.writableLength);
+}
+function socketPacingBuffered(ws, limits = NET_DEFAULTS) {
+  const raw = Math.max(0, ws.bufferedAmount || 0);
+  if (!compressedSocket(ws)) return raw;
+  const wire = Math.max(0, ws._socket.writableLength), compression = Math.max(0, raw - wire);
+  // Keep real slow-socket thresholds unchanged. Compression work has its own
+  // finite soft limits; the existing raw sixteen-MiB write guard still applies.
+  return Math.max(wire, compression > 1024 * 1024 ? limits.mediumPauseBytes + 1
+    : compression > 512 * 1024 ? limits.lowPauseBytes + 1 : 0);
+}
 export function clearPendingPool(ws) { socketConnections.get(ws)?.clearPendingPool(); }
 export function clearDeferred(ws) { socketConnections.get(ws)?.flow.clear((entry) => entry.priority !== 'high'); }
-const CLOSE_REASONS = new Set(['session replaced', 'hello timeout', 'admin kick', 'rate limit', 'server shutdown']);
+const CLOSE_REASONS = new Set(['session replaced', 'hello timeout', 'admin kick', 'rate limit', 'server shutdown',
+  'login lease expired', 'message backlog', 'login rejected', 'login unavailable', 'session released',
+  'server switch', 'server switch failed']);
 const safeCloseReason = (reason) => {
   const text = Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason || '');
   return CLOSE_REASONS.has(text) ? text : text ? '[redacted]' : '';
 };
-const closeCause = (code) => ({
+const POLICY_CLOSE_CAUSES = Object.freeze({
+  'rate limit': 'rate_limit', 'login lease expired': 'login_lease_expired', 'message backlog': 'message_backlog',
+  'login rejected': 'login_rejected', 'login unavailable': 'login_unavailable', 'session released': 'session_released',
+});
+const closeCause = (code, reason) => code === CLOSE.POLICY
+  ? POLICY_CLOSE_CAUSES[safeCloseReason(reason)] || 'policy_close' : ({
   [CLOSE.REPLACED]: 'session_replaced', [CLOSE.HELLO_TIMEOUT]: 'hello_timeout',
-  [CLOSE.POLICY]: 'rate_limit', [CLOSE.SHUTDOWN]: 'server_shutdown', [CLOSE.ADMIN_KICK]: 'admin_kick',
+  [CLOSE.SHUTDOWN]: 'server_shutdown', [CLOSE.ADMIN_KICK]: 'admin_kick',
 })[code] || 'server_close';
 
 export function terminateSocket(ws, cause, detail = {}) {
@@ -473,6 +662,18 @@ export function sendRaw(ws, data, options = {}) {
     const conn = socketConnections.get(ws);
     if (conn?.closing) return false;
     if (!conn) return writeRaw(ws, data, options);
+    if (!conn.fieldMetadataEnabled && typeof options.legacyMessage === 'function') {
+      let legacy = legacyStateFrames.get(options);
+      if (!legacy || legacy.source !== data) {
+        const message = options.legacyMessage();
+        legacy = { source: data, data: encode(message), options: sendOptions(message) };
+        legacyStateFrames.set(options, legacy);
+      }
+      data = legacy.data; options = legacy.options;
+      if (data == null) return false;
+    }
+    if (conn.streamEnabled && options.type === 'b.snap' && options.periodic && options.cadenceMs != null
+      && (conn.streamFieldId || conn.ownFieldId) && options.fieldId !== (conn.streamFieldId || conn.ownFieldId)) return true;
     if (options.clearDeferred) conn.flow.clear((entry) => entry.priority !== 'high');
     if (options.clearField != null) conn.flow.clear((entry) => entry.priority !== 'high'
       && entry.options.fieldId === options.clearField);
@@ -482,7 +683,17 @@ export function sendRaw(ws, data, options = {}) {
     const priority = options.onComplete ? 'high' : options.priority
       || (options.droppable || options.category === 'pool' ? 'medium' : 'high');
     const key = options.key ?? (options.category === 'pool' ? 'b.pool' : null);
+    // A four-field broadcast can outlive the small global LRU while sibling
+    // sockets wait for their sender drain. Retain one lazy parsed JSON copy
+    // with the queued options, keyed by the exact immutable encoded string.
+    // Coalesced-away frames are never parsed, and no live game object is held.
+    let cell;
+    if (conn.deltaEnabled && STATE_TYPES.has(options.type)) {
+      cell = stateFrameCells.get(options);
+      if (cell?.data !== data) { cell = { data, frame: null }; stateFrameCells.set(options, cell); }
+    }
     return conn.flow.enqueue(data, { ...options, priority, key,
+      ...(cell ? { [stateFrameCell]: cell } : {}),
       periodic: options.periodic ?? (options.droppable || options.category === 'pool'),
       onOverflow: priority === 'medium' ? () => terminateSocket(ws, 'deferred_buffer_limit') : null });
   } catch {
@@ -499,9 +710,17 @@ function writeRaw(ws, data, options = {}) {
     const conn = socketConnections.get(ws);
     if (ws.readyState !== WS_OPEN || conn?.closing) return false;
     const session = conn?.session;
-    if (session?.loginRevoked || (session?.loginLease && performance.now() >= session.leaseUntil)) {
+    if (session?.loginRevoked) {
       session.profileReady = false;
       terminateSocket(ws, 'login_lease_lost');
+      return false;
+    }
+    // Transport-only controls do not authorize play. Expiry is resolved by the bounded authority
+    // check, not by an unrelated outgoing snapshot racing its renewal callback.
+    const leaseControl = options.type === 'pong' || options.type === 'session.lease';
+    if (session?.loginLease && performance.now() >= session.leaseUntil && !leaseControl) {
+      // No business frame leaves while uncertain. The same bounded check owns all failure handling.
+      if (!session.loginInFlight) void conn?.network?.ensureCurrentSession(conn).catch(() => {});
       return false;
     }
     if (session?.loginReleased) {
@@ -511,12 +730,12 @@ function writeRaw(ws, data, options = {}) {
     const frame = prepareState(conn, data, options);
     if (frame.skip) return true;
     const limits = conn?.opts || NET_DEFAULTS;
-    const queued = ws.bufferedAmount || 0, bytes = Buffer.byteLength(frame.data);
+    const queued = ws.bufferedAmount || 0, bytes = frame.bytes ?? Buffer.byteLength(frame.data);
     if (queued + bytes > limits.hardBufferBytes) {
       terminateSocket(ws, 'hard_buffer_limit', { bufferedBytes: queued, frameBytes: bytes, hardBufferBytes: limits.hardBufferBytes });
       return false;
     }
-    release = conn?.bandwidth.reserve(bytes);
+    release = conn?.bandwidth.reserve(bytes, { deferToWire: compressedSocket(ws) });
     ws.send(frame.data, (err) => {
       release?.();
       release = null;
@@ -597,8 +816,12 @@ export function send(ws, msg) {
  * @returns {boolean}
  */
 export function sendSession(session, msg) {
-  if (!session || !session.connected || session.profileReady === false || session.loginReleased || session.loginRevoked
-    || (session.loginLease && performance.now() >= session.leaseUntil)) return false;
+  if (!session || !session.connected || session.profileReady === false || session.loginReleased || session.loginRevoked) return false;
+  if (session.loginLease && performance.now() >= session.leaseUntil) {
+    const conn = socketConnections.get(session.ws);
+    if (!session.loginInFlight && conn?.session === session) void conn.network?.ensureCurrentSession(conn).catch(() => {});
+    return false;
+  }
   return send(session.ws, msg);
 }
 
@@ -768,6 +991,12 @@ class Connection {
   constructor(ws, addr, now, opts, log, clock, monotonicNow, tcpMetrics, bandwidth) {
     this.bandwidth = bandwidth;
     this.deltaEnabled = false;
+    this.compactEnabled = false;
+    this.streamEnabled = false;
+    this.fieldMetadataEnabled = false;
+    this.streamFieldId = null;
+    this.streamManual = false;
+    this.ownFieldId = null;
     this.stateBases = new Map();
     this.stateEpoch = 0;
     this.monotonicNow = monotonicNow;
@@ -779,9 +1008,10 @@ class Connection {
     this.lastSnapAt = -Infinity;
     this.trend = new CongestionTrend({ now: monotonicNow, expiryMs: opts.heartbeatMs * 2 });
     this.flow = new PrioritySender({
-      buffered: () => Math.max(ws.bufferedAmount || 0, this.bandwidth.buffered()),
+      buffered: () => Math.max(socketPacingBuffered(ws, opts), this.bandwidth.buffered()),
       send: (data, options) => writeRaw(ws, data, options),
-      now: monotonicNow, interval: () => this.periodicInterval(),
+      now: monotonicNow, interval: entry => this.periodicInterval(this.deltaEnabled ? entry?.options.cadenceMs : undefined), batchSize: 4,
+      sizeOf: encodedByteLength,
       hardBytes: opts.hardBufferBytes, lowBytes: opts.lowPauseBytes,
       mediumBytes: Math.min(opts.mediumPauseBytes, opts.snapDropBytes),
       resumeBytes: Math.min(opts.resumeBytes, opts.snapDropBytes / 2),
@@ -812,13 +1042,19 @@ class Connection {
     this.closing = false;
   }
 
-  periodicInterval() {
+  periodicInterval(cadenceMs) {
     const now = this.monotonicNow();
     const tcp = this.tcpMetrics.get(this);
     const rtt = tcp?.rttMs ?? (this.rttAt != null
       && now - this.rttAt <= this.opts.heartbeatMs * 2 ? this.rtt : null);
-    return Math.min(2000, Math.max(this.bandwidth.interval() * this.trend.factor(now), (rtt || 0) * 2,
-      this.ws.bufferedAmount > this.opts.lowPauseBytes ? 1000 : 0));
+    const normalInterval = this.bandwidth.interval();
+    const explicitCadence = Number.isFinite(cadenceMs) && cadenceMs >= 10 && cadenceMs <= 2000;
+    const interval = explicitCadence ? normalInterval / this.bandwidth.baseMs * cadenceMs : normalInterval;
+    // Absolute RTT is latency, not evidence that a healthy 20 Hz snapshot
+    // stream is congested. Explicit battle cadence still follows measured
+    // bandwidth, retransmission/RTT trend and buffered-byte backpressure.
+    return Math.min(2000, Math.max(interval * this.trend.factor(now), explicitCadence ? 0 : (rtt || 0) * 2,
+      socketPacingBuffered(this.ws, this.opts) > this.opts.lowPauseBytes ? 1000 : 0));
   }
 
   onTcpSample(sample) {
@@ -881,7 +1117,7 @@ class Connection {
     this.closing = true;
     this.stopPeriodic();
     if (!this.closeCause) {
-      this.closeCause = closeCause(code);
+      this.closeCause = closeCause(code, reason);
       this.requestedCloseCode = code;
       this.event('ws_close_requested', { cause: this.closeCause, closeReason: safeCloseReason(reason) });
     }
@@ -897,7 +1133,7 @@ export class Network {
   /**
    * @param {{
    *   registry: SessionRegistry,
-   *   handler: { onHello?: Function, onMessage: Function, onDisconnect?: Function, onExpire?: Function, welcomeInfo?: Function },
+   *   handler: { onHello?: Function, onMessage: Function, onDisconnect?: Function, onExpire?: Function, onLeaseRecovered?: Function, welcomeInfo?: Function },
    *   log?: { info: Function, warn: Function, error: Function, debug?: Function },
    *   now?: () => number,
    *   options?: Partial<typeof NET_DEFAULTS>,
@@ -977,6 +1213,7 @@ export class Network {
     if (this.closed || this.draining) { try { ws.close(CLOSE.SHUTDOWN, 'server shutdown'); } catch { /* ignore */ } return; }
     const conn = new Connection(ws, clientAddress(req, this.opts.trustProxy), this.now(), this.opts, this.log, this.now,
       this.monotonicNow, this.tcpMetrics, this.bandwidth);
+    conn.network = this;
     this.bandwidth.register(ws);
     this.conns.set(ws, conn);
     socketConnections.set(ws, conn);
@@ -1037,7 +1274,10 @@ export class Network {
       conn.resumeProbes?.get(msg.nonce)?.();
       return;
     }
-    if (HEAVY_TYPES.has(msg.t) && !conn.heavy.take(now)) { this.reply(conn, errorMsg(ERR.RATE, rid, `${msg.t} too often`)); return; }
+    // Validated pings pay the normal connection bucket but never wait behind profile/room I/O.
+    // They return transport information only; all business intents remain serialized below.
+    if (msg.t === 'ping') { this.onPing(conn, msg, now); return; }
+    if ((HEAVY_TYPES.has(msg.t) || heavyFriendAction(msg)) && !conn.heavy.take(now)) { this.reply(conn, errorMsg(ERR.RATE, rid, `${msg.t} too often`)); return; }
     if ((conn.pendingMessages || 0) >= 128) { conn.close(CLOSE.POLICY, 'message backlog'); return; }
     conn.pendingMessages = (conn.pendingMessages || 0) + 1;
     conn.messageChain = (conn.messageChain || Promise.resolve()).then(() => this.dispatchMessage(conn, msg, now))
@@ -1045,23 +1285,105 @@ export class Network {
       .finally(() => { conn.pendingMessages--; });
   }
 
+  onPing(conn, msg, now) {
+    if (conn.closing || this.closed || this.draining || this.conns.get(conn.ws) !== conn
+      || conn.session?.loginReleased || conn.session?.loginRevoked
+      || (conn.session && conn.session.ws !== conn.ws)) return;
+    const pong = { t: 'pong', c: msg.c, s: now, progressMs: conn.periodicInterval() };
+    if (validRid(msg.rid)) pong.rid = msg.rid;
+    this.reply(conn, pong);
+  }
+
+  /** A recovery frame is transport state only: it never grants session permission. */
+  leaseState(session, state, recoveryMs) {
+    if (state !== 'recovering' && state !== 'active') return false;
+    const ws = session?.ws;
+    const conn = ws && this.conns.get(ws);
+    if (!conn || conn.session !== session || !session.connected || conn.closing || this.closed || this.draining
+      || session.loginReleased || session.loginRevoked) return false;
+    if (state === 'active' && this.handler.profiles && !this.handler.profiles.validSession(session)) return false;
+    if (state === 'recovering') {
+      const previous = conn.leaseRecoveryNotice;
+      if (!previous || previous.scheduled || previous.session !== session || previous.ws !== ws
+        || previous.generation !== session.loginGeneration || previous.lease !== session.loginLease) {
+        conn.leaseRecoveryNotice = { session, ws, generation: session.loginGeneration,
+          lease: session.loginLease, scheduled: false };
+      }
+    } else {
+      const recovery = conn.leaseRecoveryNotice;
+      if (recovery && !recovery.scheduled) {
+        recovery.scheduled = true;
+        const timer = setImmediate(() => {
+          if (conn.leaseRecoveryNotice !== recovery) return;
+          conn.leaseRecoveryNotice = null;
+          const report = () => {
+            const now = this.now();
+            if (now - (conn.lastLeaseRecoveryHookErrorAt ?? -Infinity) < 10_000) return;
+            conn.lastLeaseRecoveryHookErrorAt = now;
+            conn.event('login_lease_resync_error', { cause: 'recovery_resync_failed' }, 'warn');
+          };
+          try {
+            if (conn.closing || this.closed || this.draining || this.conns.get(ws) !== conn
+              || conn.session !== session || recovery.session !== session || recovery.ws !== ws
+              || session.ws !== ws || !session.connected || session.profileReady !== true
+              || session.loginInFlight || session.loginReleased || session.loginRevoked
+              || session.loginGeneration !== recovery.generation || session.loginLease !== recovery.lease
+              || (this.handler.profiles && !this.handler.profiles.validSession(session))) return;
+            const result = this.handler.onLeaseRecovered?.(session);
+            if (result?.then) void Promise.resolve(result).catch(report);
+          } catch { report(); }
+        });
+        timer.unref?.();
+      }
+    }
+    const frame = { t: 'session.lease', state };
+    if (state === 'recovering' && Number.isFinite(recoveryMs) && recoveryMs >= 0) frame.retryMs = Math.min(30_000, Math.ceil(recoveryMs));
+    return this.reply(conn, frame);
+  }
+
+  /** Local deadline expiry gets one bounded, single-flight authority check owned by profiles. */
+  async ensureCurrentSession(conn) {
+    const session = conn.session;
+    const generation = session?.loginGeneration, lease = session?.loginLease;
+    // A replacement login owns its independent bounded deadline. Old recovery callbacks must not
+    // authorize it or close it, even when it keeps the same socket and Session object.
+    const current = () => !conn.closing && !this.closed && !this.draining && this.conns.get(conn.ws) === conn
+      && conn.session === session && session?.ws === conn.ws && !session.loginReleased && !session.loginRevoked
+      && !session.loginInFlight && session.loginGeneration === generation && session.loginLease === lease;
+    if (!current()) return false;
+    const profiles = this.handler.profiles;
+    if (!profiles || profiles.validSession(session)) return true;
+    if (conn.leaseRecovery?.session === session) return conn.leaseRecovery.promise;
+    const recovery = { session, promise: null };
+    conn.leaseRecovery = recovery;
+    recovery.promise = (async () => {
+      let recovered = false;
+      try { recovered = typeof profiles.ensureSession === 'function' && await profiles.ensureSession(session); }
+      catch {
+        const now = this.now();
+        if (now - (conn.lastLeaseRecoveryErrorAt ?? -Infinity) >= 10_000) {
+          conn.lastLeaseRecoveryErrorAt = now;
+          conn.event('login_lease_recovery_error', { cause: 'login_unavailable', closeReason: 'login unavailable' }, 'warn');
+        }
+      }
+      if (!current()) return false;
+      if (recovered === true && profiles.validSession(session)) return true;
+      session.profileReady = false;
+      conn.close(CLOSE.POLICY, 'login lease expired');
+      return false;
+    })();
+    try { return await recovery.promise; }
+    finally { if (conn.leaseRecovery === recovery) conn.leaseRecovery = null; }
+  }
+
   async dispatchMessage(conn, msg, now) {
     if (conn.closing || this.closed || this.draining || this.conns.get(conn.ws) !== conn) return;
     const rid = msg.rid;
     if (conn.session?.loginReleased || conn.session?.loginRevoked) return;
-    if (msg.t === 'ping') {
-      const pong = { t: 'pong', c: msg.c, s: now, progressMs: conn.periodicInterval() };
-      if (validRid(rid)) pong.rid = rid;
-      this.reply(conn, pong);
-      return;
-    }
+    if (msg.t === 'ping') { this.onPing(conn, msg, now); return; }
     if (msg.t === 'hello') { await this.onHelloMsg(conn, msg, now); return; }
     if (!conn.session || !conn.session.profileReady) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'hello required')); return; }
-    if (this.handler.profiles && !this.handler.profiles.validSession(conn.session)) {
-      conn.session.profileReady = false;
-      conn.close(CLOSE.POLICY, 'login lease expired');
-      return;
-    }
+    if (!await this.ensureCurrentSession(conn)) return;
 
     let res;
     try {
@@ -1086,7 +1408,12 @@ export class Network {
       const data = encode({ t: 'ok', ...(validRid(rid) ? { rid } : {}) });
       const queued = sendRaw(conn.ws, data, { onComplete: () => conn.close(1000, 'server switch') });
       if (!queued) conn.close(1000, 'server switch');
-    } else if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
+    } else {
+      if (conn.streamEnabled && ['g.watch', 'spectator.watch'].includes(msg.t)) {
+        conn.streamFieldId = msg.fieldId; conn.streamManual = msg.fieldId !== conn.ownFieldId;
+      }
+      if (validRid(rid)) this.reply(conn, { t: 'ok', rid });
+    }
   }
 
   /** @param {Connection} conn @param {any} msg @param {number} now */
@@ -1169,11 +1496,7 @@ export class Network {
     const identityLocked = !!session.spectatorCode || !!(session.roomCode && this.handler.roomOf?.(session)?.match);
     if (this.handler.profiles) {
       const previousReady = session.profileReady;
-      if (repeat && !this.handler.profiles.validSession(session)) {
-        session.profileReady = false;
-        conn.close(CLOSE.POLICY, 'login lease expired');
-        return;
-      }
+      if (repeat && !await this.ensureCurrentSession(conn)) return;
       session.profileReady = false;
       if (session.loginReleased) { conn.close(CLOSE.POLICY, 'session released'); return; }
       if (!repeat) session.loginRevoked = false;
@@ -1217,8 +1540,14 @@ export class Network {
     const welcome = { ...(extra && typeof extra === 'object' ? extra : null), t: 'welcome', playerId: session.playerId, token: session.token, authTicket: account.ticket, name: session.name, serverNow: now, version: PROTOCOL_VERSION, resumed };
     // 仅接受明确版本标记；额外hello字段不改变既有协议版本。
     conn.deltaEnabled = msg.stateDelta === 1;
+    conn.compactEnabled = conn.deltaEnabled && msg.stateCompact === 1;
+    conn.streamEnabled = conn.compactEnabled && [1, 2].includes(msg.stateStream);
+    conn.fieldMetadataEnabled = conn.streamEnabled && msg.stateStream === 2;
+    conn.streamFieldId = null; conn.ownFieldId = null; conn.streamManual = false;
     conn.resumeProbeEnabled = msg.resumeProbe === 1;
     welcome.stateDelta = conn.deltaEnabled ? 1 : 0;
+    welcome.stateCompact = conn.compactEnabled ? 1 : 0;
+    welcome.stateStream = conn.fieldMetadataEnabled ? 2 : conn.streamEnabled ? 1 : 0;
     welcome.bandwidthMbps = this.opts.bandwidthMbps;
     welcome.progressMs = this.bandwidth.baseMs;
     // Authoritative membership at welcome; absence of later snapshots is never an exit signal.

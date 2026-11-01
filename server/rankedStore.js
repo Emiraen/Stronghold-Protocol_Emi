@@ -14,6 +14,7 @@ import { isNameCardGrantMigration, cardForGrantMigration, earnedRankNameCards } 
 import {
   PLACEMENT_MATCHES, UNRANKED, isRankedMatch, isDominantWin, RADIANT_POINTS, RADIANT_GLOBAL_LIMIT,
   mmrUpdate, placementPoints, placementTotal, performanceScore, rankDelta, rankOf, isRankDivisionAtLeast,
+  RANK_INACTIVITY_MS, inactiveRank,
 } from '../shared/ranks.js';
 
 const DEFAULT_FILE = 'ranked-profiles.json';
@@ -88,6 +89,8 @@ export class RankedStore {
       dominantStreak: Math.max(0, num(p.dominantStreak)),
       dominantDivision: typeof p.dominantDivision === 'string' ? p.dominantDivision : null,
       lastActive: num(p.lastActive),
+      // Legacy files only recorded settlement activity; preserve that timestamp once, not today's login.
+      lastScoredAt: Math.max(0, num(p.lastScoredAt, num(p.lastActive))),
       rankPyramid: cleanRankPyramid(p.rankPyramid),
       unlockedNameCards: Array.isArray(p.unlockedNameCards) ? [...new Set(p.unlockedNameCards.filter(isSpecialNameCard))] : [],
       nameCardGrantMigrations: Array.isArray(p.nameCardGrantMigrations)
@@ -147,7 +150,7 @@ export class RankedStore {
 
   currentRadiantAids() {
     return this.leaderboard({ includeAid: true })
-      .filter((entry) => isRankDivisionAtLeast(rankOf(entry.points, entry.position).division, 'radiant')).map((entry) => entry.aid);
+      .filter((entry) => !entry.inactive && isRankDivisionAtLeast(rankOf(entry.points, entry.position).division, 'radiant')).map((entry) => entry.aid);
   }
 
   /** Called only by authoritative settlement or a replicated server migration. */
@@ -164,12 +167,19 @@ export class RankedStore {
   }
 
   /** 全服排名（≥神话区才有意义；1 = 最高）。 */
+  rankInactive(p, now = this.now()) {
+    if (!p?.placementDone || p.points < 2100) return false;
+    const lastScoredAt = Math.max(0, num(p.lastScoredAt, num(p.lastActive)));
+    return now - lastScoredAt >= RANK_INACTIVITY_MS;
+  }
+
   globalRank(aid) {
     const me = this.profiles.get(aid);
-    if (!me || !me.placementDone || me.points < 2100) return null;
+    const now = this.now();
+    if (!me || !me.placementDone || me.points < 2100 || this.rankInactive(me, now)) return null;
     let ahead = 0;
     for (const p of this.profiles.values()) {
-      if (p !== me && p.placementDone && (p.points > me.points
+      if (p !== me && p.placementDone && !this.rankInactive(p, now) && (p.points > me.points
         || (p.points === me.points && p.lastActive > me.lastActive))) ahead++;
     }
     return ahead + 1;
@@ -177,15 +187,19 @@ export class RankedStore {
 
   /** 全量公开榜单；积分与活跃时间均相同才并列，名次与 globalRank 一致。 */
   leaderboard({ includeAid = false } = {}) {
+    const now = this.now();
     const profiles = [...this.profiles.values()]
       .filter((p) => p.placementDone && p.points >= 2100)
-      .sort((a, b) => b.points - a.points || b.lastActive - a.lastActive);
+      .sort((a, b) => Number(this.rankInactive(a, now)) - Number(this.rankInactive(b, now))
+        || b.points - a.points || b.lastActive - a.lastActive);
     let position = 0;
     return profiles.map((p, i) => {
       const previous = profiles[i - 1];
-      if (!previous || p.points !== previous.points || p.lastActive !== previous.lastActive) position = i + 1;
-      const { icon, label } = rankOf(p.points, position);
-      return { ...(includeAid ? { aid: p.aid } : {}), position, name: p.name, points: p.points,
+      const inactive = this.rankInactive(p, now);
+      if (!inactive && (!previous || p.points !== previous.points || p.lastActive !== previous.lastActive)) position = i + 1;
+      const { icon, label } = inactive ? inactiveRank(p.points) : rankOf(p.points, position);
+      return { ...(includeAid ? { aid: p.aid } : {}), ...(inactive ? { inactive: true } : {}),
+        position: inactive ? null : position, name: p.name, points: p.points,
         unlockedNameCards: this.unlockedNameCards(p.aid),
         wins: p.wins || 0, rank: { icon, label } };
     });
@@ -194,7 +208,7 @@ export class RankedStore {
   /** Derive the displayed score floor from this exact public-list snapshot, not a second rank query.
    * Equal-score eligibility still uses the existing lastActive/tied-position rules. */
   radiantThreshold(items = this.leaderboard()) {
-    const cutoff = items[RADIANT_GLOBAL_LIMIT - 1];
+    const cutoff = items.filter((entry) => !entry.inactive)[RADIANT_GLOBAL_LIMIT - 1];
     const cutoffPoints = cutoff && Number.isFinite(cutoff.points) ? cutoff.points : null;
     const points = Math.max(RADIANT_POINTS, cutoffPoints ?? RADIANT_POINTS);
     return { points, mythicPoints: points - 2100, cutoffRank: RADIANT_GLOBAL_LIMIT, cutoffPoints, minimumPoints: RADIANT_POINTS };
@@ -225,8 +239,9 @@ export class RankedStore {
         globalRank: null,
       };
     }
-    const gr = ranks ? (ranks.get(aid) ?? null) : this.globalRank(aid);
-    const rank = rankOf(p.points, gr);
+    const inactive = this.rankInactive(p);
+    const gr = inactive ? null : ranks ? (ranks.get(aid) ?? null) : this.globalRank(aid);
+    const rank = inactive ? inactiveRank(p.points) : rankOf(p.points, gr);
     if (gr != null) rank.label += ` #${gr}`; // 神话以上：小分后面跟 #全服排名
     return {
       unlockedNameCards,
@@ -239,6 +254,9 @@ export class RankedStore {
       losses: p.losses,
       points: p.points,
       globalRank: gr,
+      inactive,
+      lastScoredAt: Math.max(0, num(p.lastScoredAt, num(p.lastActive))),
+      rankActiveUntil: Math.max(0, num(p.lastScoredAt, num(p.lastActive))) + RANK_INACTIVITY_MS,
     };
   }
 
@@ -258,6 +276,9 @@ export class RankedStore {
     const key = /^[0-9a-f]{32}$/.test(match.matchId || '') && /^[A-Za-z0-9_-]{1,64}$/.test(who.playerId || '')
       ? `${match.matchId}:${who.playerId}` : null;
     if (key && p.settlements[key]) return structuredClone(p.settlements[key]);
+    const inactiveBefore = this.rankInactive(p);
+    // Replicated legacy profiles can predate sanitize(): freeze their fallback before lastActive changes.
+    p.lastScoredAt = Math.max(0, num(p.lastScoredAt, num(p.lastActive)));
     // Preserve all milestones reached before a loss/demotion, including pre-update profiles.
     p.unlockedNameCards = this.unlockedNameCards(who.aid);
     const before = p.placementDone ? p.points : 0;
@@ -356,8 +377,11 @@ export class RankedStore {
     p.lastActive = this.now();
 
     const after = p.placementDone ? p.points : 0;
+    if (after > before) p.lastScoredAt = p.lastActive;
+    const inactive = this.rankInactive(p);
     const gr = this.globalRank(who.aid);
     const rankAfter = p.placementDone ? rankOf(after, gr) : { ...UNRANKED };
+    const displayedRank = inactive ? inactiveRank(after) : rankAfter;
     p.rankPyramid = observeRankProgress(pyramidBefore, {
       ranked: p.placementDone, wins: p.wins, points: after, rank: rankAfter, globalRank: gr,
       scoreDelta: after - before,
@@ -388,12 +412,13 @@ export class RankedStore {
       placementMatches: needed,
       tierBefore: wasPlacement
         ? (p.placementPlayed > 1 ? `未定级 (${p.placementPlayed - 1}/${needed})` : UNRANKED.label)
-        : rankBefore.label,
+        : inactiveBefore ? '神话一' : rankBefore.label,
       tierAfter: p.placementDone
-        ? rankAfter.label + (gr != null ? ` #${gr}` : '') // 神话以上：小分后面跟 #全服排名
+        ? displayedRank.label + (gr != null ? ` #${gr}` : '') // 神话以上：小分后面跟 #全服排名
         : `未定级 (${p.placementPlayed}/${needed})`,
-      iconAfter: rankAfter.icon,
+      iconAfter: displayedRank.icon,
       globalRank: gr,
+      inactive,
     };
     if (key) p.settlements[key] = structuredClone(out);
     this.save();

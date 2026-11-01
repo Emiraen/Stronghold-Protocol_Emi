@@ -119,7 +119,7 @@ function makeLogger(quiet) {
  *   ratePerSec?: number, rateBurst?: number, maxConnections?: number, maxRooms?: number,
  *   maxConnectionsPerAddr?: number, maxRoomsPerAddr?: number, maxMatchesPerAddr?: number, resyncMinGapMs?: number,
  *   heavyPerSec?: number, heavyBurst?: number, trustProxy?: 'auto' | boolean, soloReconnectWindowMs?: number,
- *   bandwidthMbps?: 3 | 5,
+ *   bandwidthMbps?: number,
  * }} [opts]
  * @returns {Promise<{ port: number, host: string, url: string, server: http.Server, wss: WebSocketServer,
  *                     lobby: Lobby, network: Network, registry: SessionRegistry, close: () => Promise<void> }>}
@@ -158,7 +158,9 @@ export async function startServer(opts = {}) {
   }
   // 游戏 WS 预算按角色设默认档，HTTP 下载和档案 RPC 独立。
   netOptions.bandwidthMbps ??= Number(process.env.SP_BANDWIDTH_MBPS || (config.role === 'main' ? 5 : 3));
-  if (![3, 5].includes(netOptions.bandwidthMbps)) throw new RangeError('SP_BANDWIDTH_MBPS must be 3 or 5');
+  if (!Number.isFinite(netOptions.bandwidthMbps) || netOptions.bandwidthMbps <= 0) {
+    throw new RangeError('SP_BANDWIDTH_MBPS must be a positive finite number');
+  }
   if (netOptions.trustProxy == null) netOptions.trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
   const registry = new SessionRegistry({ reconnectWindowMs: netOptions.reconnectWindowMs ?? NET_DEFAULTS.reconnectWindowMs });
   const lobbyOptions = {};
@@ -173,6 +175,7 @@ export async function startServer(opts = {}) {
   const profiles = createProfileAccess({ ...config,
     getData: () => data,
     accountFile: opts.accountFile !== undefined ? opts.accountFile : (opts.env || process.env).ACCOUNT_AUTH_FILE || undefined,
+    ...(opts.friendsFile !== undefined ? { friendsFile: opts.friendsFile } : {}),
     announcementFile: opts.announcementFile !== undefined ? opts.announcementFile : isMain() ? path.join(publicDir, 'announcement.json') : null,
     announcementInitialFile: path.join(publicDir, 'announcement.json'),
   }, stores, log);
@@ -232,6 +235,8 @@ export async function startServer(opts = {}) {
 
   const server = http.createServer(createRequestHandler({ serveStatic, startedAt, network, registry, lobby, log, studio, traffic, csp,
     trustProxy: netOptions.trustProxy,
+    // A deployed regional entry may serve its matching client while keeping
+    // accounts and profiles on the configured main authority.
     pageEntry: () => config.role === 'secondary' ? config.mainUrl : null,
     announcement: () => profiles.announcement(),
     directory: () => profiles.directory(), profileRpc: profileRpcHandler(config, profiles.authority, log) }));

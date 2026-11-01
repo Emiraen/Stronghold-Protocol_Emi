@@ -197,7 +197,7 @@ test('特性 and 天赋 follow the chosen module: 隐现\'s trait upgrade is MAR
   const { golden } = slot(INSIDE);
   const traitOf = (rs) => rs.find((r) => r.k === '特性');
   // default module: the module's upgraded trait text; 不装备: the plain class trait
-  assert.equal(traitOf(rows(INSIDE, 'elite', {})).text, golden.trait.moduleDescRaw);
+  assert.equal(traitOf(rows(INSIDE, 'elite', {})).text, [golden.trait.descRaw || golden.trait.desc, golden.trait.moduleDescRaw].filter(Boolean).join('\n'));
   assert.match(traitOf(rows(INSIDE, 'elite', {})).text, /110%/);
   assert.equal(traitOf(rows(INSIDE, 'elite', { [INSIDE]: { module: 'none' } })).text, golden.traitBase.descRaw);
   assert.equal(traitOf(rows(INSIDE, 'normal', {})).text, slot(INSIDE).base.trait.descRaw, '普通: its own trait');
@@ -248,16 +248,17 @@ test('the 普通 / 精锐 toggle: 精锐 is the shown variant, the tabs say so, 
 });
 
 test('place in the detail: after the skills, before the modules; the first .lo-seg stays the skill level toggle (e2e selector)', () => {
-  const src = read('public/js/screens/loadout.js');
+  const screen = read('public/js/screens/loadout.js');
+  const src = screen + '\n' + read('public/js/ui/loadoutStats.js');
   const detail = src.slice(src.indexOf('function Detail('), src.indexOf('// ---- filters'));
-  const toggle = detail.indexOf('aria-label="技能等级"');
-  const skills = detail.indexOf('aria-label="选择技能"');
+  const toggle = detail.indexOf("aria-label=${t('技能等级')}");
+  const skills = detail.indexOf("aria-label=${t('选择技能')}");
   const stats = detail.indexOf('<${LoadoutStats} base=${chess}');
-  const mods = detail.indexOf('<section class="lo-sec lo-sec--mod">');
+  const mods = detail.indexOf('lo-sec--mod');
   assert.ok(toggle > 0 && skills > toggle && stats > skills && mods > stats, 'skills (and their level toggle) → 局内数值 → modules');
   // one record resolution, shared with the card: chessLoadout, the card's block, trait and talent helpers — no stat arithmetic of its own
-  assert.match(src, /import \{ chessStatsBlock, traitText, chessTalents \} from '\.\.\/ui\/detailPanel\.js';/);
-  assert.match(src, /import \{ chessLoadout \} from '\.\.\/ui\/gameLogic\.js';/);
+  assert.match(src, /import \{ chessStatsBlock, traitText, chessTalents \} from '\.\/detailPanel\.js';/);
+  assert.match(src, /import \{ chessLoadout \} from '\.\/gameLogic\.js';/);
   const fn = src.slice(src.indexOf('export function statsPreview'), src.indexOf('export function LoadoutStats'));
   assert.ok(!/composeStats|attr\b|maxHp|statsBase/.test(fn), 'no stat arithmetic in the screen');
   // the screen's own state: 精锐 by default, independent of the skill toggle's 普通

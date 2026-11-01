@@ -69,16 +69,20 @@ test('六项单调与难度预算封顶，各项不先取整', () => {
   }
 });
 
-test('8/9个人门槛、9后死亡/失败先表现再败补，低段失败净0，无Boss机会0', () => {
+test('低分9回合/高分11回合门槛、死亡先表现再败补，无Boss机会0', () => {
   for (const difficulty of Object.keys(DIFFICULTY_BUDGET)) {
     const inp = { ...full(difficulty), pointsBefore: 2500, startingParticipantCount: 1, win: false, alive: false };
-    assert.equal(rankDelta({ ...inp, survivalRounds: 8 }).calculatedPerformance, 0);
-    const r = rankDelta({ ...inp, survivalRounds: 9 });
+    assert.equal(rankDelta({ ...inp, survivalRounds: 10 }).calculatedPerformance, 0);
+    assert.equal(rankDelta({ ...inp, pointsBefore: 2099, survivalRounds: 8 }).calculatedPerformance, 0);
+    assert.ok(rankDelta({ ...inp, pointsBefore: 2099, survivalRounds: 9 }).calculatedPerformance > 0);
+    const r = rankDelta({ ...inp, survivalRounds: 11 });
     assert.ok(r.calculatedPerformance > 0);
-    assert.equal(r.appliedPerformance, Math.min(r.actualLoss, r.calculatedPerformance));
-    assert.equal(r.shortageBonus, Math.min(21, r.actualLoss - r.appliedPerformance));
-    assert.ok(r.delta <= 0);
-    assert.equal(rankDelta({ ...inp, pointsBefore: 2000 }).delta, 0);
+    assert.equal(r.appliedPerformance, r.calculatedPerformance);
+    assert.equal(r.shortageBonus, Math.min(21, Math.max(0, r.actualLoss - r.appliedPerformance)));
+    assert.equal(r.delta, r.appliedPerformance + r.shortageBonus - r.actualLoss);
+    const low = rankDelta({ ...inp, pointsBefore: 2000 });
+    assert.equal(low.actualLoss, 0);
+    assert.equal(low.delta, low.calculatedPerformance);
     assert.equal(performanceScore({ ...full(difficulty), bossDamage: undefined }).items.find(i => i.key === 'boss').score, 0);
     assert.equal(rankDelta({ ...inp, win: true, alive: false }).delta, rankDelta(inp).delta);
   }

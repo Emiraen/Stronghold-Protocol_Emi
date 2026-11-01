@@ -66,10 +66,11 @@ describe('1. equip-replace dialog', () => {
     const i1 = dropIntent(one, 3, { area: 'board', row: 9, col: 3 });
     assert.equal(i1.confirmReplace, false);
     assert.equal(replaceRequest(one, i1, getChess, getItem), null);
-    // the same item as an equipped one (mergeable pair): the server merges instead of equipping
+    // Inventory auto-merge leaves equipment attached; explicitly equipping onto a matching carrier merges it.
     const twin = ctxOf({ ...priv, hand: [{ uid: 3, kind: 'item', id: A }, ...priv.hand.slice(1)] });
     assert.equal(getItem(A).mergeable, true);
-    assert.equal(equipMerges(twin, 3), true);
+    assert.equal(equipMerges(twin, 3), false);
+    assert.equal(equipMerges(twin, 3, 2, priv.board[0]), true);
     assert.equal(dropIntent(twin, 3, { area: 'board', row: 9, col: 3 }).confirmReplace, false);
     assert.equal(equipMerges(ctx, 3), false);
     const consumable = Object.values(DATA.items).find((x) => x.itemType === 'EQUIP' && String(x.kind).startsWith('consume_on_equip'));

@@ -146,7 +146,7 @@ function itemCard(gd, id) {
 export function generateDraft(gd, rng, round, { stageId = null, bondAvailable = null, itemAvailable = null } = {}) {
   const sch = scheduleFor(gd, round);
   const fams = Array.isArray(sch.families) && sch.families.length ? sch.families.map((f) => [f.family, f.weight]) : [['supply', 1]];
-  let family = weightedPick(rng, fams) || 'supply';
+  let family = gd.difficulty === 'ANNIHILATION' ? 'bounty' : weightedPick(rng, fams) || 'supply';
   const n = gd.isEntertainmentMulti ? coopDraftCardCount() : gd.isSolo && family === 'bounty' ? 3 :
     Number.isInteger(sch.cards) && sch.cards > 0 ? Math.min(sch.cards, 6) : formatCount(gd);
   const opts = { stageId, bondAvailable, round, itemAvailable };

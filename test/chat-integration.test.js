@@ -11,13 +11,16 @@ function unique(text) { return `${text}${Math.random().toString(36).slice(2, 8)}
 
 function fixture() {
   return startServer({ port: 0, host: '127.0.0.1', quiet: true,
+    stateFile: null, accountFile: null, announcementFile: null, admin: false, studio: false, workerPool: null,
+    profileConfig: { role: 'main', id: 'main', secret: '', accountFile: null,
+      mainUrl: 'http://127.0.0.1', secondaryUrl: 'http://127.0.0.1' },
     ranked: new RankedStore({ file: null }), history: new HistoryStore({ file: null }),
     players: new PlayerStore({ file: null }) });
 }
 
 async function player(url, name) {
   const c = await TestClient.connect(url);
-  const w = await c.hello(name);
+  const w = await c.hello(name, undefined, { auth: { action: 'register', password: 'isolated-chat-test' } });
   c.id = w.playerId;
   return c;
 }

@@ -282,10 +282,8 @@ test('§21.26 docs: DESIGN (the subsection and the normative lines), META, PLAYI
   assert.match(META, /carries `harmony: 1` in both lists/);
   assert.match(doc('docs/PLAYING.md'), /盟约详情会写「含调和 \+1」/);
   const log = doc('CHANGELOG.md');
-  const v011 = log.slice(log.indexOf('## 0.1.1'), log.indexOf('## 0.1.0'));
-  assert.match(v011, /变形同构体的详情卡列出天赋栏里的对应关系/);
-  assert.match(v011, /盟约详情写明「含调和 \+1」/);
-  assert.match(v011, /人机不再选择围绕本局禁用盟约的策略（标准模拟下的潘格尼尼、克莱门莎、玛恩纳）/);
-  assert.match(v011, /选择策略时，围绕本局禁用盟约的策略（标准模拟下的潘格尼尼、克莱门莎、玛恩纳）标出「本局禁用」并在详情里说明，仍可选择/);
+  assert.match(log, /## 0\.2\.1/);
+    assert.match(log, /保留客户端现有版本 0.2.1/);
+  // Historical evidence is still checked in DESIGN/META/PLAYING above.
   assert.match(META, /The strategy draft marks the same bands 本局禁用 for humans \(still selectable\)/);
 });

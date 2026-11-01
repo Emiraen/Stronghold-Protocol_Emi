@@ -3,6 +3,7 @@
 
 import { isHpLoss } from '../../../damage.js';
 import { holdsUndying } from '../../items/battle.js';
+import { sortEnemyTargets } from '../../../targeting.js';
 import {
   AURA, num, tbb, grid, nationOf, enemiesOnRange, targetsInRange, whileDeployed, reveal, skillActive, isSel, alt,
   instantKind, withDefaults,
@@ -129,6 +130,13 @@ export default withDefaults({
           if (isHpLoss(d)) return;
           if (battle.time < (unit.mem.counterReady ?? -Infinity) - 1e-9) return;
           const list = targetsInRange(battle, unit);
+          // Counters are ordinary attacks too: contact blocking reaches beyond the skill grid.
+          // Retain selectable enemies this unit actually blocks, just like acquireTargets does.
+          const blocked = battle.blockedTargets(unit, battle.effectiveProfile(unit));
+          if (blocked.length) {
+            for (const enemy of blocked) if (!list.includes(enemy)) list.push(enemy);
+            sortEnemyTargets(battle, unit, list, unit.profile?.priority ?? null);
+          }
           const i = c.source ? list.indexOf(c.source) : -1;
           if (i > 0) { list.splice(i, 1); list.unshift(c.source); }
           const targets = list.slice(0, counterMax);

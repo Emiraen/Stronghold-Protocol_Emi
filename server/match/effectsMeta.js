@@ -49,7 +49,7 @@ import { grantLayersVerified } from './rewardRecovery.js';
 export const HOOKS = Object.freeze([
   'onRoundStart', 'onIncome', 'onPrepStart', 'onPrepEnd', 'onGain', 'onSold', 'onRefresh', 'onPrice', 'onBuy',
   'onSpend', 'onMerge', 'onLevelUp', 'onBattleStart', 'onBattleResult', 'onChoicePick', 'onEquip', 'onArt',
-  'onDestroy', 'onLayers',
+  'onDestroy', 'onLayers', 'onActiveBonds',
 ]);
 /** Non-hook members a handler object may carry. */
 const HANDLER_EXTRAS = new Set(['run', 'garrisonHooks']);
@@ -488,6 +488,7 @@ export function makeCtx(m, ps, source, hook, ev = null) {
     isCoop: !m.isSolo,
     data: gd.raw,
     gd,
+    ...(m.isAnnihilation ? { relics: () => ps.relics || null } : {}),
     rng: m.rngMeta,
     log: (msg) => m.log.info?.(`[meta ${m.roomCode}] ${ps.playerId}: ${msg}`),
     reportError: (label, error) => m.dispatcher._report(source.key, `${hook}[${label}]`, error),

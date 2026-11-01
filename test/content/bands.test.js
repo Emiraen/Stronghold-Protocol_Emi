@@ -8,7 +8,7 @@ import { makeMatch, give, giveItem, DATA } from '../match/harness.js';
 import { createRegistry } from '../../server/match/effectsMeta.js';
 import { hasBattlePart, amedicCharsFor, PRIO_BAND_REVIVE } from '../../server/sim/content/bands/battle.js';
 import { bandMetaHandler, duckReplace } from '../../server/sim/content/bands/meta.js';
-import { PRIO_REVIVE } from '../../server/sim/content/items/battle.js';
+import { PRIO_RESPAWN } from '../../server/sim/content/items/battle.js';
 import * as bands from '../../server/sim/content/bands.js';
 
 const QUIET = { warn() {}, error() {}, info() {} };
@@ -223,16 +223,17 @@ test('绮良 通关奖励: every 20 funds spent ⇒ 1 random operator of tier �
   cover('band_kirara');
 });
 
-test('佩佩 博学多通: upgrading to 2 / 4 / 6 gives 1 special (free) refresh whose operators are <萨尔贡> first', () => {
+test('佩佩 博学多通: upgrading to 2 / 4 / 6 gives 1 special paid refresh whose operators are <萨尔贡> first', () => {
   const seed = seedWithBond('sargonShip', 2, 2);
   const { m, ps } = setup({ band: 'band_pepe', seed });
   ps.shop.upgradePrice = 0;
   assert.deepEqual(m.handle('p_0', { t: 'g.levelUp' }), OK);
   assert.equal(ps.shop.level, 2);
-  assert.equal(ps.shop.freeRefreshes, 1);
+  assert.equal(ps.shop.freeRefreshes, 0, 'special refresh is not free');
+  assert.equal(ps.counters['band:pepe:special'], 1);
   const f0 = ps.funds;
   assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), OK);
-  assert.equal(ps.funds, f0, 'free');
+  assert.equal(ps.funds, f0 - m.gd.refreshPrice, 'special refresh pays the normal price');
   const chess = ps.shop.slots.filter((sl) => sl && sl.kind === 'chess');
   assert.ok(chess.length >= 3 && chess.every((sl) => DATA.chess[sl.id].bonds.includes('sargonShip')), 'all 萨尔贡');
   assert.equal(ps.counters['band:pepe:special'], 0, 'consumed');
@@ -302,7 +303,7 @@ test('余 文火慢炖: R8 round start — exactly 1 active bond +36 layers, oth
   cover('band_yu');
 });
 
-test('凯瑟琳 定向投放: every shop upgrade offers 3 different tier 1–6 items regardless of level, 1 free pick', () => {
+test('凯瑟琳 定向投放: every shop upgrade offers 3 different items up to its level, 1 free pick', () => {
   const { m, ps } = setup({ band: 'band_cathy', seed: 9 });
   for (const lvl of [2, 3]) {
     ps.shop.upgradePrice = 0;
@@ -313,7 +314,7 @@ test('凯瑟琳 定向投放: every shop upgrade offers 3 different tier 1–6 i
     const ids = offer.slots.map((sl) => sl.id);
     assert.equal(ids.length, 3);
     assert.equal(new Set(ids).size, 3);
-    for (const id of ids) assert.ok(offer.slots[0].kind === 'item' && DATA.items[id].tier >= 1 && DATA.items[id].tier <= 6 && !DATA.items[id].isGolden, id);
+    for (const slot of offer.slots) assert.ok(slot.kind === 'item' && DATA.items[slot.id].tier >= 1 && DATA.items[slot.id].tier <= lvl && !DATA.items[slot.id].isGolden, slot.id);
   }
   const f0 = ps.funds;
   const pick = ps.offers[0].slots[2].id;
@@ -323,17 +324,26 @@ test('凯瑟琳 定向投放: every shop upgrade offers 3 different tier 1–6 i
   cover('band_cathy');
 });
 
-test('凯瑟琳 定向投放: low-level upgrades can draw every tier including tier 6', () => {
-  const seen = new Set();
-  for (let seed = 1; seed <= 160; seed++) {
-    const { m, ps } = setup({ band: 'band_cathy', seed });
-    ps.shop.upgradePrice = 0;
-    ps.offers.length = 0;
-    assert.deepEqual(m.handle('p_0', { t: 'g.levelUp' }), OK);
-    assert.equal(ps.shop.level, 2);
-    for (const slot of ps.offers[0].slots) seen.add(DATA.items[slot.id].tier);
+test('凯瑟琳 定向投放: item tiers follow the upgraded shop level, including tier 6 at level 6', () => {
+  for (const level of [2, 4, 6]) {
+    const seen = new Set();
+    // Keep all 160 draws and the real seeded stream without rebuilding 160 matches per level.
+    const { m, ps } = setup({ band: 'band_cathy', seed: 40 + level });
+    for (let draw = 0; draw < 160; draw++) {
+      ps.shop.upgradePrice = 0;
+      ps.shop.level = level - 1;
+      ps.offers.length = 0;
+      assert.deepEqual(m.handle('p_0', { t: 'g.levelUp' }), OK);
+      assert.equal(ps.shop.level, level);
+      for (const slot of ps.offers[0].slots) {
+        const tier = DATA.items[slot.id].tier;
+        assert.ok(tier >= 1 && tier <= level, 'never offer an item above the shop level');
+        seen.add(tier);
+      }
+    }
+    assert.deepEqual([...seen].sort((a, b) => a - b), Array.from({ length: level }, (_, i) => i + 1));
+    m.dispose();
   }
-  assert.deepEqual([...seen].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6]);
 });
 
 test('坎诺特 利滚利: leftover funds are kept; ≥ 5 left ⇒ +1 at round start (max 1)', () => {
@@ -558,19 +568,23 @@ test('埃芒加德 命结之秘: the first 3 knock-downs of the battle revive at
   close(b.hp, 2000, 'full HP');
   kill(a);
   assert.equal(a.alive, false, '4th knock-down of the band: dies');
-  assert.ok(PRIO_BAND_REVIVE < PRIO_REVIVE);
+  assert.ok(PRIO_BAND_REVIVE < PRIO_RESPAWN);
   cover('band_ermengard');
 });
 
-test('克莱门莎 崇高牺牲: a <阿戈尔> operator knocked down ⇒ +its tier <阿戈尔> layers (no activation needed; none in 联防/boss)', () => {
+test('克莱门莎 崇高牺牲: a <阿戈尔> operator knocked down ⇒ +its tier <阿戈尔> layers (active bond required; none in 联防/boss)', () => {
   const ops = { t_eg: op('t_eg', { bonds: ['egirShip'], tier: 3 }), t_x: op('t_x', { bonds: ['yanShip'], tier: 5 }) };
-  const h = fight({ band: 'band_clementia', ops, units: [{ chessId: 't_eg', row: 10, col: 4 }, { chessId: 't_x', row: 11, col: 4 }], foes: [[10, 9]] });
+  const h = fight({ band: 'band_clementia', bonds: active('egirShip'), ops, units: [{ chessId: 't_eg', row: 10, col: 4 }, { chessId: 't_x', row: 11, col: 4 }], foes: [[10, 9]] });
   h.step(1);
   h.b.dealDamage(foe(h), h.unit('t_eg'), { amount: 1e6, type: 'true' });
   h.b.dealDamage(foe(h), h.unit('t_x'), { amount: 1e6, type: 'true' });
   h.b.retreat(h.unit('t_eg')); // not knocked down: nothing (already dead anyway)
   assert.deepEqual(h.b.result().perPlayer.p1.layerGains, { egirShip: 3 });
-  const u = fight({ band: 'band_clementia', kind: 'unite', ops, units: [{ chessId: 't_eg', row: 10, col: 4 }], foes: [[10, 9]] });
+  const inactive = fight({ band: 'band_clementia', ops, units: [{ chessId: 't_eg', row: 10, col: 4 }], foes: [[10, 9]] });
+  inactive.step(1);
+  inactive.b.dealDamage(foe(inactive), inactive.unit('t_eg'), { amount: 1e6, type: 'true' });
+  assert.deepEqual(inactive.b.result().perPlayer.p1.layerGains, {}, 'inactive bond gives no layers');
+  const u = fight({ band: 'band_clementia', bonds: active('egirShip'), kind: 'unite', ops, units: [{ chessId: 't_eg', row: 10, col: 4 }], foes: [[10, 9]] });
   u.step(1);
   u.b.dealDamage(foe(u), u.unit('t_eg'), { amount: 1e6, type: 'true' });
   assert.deepEqual(u.b.result().perPlayer.p1.layerGains, {});

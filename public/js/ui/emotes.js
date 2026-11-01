@@ -189,6 +189,19 @@ export function EmoteArt({ id, class: cls }) {
  *   end); at = when the emote arrived (Date.now() clock): a bubble mounted after that resumes its pop / fade timeline
  *   instead of restarting it.
  */
+export function EmoteDanmaku({ emote, name, lane = 0 }) {
+  useEffect(() => { ensureEmoteCss(); }, []);
+  const [age] = useState(() => Math.max(0, Math.min(5999, Date.now() - emote.at)));
+  const text = emote.kind === 'text' && typeof emote.text === 'string' ? emote.text : null;
+  const e = emoteInfo(emote.id);
+  return html`<div class=${cx('edanmaku', text !== null && 'edanmaku--text')} style=${`--lane:${lane};--edanmaku-age:${age}ms`} role=${text !== null ? undefined : 'img'}
+    aria-label=${`${name || trA('队友')}：${text !== null ? text : e ? e.label : trA('表情')}`}>
+    <span class="edanmaku__name">${name || trA('队友')}${text !== null ? '：' : ''}</span>
+    ${text !== null ? html`<span class="edanmaku__text">${text}</span>`
+      : html`<span class="edanmaku__icon"><${EmoteArt} id=${emote.id} /></span>`}
+  </div>`;
+}
+
 export function EmoteBubble({ id, class: cls, ttl = EMOTE_BUBBLE_MS, at }) {
   useData('local');
   useEffect(() => { ensureEmoteCss(); }, []);

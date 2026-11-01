@@ -1,3 +1,4 @@
+import { relicPrepStart, autoPickRelic, finishRelicDrafts } from '../relics.js';
 
 
 import { PHASE } from "../../../shared/constants.js";
@@ -19,6 +20,7 @@ export class MatchPrep {
         // that granted them and would take an equipped copy off for the fight about to start.
         ps.checkItemMerges();
         ps.recompute();
+        if (this.isAnnihilation) relicPrepStart(this, ps);
         this.dispatch(ps, 'onPrepStart', { round: this.round });
         ps.recompute();
         prepared.push(ps);
@@ -60,7 +62,11 @@ export class MatchPrep {
     };
     const ready = () => {
       if (!ps.ready) {
-          this.autoPickPersonalChoice(ps, 'random');
+          if (this.isAnnihilation && ps.relics?.draft) {
+            autoPickRelic(this, ps);
+            if (ps.relics.draft) { this.later(250, () => { if (valid()) ready(); }); return; }
+          }
+        this.autoPickPersonalChoice(ps, 'random');
           ps.resolveTemp();
           ps.setReady(true);
         }
@@ -145,6 +151,7 @@ export class MatchPrep {
 
     prepDeadline() {
       if (this.phase !== PHASE.PREP) return;
+      if (this.isAnnihilation) finishRelicDrafts(this);
       let failed = false;
       for (const ps of this.alivePlayers()) {
         if (ps.ready) continue;
@@ -200,7 +207,7 @@ export class MatchPrep {
     if (this.isBossRound(r)) {
       this.hiddenLayerSum = alive.reduce((s, p) => s + p.activatedLayers(), 0);
       this.startFinalAssault(false);
-    } else if (r === this.gd.hiddenRound) {
+    } else if (this.isAnnihilation ? this.gd.isHiddenRound(r) : r === this.gd.hiddenRound) {
       this.startFinalAssault(true);
     } else {
       this.startCombat();

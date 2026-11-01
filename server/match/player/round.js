@@ -1,4 +1,5 @@
 import { resultSnapshot } from '../resultSnapshot.js';
+import { clearNonStackingBondLayers } from '../../../shared/constants.js';
 
 
 import { boardOrder, pieceDir } from "../board.js";
@@ -77,6 +78,8 @@ export class PlayerRound {
   }
 
   recompute() {
+    clearNonStackingBondLayers(this.layers);
+    clearNonStackingBondLayers(this.pendingLayerGains);
     this.deployMap(); // a change of the deploy field (a boss round's prep) marks the legality stale
     if (this._legalityStale) this._evictIllegal();
     this._liftOutOfRange();

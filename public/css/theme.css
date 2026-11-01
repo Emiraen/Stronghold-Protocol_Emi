@@ -115,10 +115,10 @@
 
 /* ---- root scale ----------------------------------------------------------------------------- */
 html {
-  font-size: clamp(40px, min(calc(100vw / 19.2), calc(100vh / 10.8)), 240px);
+  font-size: calc(clamp(40px, min(calc(100vw / 19.2), calc(100vh / 10.8)), 240px) * var(--control-scale, 1));
   /* mobile browsers: 100vh is the height with the toolbars hidden — the small viewport (svh; Safari 15.4+, Chrome 108+,
      Firefox 101+) is what is really visible while they show; older browsers keep the line above */
-  font-size: clamp(40px, min(calc(100vw / 19.2), calc(100svh / 10.8)), 240px);
+  font-size: calc(clamp(40px, min(calc(100vw / 19.2), calc(100svh / 10.8)), 240px) * var(--control-scale, 1));
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   height: 100%;
@@ -133,10 +133,12 @@ html {
    --t is the TEXT root: it appears only in font-size declarations, so a player can enlarge the
    interface text without touching any layout. The field itself is sized from host.clientWidth /
    clientHeight (render/app.js), which no font-size can reach.
-   小 = 1rem reproduces the design's own sizes exactly, on every device. The other steps keep the
+   标准 = 1rem reproduces the design's own sizes; 小 / 极小 reduce only text to 85% / 70%. Larger steps keep the
    desktop gentle and lift the phone: 1rem there is clamped at 40 px by the rule above, which is what
    made the .18rem body text 7.2 CSS px. */
 :root { --t: 1rem; }
+:root[data-text="xxs"] { --t: calc(1rem * .7); }
+:root[data-text="xs"] { --t: calc(1rem * .85); }
 :root[data-text="md"] { --t: max(1rem, 64px); }
 :root[data-text="lg"] { --t: max(calc(1rem * 1.15), 76px); }
 :root[data-text="xl"] { --t: max(calc(1rem * 1.3), 88px); }

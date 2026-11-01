@@ -270,12 +270,9 @@ test('ctx.offerItems queues an item offer; g.reward takes the item (full hand re
   assert.deepEqual(view.slots.map((s) => [s.kind, s.id, s.price]), [['item', 'chess_item_1_01_e_a', 0], ['item', 'chess_item_2_03_e_a', 0]]);
   const fillers = chessOfTier(1).filter((c) => m.pool.has(c));
   for (let i = 0; i < 10; i++) give(m, ps, fillers[i], 'hand', i);
-  assert.equal(m.handle('p_0', { t: 'g.reward', idx: 0 }).error, 'HAND_FULL');
-  ps.hand[0] && ps.returnCopies(ps.hand[0]);
-  ps.hand[0] = null;
-  ps.recompute();
   assert.deepEqual(m.handle('p_0', { t: 'g.reward', idx: 1 }), { ok: true });
-  assert.ok(ps.hand.some((p) => p && p.id === 'chess_item_2_03_e_a'));
+  assert.ok(ps.temp.some(p => p?.id === 'chess_item_2_03_e_a'), 'reward overflows into finite temp without selling a chess');
+  assert.equal(ps.hand.filter(Boolean).length, 10);
   assert.equal(ps.offers.length, 0);
   assert.equal(m.handle('p_0', { t: 'g.reward', idx: 0 }).error, 'BAD_TARGET', 'the offer is gone');
   checkInvariants(m);
@@ -407,7 +404,7 @@ test('the rule auditor flags an LP loss that does not match the leaks (engine re
   m.dispose();
 });
 
-test('audited FakeBattle matches (all phases incl. 联防, 机变, Final Assault) report no violations', () => {
+test('audited FakeBattle matches (all phases incl. 联防, 机变, Final Assault) report no violations', async () => {
   for (const [n, seed] of [[1, 930], [2, 931], [3, 932], [4, 933]]) {
     const h = makeMatch({
       mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: n - 1, seed, fake: true,
@@ -418,7 +415,7 @@ test('audited FakeBattle matches (all phases incl. 联防, 机变, Final Assault
     h.autoHumans().start();
     const audit = attachAudit(h.m);
     for (const ps of h.m.players.values()) ps.lp = 200;
-    h.runToEnd({ maxSteps: 3e6 });
+    (await h.runToEnd({ maxSteps: 3e6 }));
     assert.deepEqual(audit.violations, [], `${n} players:\n${audit.violations.join('\n')}`);
     assert.ok(h.m.phase === PHASE.RESULT);
     h.m.dispose();
@@ -429,7 +426,7 @@ test('GEO sanity used by the fixes (boss rect, normal rect)', () => {
   assert.deepEqual(GEO.BOSS_RECT, { r0: 0, r1: 5, c0: 0, c1: 20 });
 });
 
-test('the rule auditor follows the engine: PRTS 联防 helper order (not LP), silent solo presentation steps, a frozen item slot moved right by a level-up', () => {
+test('the rule auditor follows the engine: PRTS 联防 helper order (not LP), silent solo presentation steps, a frozen item slot moved right by a level-up', async () => {
   // co-op: the human (seat 0) plays nothing, the bots field full boards; only the last bot leaks → the helpers are the
   // two perfect bots with the most units (unite.js helperOrder), whatever the LP / seat order says
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 3, seed: 934, fake: true,
@@ -440,7 +437,7 @@ test('the rule auditor follows the engine: PRTS 联防 helper order (not LP), si
   h.drive(() => m.phase === PHASE.UNITE && m.round >= 4, { ready: true });
   assert.ok(!m.unitePlan.helpers.some((p) => p.playerId === 'p_0'), `helpers ${m.unitePlan.helpers.map((p) => p.playerId)}: the empty board is never picked first`);
   h.autoHumans();
-  h.runToEnd({ maxSteps: 3e6 });
+  (await h.runToEnd({ maxSteps: 3e6 }));
   assert.deepEqual(audit.violations, [], audit.violations.join('\n'));
   m.dispose();
   // solo: BATTLE_CHECK / ROUND_START / SETTLE run silently; a frozen item slot follows the chess slots after a level-up
@@ -458,7 +455,8 @@ test('the rule auditor follows the engine: PRTS 联防 helper order (not LP), si
   const now = ps.shop.slots.findIndex((x) => x && x.kind === 'item');
   assert.ok(now > itemAt, `the item slot moved right (${itemAt} → ${now})`);
   assert.equal(ps.shop.slots[now].id, itemId, 'the frozen item was kept');
-  s.drive(() => s.ended != null, { ready: true, maxSteps: 3e6 });
+    s.drive(() => s.m.ended, { ready: true, maxSteps: 3e6 });
+    await s.waitForEnd();
   assert.ok(s.ended, 'the solo match ended');
   assert.deepEqual(sa.violations, [], sa.violations.join('\n'));
   s.m.dispose();

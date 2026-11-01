@@ -1,6 +1,23 @@
 // Browser/Worker engine loader. Workers receive data and never fetch it (DESIGN §32.11).
 export const SIM_DATA_FILES = Object.freeze(['chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects', 'backups']);
 
+// Bound both response headers and JSON body reads, even when a fetch shim ignores abort.
+export async function fetchSimDataFile(url, { fetchFn = (...a) => globalThis.fetch(...a), timeoutMs = 15000 } = {}) {
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => { controller.abort(); resolve(null); }, timeoutMs);
+  });
+  const request = Promise.resolve().then(async () => {
+    try {
+      const res = await fetchFn(url, { cache: 'no-cache', signal: controller.signal });
+      return res && res.ok ? await res.json() : null;
+    } catch { return null; }
+  });
+  try { return await Promise.race([request, timeout]); }
+  finally { clearTimeout(timer); }
+}
+
 function deepFreeze(root) {
   const stack = [root];
   while (stack.length) {
@@ -25,17 +42,12 @@ export async function loadBrowserSim({ base = '/sim/', dataBase = '/data/', fetc
   const [spec, simdata, support] = await Promise.all([
     import(`${base}spec.js`), import(`${base}simdata.js`), import(`${base}content/support/index.js`),
   ]);
-  const fetchOnce = async (n) => {
-    try {
-      const res = await fetchFn(`${dataBase}${n}.json`, { cache: 'no-cache' });
-      return res && res.ok ? await res.json() : null;
-    } catch { return null; }
-  };
+  const fetchOnce = (n) => fetchSimDataFile(`${dataBase}${n}.json`, { fetchFn });
   // (a content set's data: structured copies, frozen below like downloaded files)
   const files = data ? SIM_DATA_FILES.map((n) => (data[n] && typeof data[n] === 'object' ? structuredClone(data[n]) : null))
     : await Promise.all(SIM_DATA_FILES.map(async (n) => (await fetchOnce(n)) ?? fetchOnce(n)));
   // a battle simulated without part of the data would still produce a plausible result the server accepts: never run
-  // one — the loader fails (the next b.start retries it; meanwhile the server's deadline takes the field over)
+  // one — the loader fails (the runner retries the retained start with bounded backoff; the server deadline still applies)
   const missing = SIM_DATA_FILES.filter((n, i) => !files[i] || typeof files[i] !== 'object');
   if (missing.length) throw new Error(`simulation data unavailable: ${missing.join(', ')}`);
   const raw = {};

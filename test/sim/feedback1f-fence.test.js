@@ -47,7 +47,7 @@ function watch(stageId, chessId, r, c, dir, { template = 'act1autochess_02', sec
   h.step(1);
   const u = h.unit(chessId);
   assert.ok(u && u.deployed && u.tileR === r && u.tileC === c, `${stageId} (${r},${c}) deployed`);
-  let attacks = 0, inRange = 0, blocked = 0, waitFrom = null, worst = 0;
+  let attacks = 0, inRange = 0, blocked = 0, waitFrom = null, waitBudget = 0, worst = 0;
   h.b.on('attack', (ctx) => { if (ctx.attacker === u) { attacks++; waitFrom = null; } });
   for (let i = 0; i < seconds * 30 && !h.b.finished; i++) {
     h.step(1);
@@ -58,8 +58,10 @@ function watch(stageId, chessId, r, c, dir, { template = 'act1autochess_02', sec
     const target = h.b.enemies.some((e) => e.alive && e.deployed && canTargetEnemy(u, e, prof) && bodyInKeys(e, set));
     if (!target) { waitFrom = null; continue; }
     inRange++;
-    if (waitFrom == null) waitFrom = h.b.time;
-    worst = Math.max(worst, h.b.time - waitFrom - u.s.interval);
+    // Cooldown already scheduled by the previous attack is not shortened retroactively
+    // when S2 increases ASPD. Measure that remaining cooldown, not the new interval.
+    if (waitFrom == null) { waitFrom = h.b.time; waitBudget = Math.max(0, u.atkCd); }
+    worst = Math.max(worst, h.b.time - waitFrom - waitBudget);
   }
   return { attacks, inRange, blocked, worst };
 }
@@ -74,7 +76,7 @@ test('F4 (not reproduced): 深巡 on every deployable fenced tile of every activ
           const w = watch(id, chessId, r, c, dir);
           const where = `${chessId} ${id} (${r},${c}) ${dir}: ${JSON.stringify(w)}`;
           cases++;
-          // never idle with a target: an attack at the latest one interval (+ 0.2 s) after an enemy is on her tiles
+          // never idle beyond the already-scheduled cooldown (+ 0.2 s) after an enemy is on her tiles
           assert.ok(w.worst <= 0.2, `idle with a target in range — ${where}`);
           if (w.inRange > 0) { withTargets++; assert.ok(w.attacks > 0, `no attack — ${where}`); }
           // nothing walks onto a fenced tile or within her reach there

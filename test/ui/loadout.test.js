@@ -1,6 +1,6 @@
 // test/ui/loadout.test.js — 干员调配 client logic (DESIGN §16): the loadout model (storage parsing, options, choices,
 // sanitising a stale browser loadout so the server never refuses it, roster filters, display helpers), the server
-// sync (room.loadout after welcome / edits, debounce, lock / rate handling, never on missing data) and the overlay's
+// sync (server-authoritative profiles, edits, debounce, lock / rate handling, never on missing data) and the overlay's
 // auto-close rule.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,7 +43,7 @@ test('parseStored: tolerant of junk, keeps structurally valid entries; toStored 
 test('exportPayload / serializeExport: versioned envelope, entries copied; parseImport round trip', () => {
   const entries = { [INSIDE]: { skill: 0 }, [SWIRE]: { module: SWIRE_ALT } };
   const p = exportPayload(entries, { now: Date.UTC(2026, 9, 3, 4, 5, 6) });
-  assert.deepEqual(Object.keys(p).sort(), ['count', 'entries', 'exportedAt', 'kind', 'v'], 'exactly the envelope, no unused field');
+  assert.deepEqual(Object.keys(p).sort(), ['count', 'entries', 'exportedAt', 'kind', 'ops', 'portraits', 'skins', 'v'], 'exactly the envelope, no unused field');
   assert.equal(p.kind, LOADOUT_EXPORT_KIND);
   assert.equal(p.v, LOADOUT_VERSION);
   assert.equal(p.count, 2);
@@ -87,17 +87,20 @@ test('parseImport: accepts the envelope, the stored form, a bare map and text; r
 });
 
 test('applyLoadoutEntries: sanitises against the loaded data and reports what was dropped', () => {
-  const before = loadoutStore.get().entries;
+  const previous = loadoutStore.get();
+  loadoutStore.set({ profileReady: true });
   try {
     const res = applyLoadoutEntries({ [INSIDE]: { skill: 0 }, chess_nope_999: { skill: 0 } }, get);
     assert.deepEqual(res, { applied: 1, dropped: 1 }, 'the unknown chess is dropped, the real one applied');
     assert.deepEqual(loadoutStore.get().entries, { [INSIDE]: { skill: 0 } }, 'the store got the sanitised entries');
   } finally {
-    setEntries(before);
+    loadoutStore.set(previous);
   }
 });
 
 test('applyLoadoutEntries: an import that keeps nothing changes nothing (review: it used to wipe the loadout)', () => {
+  const previous = loadoutStore.get();
+  loadoutStore.set({ profileReady: true });
   setEntries({ [INSIDE]: { skill: 0 } });
   const before = loadoutStore.get().entries;
   try {
@@ -107,7 +110,7 @@ test('applyLoadoutEntries: an import that keeps nothing changes nothing (review:
     assert.deepEqual(applyLoadoutEntries({ [INSIDE]: { skill: def } }, get), { applied: 0, dropped: 1 }, 'every choice already the default');
     assert.equal(loadoutStore.get().entries, before, 'still untouched');
   } finally {
-    setEntries(before);
+    loadoutStore.set(previous);
   }
 });
 
@@ -253,76 +256,92 @@ function fakeTimers() {
     },
   };
 }
-const syncStore = (entries = {}) => createStore({ entries, open: false, from: null, sel: null, filters: {}, sync: 'idle' });
+const PROFILE_ID = 'a'.repeat(32);
+const syncStore = (entries = {}) => createStore({ entries, ops: {}, profileReady: false, profileId: null, identityEpoch: 0, open: false, from: null, sel: null, filters: {}, sync: 'loading' });
+function receiveProfile(net, entries = {}, extra = {}) {
+  net.emit('loadout.state', { v: 1, profileId: PROFILE_ID, initialized: true, entries, ops: {}, ...extra });
+}
+function assertProfileRequest(request, entries) {
+  assert.equal(request.t, 'profile.loadout');
+  assert.equal(request.v, 1);
+  assert.equal(request.profileId, PROFILE_ID);
+  assert.ok(Number.isInteger(request.editId) && request.editId > 0);
+  assert.deepEqual(request.entries, entries);
+  assert.deepEqual(request.ops, {});
+}
 
-test('sync: welcome sends the sanitised loadout; edits are debounced; identical content is not resent', async () => {
-  const net = fakeNet();
-  const T = fakeTimers();
+test('sync: welcome never uploads legacy entries; authoritative state and debounced user edits remain isolated', async () => {
+  const net = fakeNet(), T = fakeTimers();
   const target = syncStore({ [INSIDE]: { skill: 0 }, chess_char_9_99_a: { skill: 1 } });
   const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => CHESS, lookupChess: get });
-  net.emit('welcome', {});
-  await T.advance(100);
-  assert.deepEqual(net.sent, [{ t: 'room.loadout', entries: { [INSIDE]: { skill: 0 } } }], 'stale entry dropped');
-  assert.equal(target.get().sync, 'synced');
-  target.set({ entries: { [INSIDE]: { skill: 0 }, [SWIRE]: { module: SWIRE_ALT } } });
-  target.set({ entries: { [INSIDE]: { skill: 0 }, [SWIRE]: { module: MODULE_NONE } } });
-  await T.advance(SYNC_DEBOUNCE_MS - 10);
-  assert.equal(net.sent.length, 1, 'debounced');
-  await T.advance(20);
-  assert.equal(net.sent.length, 2);
-  assert.deepEqual(net.sent[1].entries, { [INSIDE]: { skill: 0 }, [SWIRE]: { module: MODULE_NONE } });
-  target.set({ entries: { ...target.get().entries } }); // same content, new object
-  await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(net.sent.length, 2, 'unchanged content is not resent');
-  net.emit('welcome', {}); // a new / resumed session always gets it again
-  await T.advance(100);
-  assert.equal(net.sent.length, 3);
-  s.dispose();
+  try {
+    net.emit('welcome', {});
+    await T.advance(100);
+    assert.deepEqual(net.sent, [], 'a reconnect must not upload an old local profile');
+    assert.equal(target.get().profileReady, false);
+    assert.deepEqual(target.get().entries, {});
+    receiveProfile(net, { [INSIDE]: { skill: 0 } });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.deepEqual(net.sent, [], 'server state is not echoed');
+    target.set({ entries: { [INSIDE]: { skill: 0 }, [SWIRE]: { module: SWIRE_ALT } } });
+    target.set({ entries: { [INSIDE]: { skill: 0 }, [SWIRE]: { module: MODULE_NONE }, chess_char_9_99_a: { skill: 1 } } });
+    await T.advance(SYNC_DEBOUNCE_MS - 10);
+    assert.equal(net.sent.length, 0, 'debounced');
+    await T.advance(20);
+    assert.equal(net.sent.length, 1);
+    assertProfileRequest(net.sent[0], { [INSIDE]: { skill: 0 }, [SWIRE]: { module: MODULE_NONE } });
+    assert.equal(target.get().sync, 'synced');
+    target.set({ entries: { ...target.get().entries } });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 1, 'identical sanitised content is not resent');
+    net.emit('welcome', {});
+    receiveProfile(net, {});
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 1, 'reconnecting does not overwrite the new authoritative profile');
+    assert.deepEqual(target.get().entries, {});
+  } finally { s.dispose(); }
 });
 
-test('sync: locked match (WRONG_PHASE) is not an error; RATE retries; offline waits for the next welcome; missing data never sends', async () => {
-  const net = fakeNet();
-  const T = fakeTimers();
-  const target = syncStore({ [INSIDE]: { skill: 0 } });
-  const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => CHESS, lookupChess: get });
-  net.replies.push({ error: 'WRONG_PHASE' });
-  net.emit('welcome', {});
-  await T.advance(100);
-  assert.equal(target.get().sync, 'locked');
-  // back in the lobby (room.state without a match): sent again
-  net.emit('room.state', { inMatch: false });
-  await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(net.sent.length, 2);
-  assert.equal(target.get().sync, 'synced');
-  // RATE → retried after RETRY_MS
-  net.replies.push({ error: 'RATE' });
-  target.set({ entries: {} });
-  await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(net.sent.length, 3);
-  assert.equal(target.get().sync, 'pending');
-  await T.advance(RETRY_MS + 10);
-  assert.equal(net.sent.length, 4);
-  assert.deepEqual(net.sent[3].entries, {});
-  assert.equal(target.get().sync, 'synced');
-  // offline: nothing sent until the next welcome
-  net.status = 'reconnecting';
-  target.set({ entries: { [INSIDE]: { skill: 0 } } });
-  await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(net.sent.length, 4);
-  net.status = 'online';
-  net.emit('welcome', {});
-  await T.advance(100);
-  assert.equal(net.sent.length, 5);
-  s.dispose();
-  // chess data missing: never sanitise everything away (that would clear the server's copy)
-  const net2 = fakeNet();
-  const t2 = syncStore({ [INSIDE]: { skill: 0 } });
+test('sync: lock clears on return without upload; RATE retries; reconnect requires fresh authoritative state; missing data never sends', async () => {
+  const net = fakeNet(), T = fakeTimers(), target = syncStore();
+  const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => CHESS, lookupChess: get, notify: () => {} });
+  try {
+    net.emit('welcome', {}); receiveProfile(net);
+    net.replies.push({ error: 'WRONG_PHASE' });
+    target.set({ entries: { [INSIDE]: { skill: 0 } } });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(target.get().sync, 'locked');
+    net.emit('room.state', { inMatch: false });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 1, 'returning to the lobby must not re-upload');
+    assert.equal(target.get().sync, 'synced');
+    net.replies.push({ error: 'RATE' });
+    target.set({ entries: {} });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 2);
+    assert.equal(target.get().sync, 'pending');
+    await T.advance(RETRY_MS + 10);
+    assert.equal(net.sent.length, 3);
+    assertProfileRequest(net.sent[2], {});
+    assert.equal(target.get().sync, 'synced');
+    net.status = 'reconnecting'; net.emit('status', { status: 'reconnecting' });
+    target.set({ entries: { [INSIDE]: { skill: 0 } } });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 3);
+    net.status = 'online'; net.emit('welcome', {}); receiveProfile(net, {});
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 3);
+    assert.deepEqual(target.get().entries, {}, 'offline identity cannot replace the server profile');
+  } finally { s.dispose(); }
+  const net2 = fakeNet(), t2 = syncStore();
   const s2 = installLoadoutSync({ net: net2, timers: T, target: t2, getChessReady: async () => null, lookupChess: () => null });
-  net2.emit('welcome', {});
-  await T.advance(100);
-  assert.equal(net2.sent.length, 0);
-  assert.equal(t2.get().sync, 'error');
-  s2.dispose();
+  try {
+    net2.emit('welcome', {}); receiveProfile(net2);
+    t2.set({ entries: { [INSIDE]: { skill: 0 } } });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net2.sent.length, 0);
+    assert.equal(t2.get().sync, 'error');
+  } finally { s2.dispose(); }
 });
 
 test('sync: closing the overlay sends a pending edit at once (the next click — 准备就绪 / 开始模拟 — must not overtake it)', async () => {
@@ -330,24 +349,24 @@ test('sync: closing the overlay sends a pending edit at once (the next click —
   const T = fakeTimers();
   const target = syncStore({});
   const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => CHESS, lookupChess: get });
-  net.emit('welcome', {});
+  net.emit('welcome', {}); receiveProfile(net);
   await T.advance(100);
-  assert.equal(net.sent.length, 1);
+  assert.equal(net.sent.length, 0);
   target.set({ open: true, from: 'briefing' });
   target.set({ entries: { [INSIDE]: { skill: 0 } } });
   await T.advance(50); // well inside the debounce
-  assert.equal(net.sent.length, 1, 'still debounced while the overlay is open');
+  assert.equal(net.sent.length, 0, 'still debounced while the overlay is open');
   target.set({ open: false });
   for (let i = 0; i < 5; i++) await Promise.resolve(); // microtasks only: no timer ran
-  assert.equal(net.sent.length, 2, 'sent on close, before any later task (e.g. the g.infoReady click)');
-  assert.deepEqual(net.sent[1].entries, { [INSIDE]: { skill: 0 } });
+  assert.equal(net.sent.length, 1, 'sent on close, before any later task (e.g. the g.infoReady click)');
+  assert.deepEqual(net.sent[0].entries, { [INSIDE]: { skill: 0 } });
   await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(net.sent.length, 2, 'the cancelled debounce does not send it twice');
+  assert.equal(net.sent.length, 1, 'the cancelled debounce does not send it twice');
   // closing without a pending edit sends nothing
   target.set({ open: true });
   target.set({ open: false });
   await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(net.sent.length, 2);
+  assert.equal(net.sent.length, 1);
   s.dispose();
 });
 
@@ -410,14 +429,15 @@ function deferredNet() {
 }
 const ticks = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
 
-test('sync: an edit closed while an earlier room.loadout is still in flight is sent at once, not after that reply', async () => {
+test('sync: an edit closed while an earlier profile.loadout is still in flight is sent at once, not after that reply', async () => {
   const net = deferredNet();
   const T = fakeTimers();
   const target = syncStore({ [INSIDE]: { skill: 0 } });
   const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => CHESS, lookupChess: get, notify: () => {} });
-  net.emit('welcome', {});
-  await T.advance(100);
-  assert.equal(net.sent.length, 1, 'welcome send in flight (no reply yet)');
+  net.emit('welcome', {}); receiveProfile(net);
+  target.set({ entries: { [INSIDE]: { skill: 0 } } });
+  await T.advance(SYNC_DEBOUNCE_MS + 10);
+  assert.equal(net.sent.length, 1, 'first edit in flight (no reply yet)');
   target.set({ open: true, from: 'briefing' });
   target.set({ entries: { [INSIDE]: { skill: 0, module: MODULE_NONE } } });
   target.set({ open: false });
@@ -448,46 +468,41 @@ test('sync: an edit closed while an earlier room.loadout is still in flight is s
   s.dispose();
 });
 
-test('sync: an edit refused because the match locked its loadout is told to the player once; a resync is not', async () => {
-  const net = deferredNet();
-  const T = fakeTimers();
-  const told = [];
-  const target = syncStore({ [INSIDE]: { skill: 0 } });
+test('sync: authoritative locked state is silent; an actual edit refused by the match notifies once', async () => {
+  const net = deferredNet(), T = fakeTimers(), told = [], target = syncStore();
   const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => CHESS, lookupChess: get, notify: (t) => told.push(t) });
-  net.emit('welcome', {}); // reconnect during a running match: the resync is refused, nothing to tell
-  await T.advance(100);
-  await net.reply('WRONG_PHASE');
-  assert.equal(target.get().sync, 'locked');
-  assert.deepEqual(told, []);
-  // an edit (the briefing overlay closed by INFO_CHECK ending) arrives too late
-  target.set({ open: true, from: 'briefing' });
-  target.set({ entries: { [INSIDE]: { skill: 1 } } });
-  target.set({ open: false });
-  await ticks();
-  assert.equal(net.sent.length, 2);
-  await net.reply('WRONG_PHASE');
-  assert.equal(target.get().sync, 'locked');
-  assert.equal(told.length, 1);
-  assert.match(told[0], /下一局生效/);
-  s.dispose();
+  try {
+    net.emit('welcome', {}); receiveProfile(net, { [INSIDE]: { skill: 0 } }, { locked: true });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(target.get().sync, 'locked');
+    assert.deepEqual(net.sent, []); assert.deepEqual(told, []);
+    target.set({ open: true, from: 'briefing' });
+    target.set({ entries: { [INSIDE]: { skill: 0, module: MODULE_NONE } } });
+    target.set({ open: false });
+    await ticks();
+    assert.equal(net.sent.length, 1);
+    await net.reply('WRONG_PHASE');
+    assert.equal(target.get().sync, 'locked');
+    assert.equal(told.length, 1); assert.match(told[0], /下一局生效/);
+  } finally { s.dispose(); }
 });
 
-test('sync: an empty loadout is sent without loading chess.json (no 1.6 MB download in the lobby for it)', async () => {
-  const net = deferredNet();
-  const T = fakeTimers();
+test('sync: clearing a profile does not load chess.json; a real choice is sanitised with loaded data', async () => {
+  const net = deferredNet(), T = fakeTimers(), target = syncStore();
   let loads = 0;
-  const target = syncStore({});
   const s = installLoadoutSync({ net, timers: T, target, getChessReady: async () => { loads++; return CHESS; }, lookupChess: get, notify: () => {} });
-  net.emit('welcome', {});
-  await T.advance(100);
-  assert.deepEqual(net.sent, [{ t: 'room.loadout', entries: {} }]);
-  assert.equal(loads, 0);
-  await net.reply();
-  target.set({ entries: { [INSIDE]: { skill: 0 } } });
-  await T.advance(SYNC_DEBOUNCE_MS + 10);
-  assert.equal(loads, 1, 'a real loadout is sanitised against the data');
-  assert.deepEqual(net.sent[1].entries, { [INSIDE]: { skill: 0 } });
-  s.dispose();
+  try {
+    net.emit('welcome', {}); receiveProfile(net, { [INSIDE]: { skill: 0 } });
+    target.set({ entries: {} });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(net.sent.length, 1); assertProfileRequest(net.sent[0], {});
+    assert.equal(loads, 0); await net.reply();
+    target.set({ entries: { [INSIDE]: { skill: 0 } } });
+    await T.advance(SYNC_DEBOUNCE_MS + 10);
+    assert.equal(loads, 1);
+    assertProfileRequest(net.sent[1], { [INSIDE]: { skill: 0 } });
+    await net.reply();
+  } finally { s.dispose(); }
 });
 
 test('entry badge (review fix): counts like the screen once chess.json is loaded (stale entries of retired chess do not count)', async () => {

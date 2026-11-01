@@ -87,20 +87,22 @@ test('#15 audit: every MANUAL chess skill with its own 技能范围 casts with a
   assert.ok(n >= 20, `${n} SKILL_RANGE skills`);
 });
 
-test('#15 an attack-range change ("攻击范围扩大") keeps the basic strategy: 银灰 S3 waits for an enemy in his initial range', () => {
+test('#15 银灰 S3 uses ACTIVE_RANGE and starts for an enemy only inside its expanded running range', () => {
   const id = 'chess_char_4_22_a';
   const h = run({ defs: { enemies: { enemy_d: dummy('enemy_d') }, chess: noGarrison(id) }, units: [{ chessId: id, row: 10, col: 3 }] });
   const u = h.unit(id);
   assert.equal(u.skill.id, 'skchr_svrash_3');
-  assert.equal(u.skill.rule, 'DEFAULT');
+  assert.equal(u.skill.rule, 'ACTIVE_RANGE');
   h.step();
   fill(u);
-  const far = absoluteRangeKeys(u.def.skill.rangeGrid, 10, 3, u.dir, 0).find((k) => !u.rangeKeySet.has(k) && Math.floor(k / COLS) === 10);
-  h.spawn('enemy_d', { pos: [10, far % COLS] });
+  const far = absoluteRangeKeys(u.skill.triggerGrid, u.tileR, u.tileC, u.dir, u.skill.spec.targeting?.noRangeExtend ? 0 : (u.s.baseRangeExtend || 0))
+    .find((k) => !u.rangeKeySet.has(k) && h.b.grid.inRect(Math.floor(k / COLS), k % COLS) && h.b.grid.canStand(Math.floor(k / COLS), k % COLS) && !h.b.grid.isObstacle(Math.floor(k / COLS), k % COLS));
+  assert.notEqual(far, undefined, 'the fixture has an in-field tile in the expanded trigger range only');
+  const e = h.spawn('enemy_d', { pos: [Math.floor(far / COLS), far % COLS] });
+  assert.equal(e.tileR * COLS + e.tileC, far, 'the spawn remains on the selected expanded-range tile');
   h.run(1);
-  assert.equal(u.skill.activations, 0, 'an enemy only in the expanded range: no cast (PRTS "非攻击距离增加")');
-  h.spawn('enemy_d', { pos: [10, 4] });
-  assert.ok(h.runUntil(() => u.skill.activations === 1, 3), 'an enemy in the initial range: cast before the attack');
+  assert.equal(u.skill.activations, 1, 'an enemy only in the expanded range starts the skill');
+  assert.equal(h.hooksOf('skillStart').find(c => c.unit === u).reason, 'ACTIVE_RANGE');
   done(h);
 });
 
@@ -245,7 +247,10 @@ test('#16 塞雷娅 S1 急救 (audit): checked at her attack — an ally of her 
   fill(u);
   m.hp = 4000;
   h.run(2);
-  assert.equal(u.skill.activations, 0, 'no enemy, no attack: no cast');
+  assert.equal(u.skill.activations, 1, 'S1 checks injured allies on its attack interval even without enemies');
+  const idleHeals = h.hooksOf('heal').filter((c) => c.source === u && c.target === m);
+  assert.equal(idleHeals.length, 1);
+  approx(idleHeals[0].amount, u.s.atk * s.bb.heal_scale);
   done(h);
   [h, u, m] = setup(true);
   const e = h.enemies()[0];
