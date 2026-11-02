@@ -7,6 +7,8 @@ import { net } from '../net.js';
 import { joinRoom } from '../servers.js';
 import { visibleViewport } from '../ui/device.js';
 import { store, useStore, selectRoute } from '../store.js';
+import { ChatIdentity } from '../ui/chatIdentity.js';
+import { StickerPicker, StickerArt } from '../ui/stickerPicker.js';
 
 const MAX_MESSAGES = 50;
 const MAX_TEXT = 200;
@@ -35,7 +37,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
   const [bounds, setBounds] = useState(null);
   const chatRef = useRef(null);
   useLayoutEffect(() => {
-    const selector = dockSelector || (channel === 'match' ? '.gm__corner, .gm__chat-slot, .gtop' : roomCode ? '.room-fill, .room-bar, .room-screen .topbar, .ally-guide' : '.lobby-screen .topbar, .ally-guide');
+    const selector = dockSelector || (channel === 'match' ? '.gm__corner, .gm__chat-slot, .gtop' : roomCode ? '.room-bar, .rs-tools, .room-screen .topbar' : '.lobby-screen .topbar, .hub-entries__row, .ally-guide');
     const update = () => {
       const v = visibleViewport();
       const css = getComputedStyle(document.documentElement);
@@ -59,15 +61,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
       }
       const slot = slotNode?.getBoundingClientRect();
       let top = v.top + inset('t') + 8;
-      const raisedPublic = channel === 'lobby' && route !== 'title' && route !== 'game';
-      let bottom = v.bottom - inset('b') - 8 - (raisedPublic ? 52 : 0);
-      if (raisedPublic) {
-        const chatBox = chatRef.current?.getBoundingClientRect();
-        for (const guide of document.querySelectorAll('.ally-guide')) {
-          const r = guide.getBoundingClientRect();
-          if (r.width && r.height && (!chatBox || r.left < chatBox.right && r.right > chatBox.left)) bottom = Math.min(bottom, r.top - 8);
-        }
-      }
+      let bottom = v.bottom - inset('b') - 8;
       for (const node of document.querySelectorAll(selector)) {
         const r = node.getBoundingClientRect();
         if (!r.width || !r.height) continue;
@@ -81,30 +75,24 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
             if (!chat || c.left < chat.right && c.right > chat.left) top = Math.max(top, c.bottom + 8);
           }
         } else if (node.matches('.topbar')) top = Math.max(top, r.bottom + 8);
-        // The room footer reserves a left dock for the collapsed chat launcher.
-        // Raising it above the footer instead covers the first player's identity.
-        else if (!expanded && !(channel === 'match' || (channel === 'lobby' && roomCode && node.matches('.room-bar')))) bottom = Math.min(bottom, r.top - 8);
       }
-      // Apply the extra clearance after measuring obstacles so every public screen moves up equally.
-      if (raisedPublic) bottom -= 24;
-      if (channel === 'lobby') bottom -= 30;
+      const anchorNode = !dockSelector && !slot?.width ? document.querySelector(channel === 'match'
+        ? '.gm__corner' : roomCode ? '.room-bar .rs-tools, .room-bar' : '.hub-entries__row, .ally-guide') : null;
+      const anchorBox = dock || (slot?.width ? slot : anchorNode?.getBoundingClientRect());
+      // The open panel and the lower controls share a baseline. The visual viewport
+      // takes over while the keyboard is open, so the composer remains visible.
+      if (!v.keyboard && anchorBox?.width && anchorBox.height) bottom = Math.min(bottom, anchorBox.bottom);
       const tight = bottom - top < 176;
-      const toggle = expanded && (v.keyboard || tight || v.height <= 600) ? 0 : chatRef.current?.querySelector('.sp-chat__toggle')?.getBoundingClientRect().height || 44;
-      const available = Math.max(0, bottom - top - toggle - (toggle ? 4 : 0));
+      const available = Math.max(0, bottom - top);
       const launcherLeft = channel === 'match' && !expanded && slot?.width
         ? slot.left : null;
       const launcherBottom = channel === 'match' && !expanded && slot?.height
         ? Math.max(0, innerHeight - slot.bottom) : null;
-      if (raisedPublic && !expanded) {
-        const side = document.querySelector('.east-hub .hub-side');
-        if (side) {
-          const top = side.getBoundingClientRect().top;
-          side.style.setProperty('--public-chat-side-height', `${Math.max(0, bottom - toggle - 8 - top)}px`);
-        }
-      }
       const dockLeft = dock && !expanded ? dock.left + (dock.width - (launcher?.offsetWidth || 32)) / 2 : null;
       const dockBottom = dock && !expanded ? innerHeight - dock.top - (dock.height + (launcher?.offsetHeight || 32)) / 2 : null;
-      const next = { bottom: dockBottom ?? launcherBottom ?? Math.max(v.bottomGap + inset('b') + 8, innerHeight - bottom), left: dockLeft ?? launcherLeft,
+      const panelLeft = expanded && (dock || slot?.width) ? Math.max(v.left + inset('l') + 8,
+        Math.min(anchorBox.left, v.right - inset('r') - 8 - (chatRef.current?.offsetWidth || 236))) : null;
+      const next = { bottom: dockBottom ?? launcherBottom ?? Math.max(v.bottomGap + inset('b') + 8, innerHeight - bottom), left: panelLeft ?? dockLeft ?? launcherLeft,
         height: available, keyboard: v.keyboard, tight };
       setBounds((prev) => prev && prev.bottom === next.bottom && prev.left === next.left && prev.height === next.height && prev.keyboard === next.keyboard && prev.tight === next.tight ? prev : next);
     };
@@ -160,6 +148,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
     if (!open) return;
     const escape = (e) => {
       if (e.key !== 'Escape' || !isTopOverlay(chatRef.current)) return;
+      if (chatRef.current?.querySelector('.sp-chat__stickers')) return;
       e.preventDefault(); e.stopImmediatePropagation(); setOpen(false);
     };
     window.addEventListener('keydown', escape, true);
@@ -204,6 +193,8 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
     run('send', () => net.request('chat.send', { text: value, channel,
       ...(channel === 'match' ? { matchId } : {}) }), () => { setText(''); latest(); });
   };
+  const sendSticker = (sticker) => run('send', () => net.request('chat.send', { sticker, channel,
+    ...(channel === 'match' ? { matchId } : {}) }), latest);
   const join = (target) => {
     if (!['lobby', 'room'].includes(selectRoute(store.get())) || store.get().room?.inMatch) {
       toast(trA("正在对局，无法切换同盟"), 'warn'); return;
@@ -213,7 +204,7 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
   const keyboard = expanded && bounds?.keyboard;
   const style = bounds ? `${bounds.left == null ? '' : `left:${bounds.left}px;`}bottom:${bounds.bottom}px;--chat-available:${bounds.height}px;` : undefined;
 
-  return html`<${Overlay} level="chat" active=${expanded}><aside ref=${chatRef} class=${`sp-chat${channel === 'match' ? ' sp-chat--match' : ''}${dockSelector ? ' sp-chat--docked' : ''}${expanded ? ' is-expanded' : ''}${open ? ' is-open' : ''}${leaving ? ' is-leaving' : ''}${keyboard ? ' has-keyboard' : ''}${bounds?.tight && expanded ? ' is-tight' : ''}`} style=${style} aria-label=${label}>
+  return html`<${Overlay} level="chat" active=${expanded}><aside ref=${chatRef} class=${`sp-chat sp-chat--compact${channel === 'match' ? ' sp-chat--match' : ''}${dockSelector ? ' sp-chat--docked' : ''}${expanded ? ' is-expanded' : ''}${open ? ' is-open' : ''}${leaving ? ' is-leaving' : ''}${keyboard ? ' has-keyboard' : ''}${bounds?.tight && expanded ? ' is-tight' : ''}`} style=${style} aria-label=${label}>
     <button type="button" class="sp-chat__toggle" aria-label=${label} aria-expanded=${open} aria-controls="sp-chat-panel"
       onClick=${() => { pinned.current = true; setOpen(!open); }}><${Icon} name="users" class="sp-chat__compact-icon" /><span class="sp-chat__label">${label}</span>
       ${unread ? html`<span class="sp-chat__count" aria-label=${trA("{p0} 条未读", { "p0": (unread) })}>${unread}</span>` : null}<span class="sp-chat__state" aria-hidden="true">${open ? '−' : '+'}</span></button>
@@ -222,15 +213,17 @@ export function ChatPanel({ roomCode = null, online, me, channel = 'lobby', dock
         <${CloseButton} class="sp-chat__close" label=${trA("聊天")} onClose=${() => setOpen(false)} /></div>
       <div class="sp-chat__list" ref=${list} onScroll=${onScroll} role="log" aria-label=${trA("聊天消息")} aria-live="polite" aria-relevant="additions text">
         ${items.length ? items.map((item) => html`<article key=${item.id} class=${`sp-chat__message${item.playerId === me?.playerId ? ' is-mine' : ''}`}>
-          <div class="sp-chat__meta"><span class="sp-chat__avatar" aria-hidden="true">${(item.name || trA('博士')).slice(0, 1)}</span><strong>${item.name || trA("博士")}${item.playerId === me?.playerId ? html`<small>${trA('我')}</small>` : null}</strong><time>${messageTime(item.at)}</time></div>
+          <div class="sp-chat__meta"><${ChatIdentity} item=${item} me=${item.playerId === me?.playerId} /><time>${messageTime(item.at)}</time></div>
           ${item.kind === 'invite' ? html`<div class="sp-chat__invite"><${Icon} name="link" /><span><small>${trA("同盟邀请")}</small><b>${item.code}</b></span>
             <button type="button" disabled=${!online || !canJoin || pending !== null || !item.code || (item.code === room?.code && item.serverId === room?.serverId)}
-              onClick=${() => join({ code: item.code, serverId: item.serverId })}>${trA("一键加入")}</button></div>` : html`<p class="sp-chat__text">${item.text || ''}</p>`}
+              onClick=${() => join({ code: item.code, serverId: item.serverId })}>${trA("一键加入")}</button></div>` : html`${item.text ? html`<p class="sp-chat__text">${item.text}</p>` : null}${item.sticker ? html`<div class="sp-chat__sticker-message"><${StickerArt} id=${item.sticker} /></div>` : null}`}
         </article>`) : html`<p class="sp-chat__empty">${channel === 'match' ? trA("与本局队友交流战术。观众无法加入此频道。") : trA("暂无消息，向其他博士打个招呼吧。")}</p>`}
       </div>
       ${newBelow ? html`<button type="button" class="sp-chat__latest" onClick=${latest}>${trA('{p0} 条新消息', {p0: newBelow})}<${Icon} name="chevronRight" /></button>` : null}
       <form class="sp-chat__compose" onSubmit=${send}>
+        <${StickerPicker} onSend=${sendSticker} inMatch=${channel === 'match'} disabled=${!online || !!pending || (channel === 'match' && !matchId)} />
         <input type="text" value=${text} maxLength=${MAX_TEXT} placeholder=${trA("输入内容（最多 200 字）")} aria-label=${trA("聊天内容")}
+          enterKeyHint="send"
           disabled=${!online || !!pending || (channel === 'match' && !matchId)}
           onInput=${(event) => setText(event.currentTarget.value.slice(0, MAX_TEXT))}
           onKeyDown=${(event) => { if (event.key === 'Enter' && event.isComposing) event.preventDefault(); }} />

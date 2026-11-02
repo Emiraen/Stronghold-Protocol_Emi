@@ -89,3 +89,4 @@
 .mzh-confirm:disabled{background:#3a4654!important;border-color:#55606c!important;color:#9aa4b0}
 .mzh-confirm__check{width:50px;height:50px;border-radius:50%;background:#fff;position:relative}
 .mzh-confirm__check:after{content:"";position:absolute;left:15px;top:10px;width:10px;height:20px;border:solid #0b6fb8;border-width:0 5px 5px 0;transform:rotate(40deg)}
+

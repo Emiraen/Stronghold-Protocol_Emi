@@ -34,14 +34,19 @@ const MAX_STEP = 0.05;
 
 /** @type {Map<string, { status: 'loading'|'ready'|'failed', url: string|null }>} */
 const cache = new Map();
+const manifestIds = new WeakMap();
+let manifestSeq = 0;
 const subs = new Set();
 const queue = [];
 let busy = false;
 let renderer = null;
 
 /** `${assetId}|${skinId}` — the model a frame shows. `skinId` empty = the operator's own model. */
-export function previewKey(assetId, skinId = '') {
-  return `${assetId || ''}|${skinId || ''}`;
+export function previewKey(assetId, skinId = '', manifest = null) {
+  const key = `${assetId || ''}|${skinId || ''}`;
+  if (!manifest || typeof manifest !== 'object') return key;
+  if (!manifestIds.has(manifest)) manifestIds.set(manifest, ++manifestSeq);
+  return `${key}|manifest:${manifestIds.get(manifest)}`;
 }
 
 /**
@@ -51,23 +56,23 @@ export function previewKey(assetId, skinId = '') {
  * @param {string} [skinId]
  * @returns {{ status: 'idle'|'loading'|'ready'|'failed', url: string|null }}
  */
-export function previewState(assetId, skinId = '') {
-  const hit = cache.get(previewKey(assetId, skinId));
+export function previewState(assetId, skinId = '', manifest = null) {
+  const hit = cache.get(previewKey(assetId, skinId, manifest));
   return hit ? { status: hit.status, url: hit.url } : { status: 'idle', url: null };
 }
 
 /**
  * Queue a snapshot unless it is already known. Cheap to call repeatedly (a re-render, a reopened picker): a key that
  * is loading or done is ignored, a failed one is only retried when `retry` is set.
- * @param {string} assetId @param {string} [skinId] @param {{ retry?: boolean }} [opts]
+ * @param {string} assetId @param {string} [skinId] @param {{ retry?: boolean, manifest?: any }} [opts]
  */
 export function requestPreview(assetId, skinId = '', opts = {}) {
   if (!assetId) return;
-  const key = previewKey(assetId, skinId);
+  const key = previewKey(assetId, skinId, opts.manifest);
   const hit = cache.get(key);
   if (hit && (hit.status !== 'failed' || !opts.retry)) return;
   cache.set(key, { status: 'loading', url: null });
-  queue.push({ key, assetId, skinId });
+  queue.push({ key, assetId, skinId, manifest: opts.manifest });
   notify();
   void pump();
 }
@@ -97,7 +102,7 @@ async function pump() {
       const job = queue.shift();
       if (!cache.has(job.key)) continue; // cleared while waiting
       try {
-        const url = await renderOne(job.assetId, job.skinId);
+        const url = await renderOne(job.assetId, job.skinId, job.manifest);
         cache.set(job.key, { status: 'ready', url });
       } catch {
         // deliberately silent: a model missing upstream is a known case (2 of the 174 skins, docs/SKINS.md) and the
@@ -150,9 +155,9 @@ function poseSkeleton(PIXI, skel, clip, at) {
  * @param {string} assetId @param {string} skinId
  * @returns {Promise<string>}
  */
-async function renderOne(assetId, skinId) {
+async function renderOne(assetId, skinId, manifest = data.get('assets')) {
   const PIXI = await ensurePixi();
-  const entry = spineEntry(data.get('assets'), assetId, skinId ? { skin: skinId } : undefined);
+  const entry = spineEntry(manifest, assetId, skinId ? { skin: skinId } : undefined);
   if (!entry) throw new Error('no spine for ' + assetId + (skinId ? ' (' + skinId + ')' : ''));
   const skel = await assets.spine.acquire(entry);
   let sp = null;
@@ -288,17 +293,17 @@ export function clipsOf(m, assetId, skinId = '') {
  * renderer, stepped by requestAnimationFrame at the display's own rate.
  *
  * @param {any} host the preview box; the renderer's canvas is appended to it
- * @param {{ assetId: string, skinId?: string, clipSize?: number, isCancelled?: () => boolean }} opts
+ * @param {{ assetId: string, skinId?: string, clipSize?: number, manifest?: any, isCancelled?: () => boolean }} opts
  *   `isCancelled` is checked right before the canvas is attached: a mount that resolves after its caller moved on
  *   (the player switched operator or skin while the skeleton was loading) must NOT attach — the renderer has ONE
  *   canvas, and a late attach moves it into a DOM node that is already gone, leaving the visible frame empty.
  * @returns {Promise<{ play: (steps: [string, boolean][]) => void, dispose: () => void }>}
  */
-export async function mountPreview(host, { assetId, skinId = '', clipSize = PREVIEW_PX, isCancelled = null } = {}) {
+export async function mountPreview(host, { assetId, skinId = '', clipSize = PREVIEW_PX, manifest = data.get('assets'), isCancelled = null } = {}) {
   if (!host) throw new Error('mountPreview: no host');
   const cancelled = () => (typeof isCancelled === 'function' ? !!isCancelled() : false);
   const PIXI = await ensurePixi();
-  const entry = spineEntry(data.get('assets'), assetId, skinId ? { skin: skinId } : undefined);
+  const entry = spineEntry(manifest, assetId, skinId ? { skin: skinId } : undefined);
   if (!entry) throw new Error('no spine for ' + assetId);
   const skel = await assets.spine.acquire(entry);
   if (cancelled()) {

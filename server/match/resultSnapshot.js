@@ -6,6 +6,11 @@ export function resultSnapshot(ps) {
   const gd = ps.gd;
   const lineup = boardOrder(ps.board).filter((x) => x.piece.kind === 'chess').map(({ r, c, piece }) => {
       const e = { id: piece.id, golden: gd.isGolden(piece.id), tier: gd.tierOf(piece.id), row: r, col: c, items: (piece.items || []).map((i) => i.id) };
+      const chess = typeof gd.chess === 'function' ? gd.chess(piece.id) : null;
+      if (chess?.charId) e.charId = chess.charId;
+      if (chess?.name) e.name = chess.name;
+      if (chess?.assets?.avatar) e.avatarId = chess.assets.avatar;
+      if (chess?.assets?.portrait) e.portraitId = chess.assets.portrait;
       // 0.2.0 自选编队: a DIY slot's pick — the result screen names and draws the operator (shared/diy.js diyRecord)
       const pick = typeof ps.diyPickOf === 'function' ? ps.diyPickOf(piece.id) : null;
       if (pick) e.diy = { charId: pick.charId, skillIndex: pick.skillIndex, uniEquipId: pick.uniEquipId };
@@ -17,5 +22,9 @@ export function resultSnapshot(ps) {
       if (skin) e.skin = skin;
       return e;
     });
-  return { lineup, bonds: bondList(gd, ps.bonds).filter((b) => b.active || b.layers > 0).map(b => ({ ...b })) };
+  const bonds = bondList(gd, ps.bonds).filter((b) => b.active || b.layers > 0).map((b) => {
+    const rec = typeof gd.bond === 'function' ? gd.bond(b.bondId) : null;
+    return { ...b, ...(rec?.name ? { name: rec.name } : {}), ...(rec?.iconId ? { iconId: rec.iconId } : {}) };
+  });
+  return { lineup, bonds };
 }

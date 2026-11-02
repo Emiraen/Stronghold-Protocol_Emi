@@ -1,10 +1,12 @@
 import { ZHAJING_VARIANT, ZHAJING_DIFFICULTY, ZHAJING_CAPACITIES } from './zhajing-constants.js';
 import { FRIEND_ACTIONS } from './friends.js';
-import { validFriendMessageText, validMessageSequence } from './friendMessages.js';
+import { validFriendMessageText, validFriendMessageContent, validMessageSequence } from './friendMessages.js';
+import { isChatStickerId, isGameEmoteId } from './chatStickers.js';
 import { MIZUKI_VARIANT, MIZUKI_CAPACITIES } from './mizuki-constants.js';
 import { ANNIHILATION_VARIANT, ANNIHILATION_CAPACITIES, EROSION_MAX } from './annihilation-constants.js';
 import { isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT, cultivatedStats } from './potential.js';
 import { isSpecialNameCard } from './nameCards.js';
+import { isNameplate } from './nameplates.js';
 // Normative message catalogue (DESIGN §8). Used by server (validation) and client (building requests).
 // Every client→server message is `{ t, rid?, ...fields }`. Unknown `t` or invalid fields ⇒ ERR.BAD_MSG.
 
@@ -96,20 +98,21 @@ export const MODULE_NONE = 'none';
 export const defaultPresentation = () => ({ skins: {}, voice: { enabled: true, lang: 'jp', volume: 0.8 } });
 export const isSkinSelection = (v) => isMap(v, 256, isId,
   (s) => typeof s === 'string' && s.length > 0 && s.length <= 128 && /^[A-Za-z0-9_@#\-.:]+$/.test(s));
-export const isPresentation = (v) => isPlain(v) && Object.keys(v).every((k) => ['skins', 'voice', 'portraits', 'card'].includes(k))
+export const isPresentation = (v) => isPlain(v) && Object.keys(v).every((k) => ['skins', 'voice', 'portraits', 'card', 'nameplate'].includes(k))
   && isSkinSelection(v.skins) && isPlain(v.voice)
+  && optional(isNameplate)(v.nameplate)
   && optional(isSkinSelection)(v.portraits) && optional((id) => id === '' || isId(id))(v.card)
   && Object.keys(v.voice).every((k) => ['enabled', 'lang', 'volume'].includes(k))
   && isBool(v.voice.enabled) && ['jp', 'cn', 'en', 'kr', 'native'].includes(v.voice.lang) && isNum(v.voice.volume, 0, 1);
 export function skinKeyForRecord(rec) {
   if (!rec?.charId) return null;
-  return rec.diyFor || rec.standInFor ? `char:${rec.charId}` : rec.baseId || rec.chessId;
+  return rec.diyFor || rec.standInFor || rec.zhajing ? `char:${rec.charId}` : rec.baseId || rec.chessId;
 }
 export function checkPresentation(value, getChess, assets, units = null) {
   if (!isPresentation(value)) return { error: 'BAD_MSG', detail: 'bad presentation' };
   for (const [id, skin] of Object.entries(value.skins)) {
     const charId = id.startsWith('char:') ? id.slice(5) : null;
-    const c = charId ? (Object.hasOwn(units || {}, charId) ? { charId } : null) : getChess(id);
+    const c = charId ? (Object.hasOwn(units || {}, charId) || Object.hasOwn(assets?.chars || {}, charId) ? { charId } : null) : getChess(id);
     if (!c || c.isGolden || c.visible === false || c.isHidden || c.isDiy || (c.baseId && c.baseId !== id)
         || !assets?.chars?.[c.charId]?.skins?.[skin]?.spine?.front) {
       return { error: 'BAD_TARGET', detail: `skin not available for ${id}` };
@@ -117,7 +120,7 @@ export function checkPresentation(value, getChess, assets, units = null) {
   }
   for (const [id, choice] of Object.entries(value.portraits || {})) {
     const charId = id.startsWith('char:') ? id.slice(5) : null;
-    const c = charId ? (Object.hasOwn(units || {}, charId) ? { charId } : null) : getChess(id);
+    const c = charId ? (Object.hasOwn(units || {}, charId) || Object.hasOwn(assets?.chars || {}, charId) ? { charId } : null) : getChess(id);
     const art = assets?.chars?.[c?.charId];
     if (!c || c.isDiy || !art || (choice !== 'original' && choice !== 'e2' && !art.skins?.[choice]?.portrait)) {
       return { error: 'BAD_TARGET', detail: `portrait not available for ${id}` };
@@ -486,9 +489,10 @@ export const C2S = {
   'profile.loadout': { v: (v) => v === 1, profileId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
     editId: (v) => isInt(v, 1, Number.MAX_SAFE_INTEGER), entries: isLoadoutEntries, ops: optional(isLoadoutOps), scope: optional(v => v === 'zhajing') },
   // Public channel: invitations are derived from the sender's server-side room, not client-supplied codes.
-  'chat.send': { text: (v) => typeof v === 'string' && v.length <= 200 && /[^\s\p{Cf}]/u.test(v),
+  'chat.send': { text: (v) => typeof v === 'string' && v.length <= 200,
+    sticker: isChatStickerId,
     channel: (v) => v === 'lobby' || v === 'match', matchId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
-    $optional: ['channel', 'matchId'] },
+    $optional: ['text', 'sticker', 'channel', 'matchId'] },
   'chat.invite': {},
   'recruitment.list': {},
   'spectator.list': {},
@@ -501,9 +505,10 @@ export const C2S = {
     targetId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), query: (v) => typeof v === 'string' && v.length <= 64,
     inviteId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), accept: isBool, mute: isBool,
     matchId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), playerId: isId,
-    text: validFriendMessageText, clientId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
+    text: (v) => v === '' || validFriendMessageText(v), sticker: isChatStickerId,
+    clientId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v),
     beforeSeq: validMessageSequence, afterSeq: validMessageSequence, throughSeq: validMessageSequence,
-    $optional: ['targetId', 'query', 'inviteId', 'accept', 'mute', 'matchId', 'playerId', 'text', 'clientId', 'beforeSeq', 'afterSeq', 'throughSeq'] },
+    $optional: ['targetId', 'query', 'inviteId', 'accept', 'mute', 'matchId', 'playerId', 'text', 'sticker', 'clientId', 'beforeSeq', 'afterSeq', 'throughSeq'] },
   // Anonymous aid from hello selects the owner; no client-supplied aid is accepted.
   'history.list': {},
   'history.detail': { matchId: (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v), playerId: isId, $optional: ['playerId'] },
@@ -544,7 +549,7 @@ export const C2S = {
   'g.relic': { idx: (v) => isInt(v, 0, 2), start: (v) => v === true, $optional: ['idx', 'start'] },
   'g.relicSeen': {},
   'g.ready': { ready: isBool },
-  'g.emote': { id: (v) => EMOTES.includes(v) },
+  'g.emote': { id: isGameEmoteId },
   'g.watch': { fieldId: (v) => isStr(v, 32), viewOnly: isBool, $optional: ['viewOnly'] },
   'g.autoplay': { on: isBool },
   // solo pause (official PauseUp / ResumeUp, DESIGN §14): freezes the running battle (field clock, deadlines, the
@@ -655,6 +660,9 @@ export function validateC2S(msg) {
     if (!check(v)) return `bad field ${k}`;
   }
   if (msg.t === 'chat.send' && (msg.channel === 'match' ? !msg.matchId : msg.matchId !== undefined)) return 'bad channel matchId';
+  if (msg.t === 'chat.send' && !isChatStickerId(msg.sticker)
+      && !(typeof msg.text === 'string' && /[^\s\p{Cf}]/u.test(msg.text))) return 'empty chat message';
+  if (msg.t === 'friends.action' && msg.action === 'message.send' && !validFriendMessageContent(msg)) return 'empty friend message';
   if (msg.t === 'room.create' && ((msg.difficulty === ZHAJING_DIFFICULTY) !== (msg.variant === ZHAJING_VARIANT))) return 'bad zhajing mode';
   if (msg.t === 'room.create' && msg.mizukiDifficultyGrade !== undefined && msg.variant !== MIZUKI_VARIANT) return 'bad field mizukiDifficultyGrade';
   return null;

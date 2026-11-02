@@ -116,7 +116,9 @@ export function buildResult(m, outcome) {
       display = { lineup: [], bonds: [] };
       report(ps, 'display', error, displayErrors, 'RESULT_DISPLAY_UNAVAILABLE');
     }
-    const identity = { playerId: ps.playerId, seat: ps.seat, name: ps.name, isBot: ps.isBot, left: ps.left, alive: ps.alive, bandId: ps.bandId };
+    const band = ps.bandId ? gd.band(ps.bandId) : null;
+    const identity = { playerId: ps.playerId, seat: ps.seat, name: ps.name, nameplate: ps.nameplate || '', isBot: ps.isBot, left: ps.left, alive: ps.alive, bandId: ps.bandId,
+      ...(band?.name ? { bandName: band.name } : {}), ...(band?.iconId ? { bandIconId: band.iconId } : {}) };
     try {
       const roundsPassed = !ps.alive && ps.eliminatedRound != null ? Math.max(0, ps.eliminatedRound - 1) : teamRounds;
       const stats = {

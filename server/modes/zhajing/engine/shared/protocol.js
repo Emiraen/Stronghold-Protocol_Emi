@@ -2,6 +2,7 @@
 // Every client→server message is `{ t, rid?, ...fields }`. Unknown `t` or invalid fields ⇒ ERR.BAD_MSG.
 
 import { isOpenDifficulty, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, EMOTES, GEO, ROOM_HUMAN_CAPS } from './constants.js';
+import { isGameEmoteId } from '../../../../../shared/chatStickers.js';
 import { isDroppableChess } from './standIn.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
 import { isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT } from './potential.js';
@@ -638,7 +639,7 @@ export const C2S = {
   // 炸惊模拟 规则5: the one reroll of a single 惊变 card the 惊变阶段 grants (idx = the card to redraw)
   'g.spReroll': { idx: (v) => isInt(v, 0, 5) },
   'g.ready': { ready: isBool },
-  'g.emote': { id: (v) => EMOTES.includes(v) },
+  'g.emote': { id: (v) => EMOTES.includes(v) || isGameEmoteId(v) },
   // playerId: the player tapped in the team panel (a 联防 / boss pair field shows two) — what an eliminated viewer or a
   // spectator seat follows from then on (Match.watchPref; community report of 2026-10-06, item 56)
   'g.watch': { fieldId: (v) => isStr(v, 32), playerId: isId, $optional: ['playerId'] },

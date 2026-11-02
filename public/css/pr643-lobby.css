@@ -2073,7 +2073,7 @@ button.ally-card:disabled { filter: grayscale(.7) brightness(.7); cursor: defaul
    ========================================================================================== */
 .has-nc { position: relative; isolation: isolate; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
 .nc-layer { position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-  background: var(--nc-shade, linear-gradient(90deg, rgba(8, 11, 11, .9), rgba(8, 11, 11, .62) 50%, rgba(8, 11, 11, .2))), var(--nc) center / cover no-repeat, #101514; }
+  background: var(--nc-shade, linear-gradient(90deg, rgba(8, 11, 11, .9), rgba(8, 11, 11, .62) 50%, rgba(8, 11, 11, .2))), var(--nc) var(--nc-position, right center) / cover no-repeat, #101514; }
 .ach-card.has-nc { background: #101514; --nc-shade: linear-gradient(90deg, rgba(6, 9, 9, .5), rgba(6, 9, 9, .12) 55%, transparent); }
 .ach-card.has-nc .ach-card__id { background: rgba(8, 12, 11, .62); color: #e6ecea; }
 .ach-card.has-nc .ach-card__brand { display: none; }
@@ -2093,6 +2093,58 @@ button.ally-card:disabled { filter: grayscale(.7) brightness(.7); cursor: defaul
 .nc-pick__title { font-size: 16px; font-weight: 700; }
 .nc-pick__x { margin-left: auto; width: 32px; height: 32px; padding: 0; border: 0; background: none; color: #cfd8d5; font-size: 24px; line-height: 1; cursor: pointer; }
 .nc-pick__x:hover { color: var(--mint-400); }
+.ach-card .ach-card__edit { position: static; align-self: flex-start; min-height: 28px; padding: 3px 7px; font-size: 11px; flex: none; }
+.ach-card--editable .ach-card__who { padding-right: 0; }
+.nameplate-picker { height: min(760px, 94dvh); max-height: 94dvh; display: flex; flex-direction: column; }
+.nameplate-picker .modal__head, .nameplate-picker .modal__actions { flex-shrink: 0; }
+.nameplate-picker .modal__body { display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1; overflow: hidden; padding: 14px; }
+.nameplate-picker .modal__actions { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }
+.nameplate-picker .modal__actions .btn { min-height: 38px; font-size: 13px; }
+.nameplate-picker__status { margin-right: auto; min-width: 0; max-height: 3em; overflow: auto; overflow-wrap: anywhere; color: var(--text-lo); font-size: 12px; }
+.nameplate-preview { flex: none; min-height: 90px; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 16px 20px; border: 1px solid var(--line); background: linear-gradient(90deg, #26302d, #161a19); overflow: hidden; }
+.nameplate-preview b { font-size: 20px; color: #fff; }
+.nameplate-preview > span:not(.nc-layer) { font-size: 12px; color: #e4ede9; }
+.nameplate-preview small { position: absolute; right: 12px; bottom: 8px; color: var(--text-lo); font-size: 12px; }
+.nameplate-preview.has-nc { --nc-shade: linear-gradient(90deg, rgba(8,11,11,.74), rgba(8,11,11,.22) 65%, transparent); }
+.nameplate-picker__filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
+.nameplate-picker__tabs { display: flex; gap: 4px; }
+.nameplate-picker__tabs button { min-height: 36px; padding: 5px 12px; border: 1px solid var(--line); color: var(--text-lo); background: #131b18; font-size: 13px; cursor: pointer; touch-action: manipulation; }
+.nameplate-picker__tabs button.is-selected { color: var(--mint-400); border-color: var(--mint-400); }
+.nameplate-picker__filters input { flex: 1; min-width: 120px; min-height: 36px; padding: 5px 10px; color: var(--text-hi); border: 1px solid var(--line); background: #0d1512; font-size: 14px; }
+.nameplate-picker__grid { flex: 1; min-height: 70px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; grid-auto-rows: max-content; align-content: start; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+.nameplate-option { min-width: 0; padding: 0; border: 2px solid var(--line); background: #101713; color: var(--text-hi); cursor: pointer; text-align: left; touch-action: manipulation; }
+.nameplate-option:focus-visible, .nameplate-picker__tabs button:focus-visible { outline: 2px solid var(--mint-400); outline-offset: 2px; }
+.nameplate-option:hover { border-color: var(--text-lo); }
+.nameplate-option.is-selected { border-color: var(--mint-400); }
+.nameplate-option:disabled { cursor: default; }
+.nameplate-option__art { position: relative; height: 54px; background: linear-gradient(90deg, #26302d, #161a19); overflow: hidden; }
+.nameplate-option__art.has-nc { --nc-shade: linear-gradient(90deg, rgba(8,11,11,.12), transparent); }
+.nameplate-option__check { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 20px; height: 20px; background: var(--mint-400); color: #071c12; }
+.nameplate-option__check .icon { width: 14px; height: 14px; }
+.nameplate-option__default { display: grid; height: 100%; place-items: center; font-size: 11px; color: var(--text-lo); }
+.nameplate-option__label { display: flex; justify-content: space-between; gap: 6px; align-items: center; padding: 5px 7px; min-height: 28px; }
+.nameplate-option__label b { min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.nameplate-option__label small { flex: none; font-size: 11px; color: var(--text-lo); }
+.nameplate-picker__pages { display: flex; gap: 12px; align-items: center; justify-content: center; flex: none; font-size: 12px; }
+.nameplate-picker__pages .btn { min-height: 32px; font-size: 12px; }
+.rcard__head.has-nc { border-radius: 3px; }
+.mz-result__nameplate { position: relative; width: min(640px, 100%); min-height: 68px; padding: 18px; margin: 12px auto; display: grid; place-items: center; background: linear-gradient(90deg, #26302d, #161a19); overflow: hidden; }
+@media (max-width: 600px) {
+  .nameplate-picker__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nameplate-picker__filters input { font-size: 16px; }
+  .nameplate-picker__tabs button { padding: 5px 9px; }
+  .nameplate-picker .modal__body { gap: 8px; padding: 10px; }
+  .ach-card .ach-card__edit { position: static; align-self: flex-start; min-height: 28px; padding: 3px 7px; font-size: 11px; flex: none; }
+  .ach-card--editable .ach-card__who { padding-right: 0; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .nameplate-picker .modal__body { gap: 6px; padding: 6px 12px; }
+  .nameplate-picker .modal__head { padding: 8px 12px; }
+  .nameplate-picker .modal__actions { padding: 6px 12px; }
+  .nameplate-preview { min-height: 48px; padding: 7px 14px; gap: 2px; }
+  .nameplate-preview b { font-size: 16px; }
+  .nameplate-picker__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .nc-pick__status { margin: 0; padding: 8px 14px 0; color: #9aa6a2; }
 .nc-pick__status:empty { display: none; }
 .nc-pick__status.is-error { color: #ff8a7a; }
@@ -2189,3 +2241,35 @@ button.ally-card:disabled { filter: grayscale(.7) brightness(.7); cursor: defaul
 .tbadge--inline { width: 1.35em; height: 1.35em; margin-right: .2em; vertical-align: middle; filter: drop-shadow(0 0 2px rgba(0, 0, 0, .6)); }
 .hub-ach__rank > .tbadge { width: .34rem; height: .34rem; }
 .splate__rank > .tbadge { width: .44rem; height: .44rem; }
+
+
+/* Native long Sprite: 1000x172; namecardv2 content frame: 960x134 at (20,1).
+   Fill the entire plate with one uniform scale; crop overflow from the left or vertically, never letterbox. */
+.nc-layer--native { overflow: hidden; background: #101514; }
+.nc-layer--native > .nc-native-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-width: none; overflow: hidden; }
+.nc-layer--native::after { content: ''; position: absolute; inset: 0; background: var(--nc-shade); }
+.east-achievements .ach-card.has-nc { --nc-shade: linear-gradient(90deg, rgba(6,9,9,.28), transparent 48%); }
+.east-achievements .ach-card.has-nc::after { display: none; }
+.east-achievements .ach-card.has-nc .ach-card__who { min-width: 0; margin-right: 27%; gap: 4px; padding-top: 0; }
+.east-achievements .ach-card.has-nc .ach-card__name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rseat__plate.has-nc { --nc-shade: linear-gradient(90deg, rgba(8,11,11,.74), rgba(8,11,11,.18) 52%, transparent 72%); }
+.rseat__plate.has-nc .rseat__who, .rseat__plate.has-nc .rseat__doc { padding-right: 26%; }
+
+/* A narrow landscape screen keeps identity and artwork in separate areas. */
+@media (max-width: 1100px) {
+  .east-achievements .ach-plate:has(.ach-card.has-nc) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .east-achievements .ach-card.has-nc.ach-card--editable { width: 100%; height: 100px; padding: 10px; gap: 10px; box-sizing: border-box; }
+  .east-achievements .ach-card.has-nc .ach-card__ava { width: 54px; height: 70px; flex: 0 0 54px; }
+  .east-achievements .ach-card.has-nc.ach-card--editable .ach-card__who { padding: 0; margin: 0; gap: 3px; width: 120px; max-width: calc(58% - 74px); flex: 0 1 auto; align-self: center; }
+  .east-achievements .ach-card.has-nc .ach-card__name { font-size: 16px; line-height: 18px; }
+  .east-achievements .ach-card.has-nc .ach-card__id { max-width: 100%; box-sizing: border-box; font-size: 10px; line-height: 13px; padding: 0 3px; overflow: hidden; text-overflow: ellipsis; }
+  .east-achievements .ach-card.has-nc .east-ach-rank { font-size: 10px; line-height: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .east-achievements .ach-card.has-nc .ach-card__edit { min-height: 24px; height: 24px; max-width: 100%; padding: 2px 5px; font-size: 10px; line-height: 16px; white-space: nowrap; }
+  .east-achievements .ach-card.has-nc .ach-card__edit .btn__icon { width: 12px; height: 12px; }
+  .east-achievements .ach-plate:has(.ach-card.has-nc) > .ach-counts { width: 100%; padding: 0; grid-template-columns: 24px minmax(0, 1fr) 24px minmax(0, 1fr); gap: 6px; align-items: center; }
+  .east-achievements .ach-plate:has(.ach-card.has-nc) > .ach-counts .ach-counts__badge { width: 24px; height: 24px; }
+  .east-achievements .ach-plate:has(.ach-card.has-nc) > .ach-counts .ach-counts__row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .east-achievements .ach-plate:has(.ach-card.has-nc) > .ach-counts .ach-counts__row small { font-size: 10px; }
+  .east-achievements .ach-plate:has(.ach-card.has-nc) > .ach-counts .ach-counts__row b { font-size: 18px; }
+  .rseat__plate.has-nc .rseat__who { padding-right: 42%; }
+}

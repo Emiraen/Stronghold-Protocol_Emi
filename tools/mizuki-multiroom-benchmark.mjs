@@ -42,7 +42,7 @@ function setup(room) {
   const ids = Array.from({ length: 4 }, (_, seat) => `r${room}p${seat}`);
   const sockets = ids.map(() => new MeterSocket(room));
   for (const ws of sockets) { network.handleConnection(ws); const conn = network.conns.get(ws); conn.deltaEnabled = true;
-    conn.compactEnabled = compact; conn.streamEnabled = compact && stream; conn.fieldMetadataEnabled = conn.streamEnabled; }
+    conn.compactEnabled = compact; conn.streamEnabled = compact && stream; }
   const record = { room, rawBytes: 0, wireFrames: 0, payloadBytes: 0, snapshots: 0, callbackMs: [], fields: [] };
   stats.push(record);
   const send = (message, targets) => {
@@ -78,7 +78,7 @@ function setup(room) {
   for (const player of match.order) command(player.playerId, { t: 'g.mizuki.ready', on: true });
   for (const field of match.fields.values()) {
     const snapshot = field.engine.snapshot.bind(field.engine);
-    field.engine.snapshot = (...args) => { if (measuring) record.snapshots++; return snapshot(...args); };
+    field.engine.snapshot = () => { if (measuring) record.snapshots++; return snapshot(); };
   }
   rooms.push({ match, sockets });
 }

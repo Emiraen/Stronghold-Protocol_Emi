@@ -85,7 +85,7 @@ try {
   let snapshots = 0;
   for (const field of match.fields.values()) {
     const snapshot = field.engine.snapshot.bind(field.engine);
-    field.engine.snapshot = (...args) => { if (measuring) snapshots++; return snapshot(...args); };
+    field.engine.snapshot = () => { if (measuring) snapshots++; return snapshot(); };
   }
   const durations = [];
   measuring = true;

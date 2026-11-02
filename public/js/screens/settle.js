@@ -17,7 +17,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../ven
 
 import { html, Icon, DifficultyTag, Spinner } from '../ui/components.js';
 import { useGameData, Img, Sprite, PlayerAvatar, BondGlyph, BandIcon } from '../ui/gameComponents.js';
-import { normalizeResult, diyRecordFor, cardStandIn, standInForText } from '../ui/gameLogic.js';
+import { normalizeResult, diyRecordFor, cardStandIn, standInForText, resultChessRecord } from '../ui/gameLogic.js';
 import { isZhajing } from '../../../shared/zhajing-constants.js';
 import { data } from '../data.js';
 import { chessPortraitUrl, chessAvatarUrl, itemIconUrl, enemyIconUrl, titleIconUrl } from '../ui/assetUrls.js';
@@ -36,6 +36,7 @@ import { ResultView, RankRow, RankSettlement, rankLabel, settledRankDelta } from
 export { settledRankDelta } from './result.js';
 import { rankIconUrl } from '../../../shared/ranks.js';
 import { t } from '../../../shared/i18n.js';
+import { Nameplate } from '../ui/nameplates.js';
 
 export function resultBonds(bonds, bondRec = () => null) {
   const list = (Array.isArray(bonds) ? bonds : []).filter((b) => b && typeof b.bondId === 'string')
@@ -308,9 +309,10 @@ function SettleIntro({ players, myId, lose, onDone }) {
 function unitView(u, gd) {
   const data = gd.source || getDefaultData();
   const m = gd.m;
-  const chess = u.kind === 'token' ? null : gd.chess(u.id);
-  const dr = u.diy && chess ? diyRecordFor(chess, u.diy, { chess: data.get('chess'), backups: data.get('backups') }) : null;
-  const si = !dr && chess ? cardStandIn(chess, { unit: u, backups: gd.backups }) : null;
+  const sourceChess = u.kind === 'token' ? null : gd.chess(u.id);
+  const chess = resultChessRecord(u, gd.chess, gd.list('chess'));
+  const dr = u.diy && sourceChess ? diyRecordFor(sourceChess, u.diy, { chess: data.get('chess'), backups: data.get('backups') }) : null;
+  const si = !dr && sourceChess ? cardStandIn(sourceChess, { unit: u, backups: gd.backups }) : null;
   const rec = dr || si || chess;
   const tier = Math.max(0, Math.min(6, Number(u.tier) || Number(rec?.tier) || 0));
   return {
@@ -361,8 +363,8 @@ function BondBar({ bonds, gd }) {
   return html`<div class="sbonds">
     <span class="sbonds__mark" aria-hidden="true"><svg viewBox="0 0 64 40"><path d="M23 7h-7a13 13 0 0 0 0 26h7v-6h-7a7 7 0 0 1 0-14h7zM41 7h7a13 13 0 0 1 0 26h-7v-6h7a7 7 0 0 0 0-14h-7zM21 17h22v6H21z" /></svg><small>BONDS</small></span>
     <div class="sbonds__list" ref=${ref}>
-      ${list.length ? list.map((b, i) => html`<span key=${b.bondId} class=${cx('sbond', b.active && 'is-on')} style=${`--i:${i}`} title=${gd.bond(b.bondId)?.name || b.bondId}>
-        <span class="sbond__disc"><${BondGlyph} source=${gd.source} bondId=${b.bondId} /></span>${b.hideLayers ? html`<b class="num">—</b>` : html`<b class="num">${b.layers ?? 0}</b>`}</span>`)
+      ${list.length ? list.map((b, i) => html`<span key=${b.bondId} class=${cx('sbond', b.active && 'is-on')} style=${`--i:${i}`} title=${b.name || gd.bond(b.bondId)?.name || b.bondId}>
+        <span class="sbond__disc"><${BondGlyph} source=${gd.source} bondId=${b.bondId} name=${b.name} iconId=${b.iconId} /></span>${b.hideLayers ? html`<b class="num">—</b>` : html`<b class="num">${b.layers ?? 0}</b>`}</span>`)
         : html`<span class="sbonds__none">NO INFO</span>`}
     </div>
     ${more ? html`<button type="button" class="sbonds__more" aria-label=${t('更多')} onClick=${() => ref.current?.scrollBy({ left: 300, behavior: 'smooth' })}><${Icon} name="chevronRight" /></button>` : null}
@@ -421,7 +423,7 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
       <${SettleMap} lose=${!cleared} seed=${seed} />
       <div class="smap__fx" aria-hidden="true"></div>
       <${Logo} />
-      <div class="sself__band">${self.bandId ? html`<${BandIcon} source=${gd.source} bandId=${self.bandId} size="lg" />` : html`<${PlayerAvatar} source=${gd.source} player=${self} self=${true} />`}<i aria-hidden="true"></i></div>
+      <div class="sself__band">${self.bandId ? html`<${BandIcon} source=${gd.source} bandId=${self.bandId} name=${self.bandName} iconId=${self.bandIconId} size="lg" />` : html`<${PlayerAvatar} source=${gd.source} player=${self} self=${true} />`}<i aria-hidden="true"></i></div>
       <div class="sself__mode"><${ModePill} r=${r} /></div>
       <h1 class="sself__title">${cleared ? t('模拟完成') : t('模拟中断')}</h1>
       <div class="sself__rounds"><span>${t('通过回合')}</span><b class="num"><${CountUp} to=${self.roundsPassed} ms=${700} delay=${350} /></b></div>
@@ -431,12 +433,12 @@ function SelfPage({ r, raw, self, gd, prog, seed, onNext }) {
         <i class="smedal__check"><${Icon} name=${m.done ? 'check' : 'close'} /></i></span>`)}</div>` : null}
       <div class="splate">
         <${PlayerAvatar} source=${gd.source} player=${self} self=${true} class="splate__ava" />
-        <div class="splate__info">
+        <${Nameplate} class="splate__info" nameplate=${self.nameplate} variant="short">
 
           <b class="splate__name">${self.name}</b>
           <span class="splate__rank">${self.rank ? html`<${RankRow} rank=${self.rank} />` : html`<small><${Icon} name="shield" />${t("休闲模拟 · 不计排位")}</small>`}</span>
           <span class="splate__gain"><small><${Icon} name="chart" />${self.rank ? t("排位积分变化") : t("通过回合")}</small><b class="num">${self.rank ? (rankDelta > 0 ? `+${rankDelta}` : rankDelta) : self.roundsPassed}</b></span>
-        </div>
+        <//>
       </div>
       <div class="sops">
         <div class="sops__row sops__row--1">${slots.slice(0, 5).map((u, i) => html`<${OpCard} key=${i} u=${u} gd=${gd} i=${i} />`)}</div>
@@ -485,6 +487,7 @@ function TeamCard({ p, i, gd, self, victory, raw, social }) {
   const title = titleView(p, gd);
   const cleared = rowCleared(raw, p, victory);
   const band = p.bandId ? gd.band(p.bandId) : null;
+  const bandName = band?.name || p.bandName || p.bandId;
 
   // the 加好友 / 点赞 chips of a teammate's card (SocialChips): the row widens for them — a class, because :has() is out
   // of the browser floor this client supports (test/client-static.test.js)
@@ -498,15 +501,15 @@ function TeamCard({ p, i, gd, self, victory, raw, social }) {
         <${Img} src=${title.icon} class="tcard__ticon" fallback=${html`<${Icon} name="crown" class="tcard__ticon" />`} /><b>${title.name}</b></div>` : null}
       <div class="tcard__rounds"><span>${t('通过回合')}</span><b class="num">${p.roundsPassed}</b></div>
     </div>
-    <div class="tcard__plate">
+    <${Nameplate} class="tcard__plate" nameplate=${p.nameplate} variant="short">
 
       ${self ? html`<i class="tcard__me" aria-hidden="true"><${Icon} name="user" /></i>` : null}
       <${PlayerAvatar} source=${gd.source} player=${p} self=${self} class="tcard__ava" />
       <span class="tcard__who">
         <b class="tcard__name">${p.rank ? html`<img class="tcard__rank" src=${rankIconUrl(p.rank.iconAfter || "unranked")} alt=${rankLabel(p.rank.tierAfter)} />` : null}<span>${p.name}</span>${p.isBot ? html`<span class="tcard__ai">AI</span>` : null}</b>
-        ${band ? html`<span class="tcard__band"><${BandIcon} source=${gd.source} bandId=${band.bandId} size="xs" /><span>${band.name}</span></span>` : null}
+        ${p.bandId ? html`<span class="tcard__band"><${BandIcon} source=${gd.source} bandId=${p.bandId} name=${bandName} iconId=${band?.iconId || p.bandIconId} size="xs" /><span>${bandName}</span></span>` : null}
       </span>
-    </div>
+    <//>
     <div class=${cx('tcard__chips', acts && 'tcard__chips--acts')}>
       <span class="tchip tchip--rank">${p.rank ? html`<img src=${rankIconUrl(p.rank.iconAfter || "unranked")} alt="" /><span>${rankLabel(p.rank.tierAfter)}</span><b class=${cx("num", rankDelta > 0 && "is-up", rankDelta < 0 && "is-down")}>${rankDelta > 0 ? `+${rankDelta}` : rankDelta}</b>` : html`<${Icon} name="shield" /><span>${t("休闲模拟 · 不计排位")}</span>`}</span>
       <${SocialChips} p=${p} self=${self} social=${social} />

@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { StoreWriter } from './historyStore.js';
 import { FRIEND_ACTIONS, publicPlayerId, socialModeName } from '../shared/friends.js';
-import { FRIEND_MESSAGE_PAGE_SIZE, FRIEND_MESSAGE_RETENTION_MS, validFriendMessageText, validMessageSequence } from '../shared/friendMessages.js';
+import { FRIEND_MESSAGE_PAGE_SIZE, FRIEND_MESSAGE_RETENTION_MS, validFriendMessageText, validFriendMessageContent, validMessageSequence } from '../shared/friendMessages.js';
+import { isChatStickerId } from '../shared/chatStickers.js';
 
 const HOUR = 3600_000;
 const MAX_FRIENDS = 200;
@@ -25,7 +26,7 @@ export function validateSocialSync(value) {
 }
 export function validateSocialAction(value) {
   if (!plain(value) || !FRIEND_ACTIONS.includes(value.action)
-    || Object.keys(value).some(key => !['action', 'targetId', 'query', 'inviteId', 'accept', 'mute', 'matchId', 'playerId', 'text', 'clientId', 'beforeSeq', 'afterSeq', 'throughSeq'].includes(key))
+    || Object.keys(value).some(key => !['action', 'targetId', 'query', 'inviteId', 'accept', 'mute', 'matchId', 'playerId', 'text', 'sticker', 'clientId', 'beforeSeq', 'afterSeq', 'throughSeq'].includes(key))
     || (value.targetId !== undefined && !publicPlayerId(value.targetId))
     || (value.query !== undefined && (typeof value.query !== 'string' || value.query.length > 64))
     || (value.inviteId !== undefined && !publicPlayerId(value.inviteId))
@@ -33,7 +34,8 @@ export function validateSocialAction(value) {
     || (value.playerId !== undefined && (typeof value.playerId !== 'string' || value.playerId.length > 64))
     || (value.accept !== undefined && typeof value.accept !== 'boolean')
     || (value.mute !== undefined && typeof value.mute !== 'boolean')
-    || (value.text !== undefined && !validFriendMessageText(value.text))
+    || (value.text !== undefined && value.text !== '' && !validFriendMessageText(value.text))
+    || (value.sticker !== undefined && !isChatStickerId(value.sticker))
     || (value.clientId !== undefined && !publicPlayerId(value.clientId))
     || ['beforeSeq', 'afterSeq', 'throughSeq'].some(key => value[key] !== undefined && !validMessageSequence(value[key]))) error('好友操作参数无效');
 }
@@ -85,7 +87,9 @@ export class FriendsService {
       ...(row.state === 'playing' && row.room?.spectatable && row.room?.matchId
         ? { watch: { serverId: row.serverId, code: row.room.code, matchId: row.room.matchId } } : {}) } : { state: 'offline' };
     return { id: player.id, name: player.name, card: appearance.card || '', cardSkin: this.cardSkin(appearance.card, appearance),
-      rank: detailed ? summary : { rank: summary.rank, ranked: summary.ranked, points: summary.points }, presence };
+      nameplate: appearance.nameplate || '',
+      rank: detailed ? summary : { rank: summary.rank, ranked: summary.ranked, points: summary.points,
+        globalRank: summary.globalRank, rankPyramid: summary.rankPyramid, inactive: summary.inactive }, presence };
   }
   friends(profileId) { return this.state.friends[profileId] || []; }
   conversation(self, target, create = false) {
@@ -103,15 +107,21 @@ export class FriendsService {
   }
   messageAction(self, target, value) {
     if (value.action === 'message.send') {
-      if (!validFriendMessageText(value.text) || !publicPlayerId(value.clientId)) error('私信内容无效');
-      const conversation = this.conversation(self, target, true), text = value.text.trim().replace(/\r\n?/g, '\n');
+      if (!validFriendMessageContent(value) || !publicPlayerId(value.clientId)) error('私信内容无效');
+      const conversation = this.conversation(self, target, true), text = (value.text || '').trim().replace(/\r\n?/g, '\n');
+      const sticker = value.sticker;
       const previous = conversation.messages.find(row => row.from === self && row.clientId === value.clientId);
       if (previous) {
-        if (previous.text !== text) error('私信请求编号已使用');
+        if (previous.text !== text || previous.sticker !== sticker) error('私信请求编号已使用');
         return { message: previous, thread: this.thread(self, target) };
       }
       if (conversation.messages.filter(row => row.from === self && this.now() - row.at < 10_000).length >= 10) error('私信发送过于频繁，请稍后再试');
-      const message = { id: id(), seq: ++conversation.lastSeq, from: self, text, at: this.now(), clientId: value.clientId };
+      const sender = this.card(self, true);
+      const message = { id: id(), seq: ++conversation.lastSeq, from: self, text,
+        ...(sticker ? { sticker } : {}), kind: sticker ? 'sticker' : 'text',
+        name: sender?.name || '', card: sender?.card || '', cardSkin: sender?.cardSkin || '',
+        nameplate: sender?.nameplate || '', rank: sender?.rank || null,
+        at: this.now(), clientId: value.clientId };
       conversation.messages.push(message);
       this.nextMessageExpiry = Math.min(this.nextMessageExpiry || Infinity, message.at + FRIEND_MESSAGE_RETENTION_MS);
       return { message, thread: this.thread(self, target) };

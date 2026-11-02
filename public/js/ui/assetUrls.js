@@ -118,13 +118,15 @@ export function subProfIconUrl(m, chess) {
 }
 
 /** Bond glyph (white; tint in CSS). */
-export function bondIconUrl(m, bondId) {
-  return bondId ? str(obj(obj(m)?.bonds)?.[bondId]) : null;
+export function bondIconUrl(m, bondId, iconId = null) {
+  const icons = obj(obj(m)?.bonds);
+  return str(icons?.[bondId]) || str(icons?.[iconId]) || null;
 }
 
 /** Band (strategy) icon. */
-export function bandIconUrl(m, bandId) {
-  return bandId ? str(obj(obj(m)?.bands)?.[bandId]) : null;
+export function bandIconUrl(m, bandId, iconId = null) {
+  const icons = obj(obj(m)?.bands);
+  return str(icons?.[bandId]) || str(icons?.[iconId]) || null;
 }
 
 /** Item icon for an items.json record (by trapId / iconId) or a raw trap id. */

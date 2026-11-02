@@ -194,7 +194,7 @@ export class SessionRegistry {
         || this.byPlayerId.size >= this.maxSessions) return null;
     const s = new Session({ playerId: doc.playerId, token: doc.token, name: sanitizeName(doc.name), now: this.now() });
     for (const key of ['roomCode', 'aid', 'clientAid', 'deviceId', 'profileName', 'loadout', 'ops', 'zhajingLoadout', 'zhajingOps', 'notOwned', 'diy',
-      'skins', 'portraits', 'card', 'addr', 'limitKey', 'notice', 'pendingResult',
+      'skins', 'portraits', 'card', 'nameplate', 'addr', 'limitKey', 'notice', 'pendingResult',
       'chatStrikes', 'chatLastHitAt', 'chatMutedUntil']) {
       if (Object.hasOwn(doc, key)) s[key] = doc[key];
     }

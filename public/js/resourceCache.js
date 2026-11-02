@@ -1,9 +1,16 @@
 import { mediaUrl } from './media.js';
-import { PRELOAD_CDN_ORIGIN, preloadPackGroup, readPreloadRange, fetchPreloadManifest } from './preloadSources.js';
+import { PRELOAD_CDN_ORIGIN, preloadPackGroup, readPreloadRange, fetchPreloadManifest, fetchPreloadDeltaResource } from './preloadSources.js';
+import { preloadDelta, withPreloadDeltas } from './preloadDeltas.js';
 import { SOUTH_PRELOAD_ORIGIN, SOUTH_PRELOAD_HTTPS_ORIGIN } from './serverOrigins.js';
 import { consumePreloadStream, resourceFilename, storedPreloadCursor, savePreloadCursor } from './resourceResume.js';
+import { CHAT_STICKER_RESOURCES, GAME_EMOTE_RESOURCES } from '../../shared/chatStickers.js';
 
 const GROUPS = ['required', 'optional', 'voice'];
+const PERSONAL_STICKER_PATH = '/assets/chat-stickers/';
+function personalStickerUrl(url) {
+  try { return new URL(String(url), globalThis.location?.origin || 'http://localhost').pathname.startsWith(PERSONAL_STICKER_PATH); }
+  catch { return false; }
+}
 const STORE = 'resources';
 const listeners = new Set();
 let entries = new Map();
@@ -121,6 +128,11 @@ export async function fetchResourceData(url, options = {}, { requiredOnline = fa
   };
   cancelled();
   const init = { ...options, credentials: 'omit', redirect: 'error', mode: 'cors' };
+  // Explicit preload never uses a game-server origin or its fallback chain.
+  if (preload) {
+    const request = new URL(target);
+    return fetch(new URL(request.pathname + request.search, CDN_RESOURCE_ORIGIN).href, init);
+  }
   const finalOrigin = deploymentResourceOrigin();
   const localOrigin = localResourceOrigin();
   if (localOrigin) {
@@ -271,7 +283,7 @@ function requiredOnlyAsset(url) {
 function optionalOnlyAsset(url) {
   try {
     const path = new URL(url, globalThis.location?.href || 'http://localhost/').pathname;
-    return /^\/assets\/local\/playercards\/(?:good-boy|trickster-outbreak|duck-burnard|duck-flower|duck-brioche|hatchbudz-quacked|evori-(?:solari|lunari|amari|terrari|evori))\/card\.gif$/.test(path) ||
+    return path.startsWith('/assets/chat-stickers/') || /^\/assets\/local\/playercards\/(?:good-boy|trickster-outbreak|duck-burnard|duck-flower|duck-brioche|hatchbudz-quacked|evori-(?:solari|lunari|amari|terrari|evori))\/card\.gif$/.test(path) ||
       /^\/assets\/char\/portrait\/(?:skin\/|[^/]+_2\.png$)/.test(path) ||
       /^\/(?:assets\/(?:local\/)?audio\/bgm|media\/bgm)\//.test(path) ||
       path.startsWith('/assets/mizuki/native-audio/tracks/');
@@ -391,7 +403,11 @@ async function fetchManifestFrom(fetchData) {
   return response.json();
 }
 
-async function fetchManifest() {
+async function fetchManifest(preload = false) {
+  const publishedManifest = () => fetchManifestFrom((url, options) => fetchPreloadManifest(url, {
+    ...options, onSource: source => { state.source = source; notifyProgress(); },
+  }));
+  if (preload) return publishedManifest();
   if (localResourceOrigin()) {
     const response = await fetch('/data/resource-preload.local.json', { cache: 'no-cache' });
     if (response.ok) return response.json();
@@ -401,21 +417,26 @@ async function fetchManifest() {
   if (!deploymentResourceOrigin()) return fetchManifestFrom((url, options) => fetch(url, options));
   // Both game mirrors ship this index. Empty-cache game loading must not wait
   // for the slower preload host before a single essential asset is delivered.
-  try { return await fetchManifestFrom((url, options) => fetchPreloadManifest(url, {
-    ...options, onSource: source => { state.source = source; notifyProgress(); },
-  })); } catch {
+  try { return await publishedManifest(); } catch {
     // Essential gameplay can still load its index during a share/CDN outage.
     return fetchManifestFrom((url, options) => fetchResourceData(url, options, { requiredOnline: true }));
   }
 }
 
-function loadManifest() {
+function loadManifest(preload = false) {
   if (!manifestPromise) manifestPromise = (async () => {
-    const data = await fetchManifest();
+    const data = withPreloadDeltas(await fetchManifest(preload));
     if (data?.schema !== 1 || !['required', 'voice'].every(group => Array.isArray(data.groups?.[group])) ||
         (data.groups.optional !== undefined && !Array.isArray(data.groups.optional))) {
       throw new Error('资源清单格式不正确，请刷新页面重试。');
     }
+    data.groups.optional = [
+      ...CHAT_STICKER_RESOURCES,
+      ...(data.groups.optional || []).filter(row => !String(row.url).startsWith('/assets/chat-stickers/')),
+    ];
+    const gameEmoteUrls = new Set(GAME_EMOTE_RESOURCES.map(resource => resource.url));
+    for (const group of GROUPS) data.groups[group] = (data.groups[group] || []).filter(row => !gameEmoteUrls.has(row.url));
+    data.groups.required = [...GAME_EMOTE_RESOURCES, ...data.groups.required];
     const indexed = new Map();
     const mapped = new Map();
     const groups = Object.fromEntries(GROUPS.map(group => [group, []]));
@@ -881,7 +902,7 @@ function packUnavailable(error) {
 }
 
 async function packRange(url, start, end, total, signal, preload = false, onProgress) {
-  const cloudGroup = preload && deploymentResourceOrigin() && !localResourceOrigin() && preloadPackGroup(url);
+  const cloudGroup = preload && preloadPackGroup(url);
   if (cloudGroup) {
     try { return await readPreloadRange(cloudGroup, start, end, total, { signal, onProgress,
       onSource: source => { state.source = source; state[cloudGroup].source = source; notifyProgress(); },
@@ -961,7 +982,9 @@ function packRecords(header, prefix, total) {
     const encoding = compressed ? raw?.encoding : 'identity';
     const storedBytes = compressed ? raw?.storedBytes : raw?.bytes;
     const webp = encoding === 'webp-lossless';
-    if (typeof raw?.url !== 'string' || !raw.url || typeof raw.version !== 'string' || !/^[a-f0-9]{64}$/i.test(raw.version) ||
+    const resolved = typeof raw?.url === 'string' ? resolve(mediaUrl(raw.url)) : undefined;
+    const namedVersion = (resolved?.selfHosted || resolved?.preloadOnly) && raw?.version === resolved.version;
+    if (typeof raw?.url !== 'string' || !raw.url || typeof raw.version !== 'string' || (!/^[a-f0-9]{64}$/i.test(raw.version) && !namedVersion) ||
         !Number.isSafeInteger(raw.bytes) || raw.bytes <= 0 || typeof raw.type !== 'string' ||
         !(schema === 3 ? ['gzip', 'identity', 'webp-lossless'] : ['gzip', 'identity']).includes(encoding) ||
         !Number.isSafeInteger(storedBytes) || storedBytes <= 0 ||
@@ -969,7 +992,6 @@ function packRecords(header, prefix, total) {
         (webp ? raw.type !== 'image/png' || !validTransport(raw.transport) || storedBytes !== raw.transport.bytes : raw.transport !== undefined)) {
       throw new Error('资源包条目不完整或文件已截断。');
     }
-    const resolved = resolve(mediaUrl(raw.url));
     const item = webp && !sameTransport(raw.transport, resolved?.transport) ? undefined : resolved;
     const id = resolved?.key || key(mediaUrl(raw.url));
     if (!id || seen.has(id)) throw new Error('资源包包含无效地址或重复条目。');
@@ -1020,10 +1042,11 @@ async function unpackResource(packed, bytes) {
 async function prepareDownloadSource(group, manual = false, signal, items = []) {
   const source = { manual, rawOnly: true, records: new Map(), failed: new Set(), total: 0,
     url: new URL(`/assets/resource-${group === 'required' ? 'required-lossless' : group}.sprpack`, preloadResourceOrigin()).href };
-  if (localResourceOrigin()) return source;
+  if (!manual && localResourceOrigin() || items.length && items.every(item => item.selfHosted || item.preloadOnly)) return source;
+  if (items.length && items.every(preloadDelta)) return source;
   // The published manifest already carries checked offsets. Avoid downloading
   // several megabytes of pack headers again before the first missing resource.
-  if (manual && deploymentResourceOrigin()) {
+  if (manual) {
     const indexed = items.filter(item => item.pack && (item.pack.group || group) === group);
     if (indexed.length) {
       source.total = indexed[0].pack.total;
@@ -1067,7 +1090,8 @@ function preparePackBatches(source, items) {
     source.batches.set(item.key, batch);
   }
   const packedKeys = new Set(packed.map(item => item.key));
-  return [...packed, ...items.filter(item => !packedKeys.has(item.key))];
+  return [...items.filter(item => item.selfHosted), ...packed,
+    ...items.filter(item => !item.selfHosted && !packedKeys.has(item.key))];
 }
 
 async function packedResourceBytes(source, packed, signal, onTransfer) {
@@ -1096,27 +1120,50 @@ async function packedResourceBytes(source, packed, signal, onTransfer) {
 }
 
 async function resourceResponse(item, start, source, signal, requiredOnline = false, preload = false, onTransfer) {
+  if ((item.preloadOnly || personalStickerUrl(item.url)) && !preload) throw missingResource(item.url);
+  if (preload && preloadDelta(item)) {
+    return fetchPreloadDeltaResource(item, start, { signal,
+      onProgress: bytes => { onTransfer?.(); receivingProgress(item, start + bytes); },
+      onSource: name => { state.source = name; for (const group of item.groups) state[group].source = name; notifyProgress(); },
+    });
+  }
+  if (!preload && item.selfHosted) {
+    for (const group of item.groups) state[group].source = '当前游戏服务器 · 聊天与局内表情';
+    notifyProgress();
+    return fetch(new URL(item.url, globalThis.location.origin).href, {
+      cache: 'no-store', credentials: 'same-origin', redirect: 'error', mode: 'same-origin', signal,
+      headers: start ? { Range: 'bytes=' + start + '-' } : {},
+    });
+  }
   const localOrigin = localResourceOrigin();
-  if (localOrigin) {
+  if (!preload && localOrigin) {
     const local = new URL(item.url, localOrigin);
     return fetch(new URL(local.pathname + local.search, localOrigin).href, {
       cache: 'no-store', credentials: 'same-origin', redirect: 'error', mode: 'same-origin', signal,
       headers: start ? { Range: 'bytes=' + start + '-' } : {},
     });
   }
+  if (!preload && preloadDelta(item)) {
+    const deltaGameOrigin = item.groups.includes('required') ? deploymentResourceOrigin() : null;
+    return fetch(new URL(item.url, deltaGameOrigin || globalThis.location.origin).href, {
+      cache: 'no-store', signal, credentials: deltaGameOrigin ? 'omit' : 'same-origin',
+      mode: deltaGameOrigin ? 'cors' : 'same-origin', redirect: 'error',
+      headers: start ? { Range: `bytes=${start}-` } : {},
+    });
+  }
   // These standalone mode assets are also shipped by the local/LAN game server.
-  if (!deploymentResourceOrigin() && item.groups.includes('required') && /^\/assets\/(?:relics|annihilation-intro)\//.test(new URL(item.url, globalThis.location.origin).pathname)) {
+  if (!preload && !deploymentResourceOrigin() && item.groups.includes('required') && /^\/assets\/(?:relics|annihilation-intro)\//.test(new URL(item.url, globalThis.location.origin).pathname)) {
     return fetch(new URL(item.url, globalThis.location.origin).href, { cache: 'no-store', signal,
       headers: start ? { Range: 'bytes=' + start + '-' } : {} });
   }
-  if (requiredOnline && item.groups.includes('required') && deploymentResourceOrigin()) {
+  if (!preload && requiredOnline && item.groups.includes('required') && deploymentResourceOrigin()) {
     const requestUrl = new URL(mediaUrl(item.url), globalThis.location.origin);
     requestUrl.searchParams.set('__resourceVersion', item.version);
     return fetchResourceData(requestUrl.href, { cache: 'no-store', signal,
       headers: start ? { Range: 'bytes=' + start + '-' } : {} }, { requiredOnline: true });
   }
   const gameUrl = gameHostedRequiredAudio(item);
-  if (gameUrl) {
+  if (!preload && gameUrl) {
     return fetch(gameUrl, { cache: 'no-store', credentials: 'omit', redirect: 'error', mode: 'cors', signal, headers: start ? { Range: `bytes=${start}-` } : {} });
   }
   const packed = source && !source.rawOnly && !source.failed.has(item.key) && source.records.get(item.key);
@@ -1140,7 +1187,7 @@ async function resourceResponse(item, start, source, signal, requiredOnline = fa
   }
   const requestUrl = new URL(win7ResourceUrl(item.url));
   requestUrl.searchParams.set('__resourceVersion', item.version);
-  if (preload && deploymentResourceOrigin()) {
+  if (preload) {
     return fetch(new URL(requestUrl.pathname + requestUrl.search, CDN_RESOURCE_ORIGIN).href, {
       cache: 'no-store', signal, credentials: 'omit', mode: 'cors', redirect: 'error',
       headers: start ? { Range: `bytes=${start}-` } : {},
@@ -1151,7 +1198,7 @@ async function resourceResponse(item, start, source, signal, requiredOnline = fa
 }
 
 async function requiredSource(item) {
-  if (localResourceOrigin()) return null;
+  if (item.selfHosted || item.preloadOnly || localResourceOrigin() || preloadDelta(item)) return null;
   const group = item.pack?.group || (item.groups.includes('required') ? 'required' : item.groups.includes('optional') ? 'optional' : 'voice');
   if (item.pack) {
     const records = new Map([[item.key, { raw: item, item, ...item.pack }]]);
@@ -1323,102 +1370,9 @@ function pause(group = null) {
   notify();
 }
 
-async function resumeResourceStream(group, options, control, continuation = null) {
-  // Public preloads use direct cloud ranges with CDN failover, without a game relay.
-  if (deploymentResourceOrigin() || localResourceOrigin() || Array.isArray(options.urls)) return false;
-  const items = selectionItems(group, options);
-  if (!items.length) return true;
-  const firstMissing = items.findIndex(item => !complete.has(item.key));
-  const generation = manifest.generation;
-  const previous = storedPreloadCursor(group, generation);
-  const cursorIndex = previous ? items.findIndex(item => resourceFilename(item.url) === previous) : -1;
-  // IndexedDB keys only establish a safe prefix. A later out-of-order cache write cannot skip a hole.
-  const boundary = firstMissing < 0 ? items.length - 1 : Math.max(0, firstMissing - 1);
-  const continuedIndex = continuation ? items.findIndex(item => resourceFilename(item.url) === continuation) : -1;
-  const start = continuedIndex >= 0 ? continuedIndex : cursorIndex >= 0 ? Math.min(cursorIndex, boundary) : boundary;
-  const from = items[start].url;
-  control.streamFrom = resourceFilename(from);
-  const current = await readRecord(items[start]);
-  if (!valid(current) && complete.has(items[start].key)) invalidate(items[start]);
-  const url = new URL('/api/resource-preload', preloadResourceOrigin());
-  url.searchParams.set('group', group); url.searchParams.set('from', resourceFilename(from));
-  url.searchParams.set('window', '1');
-  if (group === 'voice' && ['cn', 'jp'].includes(options.voiceLang)) url.searchParams.set('voiceLang', options.voiceLang);
-  const request = new AbortController();
-  const cancel = () => request.abort(control.controller.signal.reason);
-  control.controller.signal.addEventListener('abort', cancel, { once: true });
-  if (control.controller.signal.aborted) cancel();
-  const timeout = setTimeout(() => request.abort(new DOMException('资源续传响应超时', 'TimeoutError')), 20000);
-  let response;
-  try {
-    response = await fetch(url, { signal: request.signal, cache: 'no-store', credentials: 'omit', mode: 'cors', redirect: 'error' });
-  } catch (error) { control.controller.signal.removeEventListener('abort', cancel); error.resumeFrom = resourceFilename(from); throw error; }
-  finally { clearTimeout(timeout); }
-  if (!control.streamReceived && ([404, 405, 409, 410, 501].includes(response.status) ||
-      response.ok && response.headers.get('Content-Type')?.split(';')[0] !== 'application/x-stronghold-resources')) {
-    control.controller.signal.removeEventListener('abort', cancel);
-    try { void response.body?.cancel().catch(() => {}); } catch { /* Closed response. */ }
-    request.abort();
-    return false;
-  }
-  const selected = new Map(items.map(item => [resourceFilename(item.url), item]));
-  let expectedIndex = start, next = null, received = false, transferItem = null, transferBytes = 0;
-  const displayProgress = (item, bytes) => {
-    if (transferItem !== item) {
-      if (transferItem) for (const name of transferItem.groups) state[name].downloadedBytes -= transferBytes;
-      transferItem = item; transferBytes = 0;
-    }
-    const delta = bytes - transferBytes; transferBytes = bytes;
-    for (const name of item.groups) state[name].downloadedBytes += delta;
-    notifyProgress();
-  };
-  try { await consumePreloadStream(response, { signal: control.controller.signal,
-    onStart(info) {
-      if (info.generation !== generation || info.group !== group || info.total > items.length - start || info.total < 1 ||
-          (!info.bounded && info.total !== items.length - start) || info.from !== resourceFilename(from)) {
-        throw new Error('资源续传目录已更新，请重试。');
-      }
-      received = true; control.streamReceived = true;
-      savePreloadCursor(group, generation, from);
-    },
-    onProgress(raw, bytes) {
-      const item = selected.get(resourceFilename(raw.url));
-      if (!item) return;
-      control.streamFrom = resourceFilename(item.url);
-      const pending = Math.max(0, item.bytes - (savedBytes.get(item.key) || 0));
-      displayProgress(item, Math.min(pending, Math.floor(pending * bytes / raw.storedBytes)));
-    },
-    async onFile(raw, bytes) {
-      const item = selected.get(resourceFilename(raw.url));
-      if (!item || item !== items[expectedIndex++] || raw.version !== item.version || raw.bytes !== item.bytes || raw.type !== item.type ||
-          (raw.encoding === 'webp-lossless' && !sameTransport(raw.transport, item.transport))) throw new Error('资源续传条目与当前目录不符。');
-      // The cursor is inclusive: a complete or interrupted current file is always offered again next time.
-      const packed = { raw: { ...item, ...(raw.transport ? { transport: raw.transport } : {}) }, item,
-        encoding: raw.encoding, storedBytes: raw.storedBytes };
-      const blob = await unpackResource(packed, bytes);
-      const saved = await writeRecord(item, blob, true, false, raw.encoding === 'webp-lossless' ? item.transport : undefined);
-      if (!valid(saved)) throw new Error('资源续传未能保存：' + item.url);
-      displayProgress(item, 0);
-      updateItemProgress(item, item.bytes, true);
-      state.cacheRevision++; notifyProgress();
-      savePreloadCursor(group, generation, item.url);
-    },
-    onEnd(info) {
-      const expected = items[expectedIndex];
-      if (info.next != null && resourceFilename(info.next) !== resourceFilename(expected?.url || '/')) throw new Error('资源续传断点顺序不符。');
-      next = info.next || null;
-      if (!next && expected) throw new Error('资源续传尚未完成。');
-    },
-  }); } catch (error) {
-    error.resumeFrom = control.streamFrom || resourceFilename(from);
-    error.preloadStreamStarted = received;
-    throw error;
-  } finally {
-    if (transferItem) displayProgress(transferItem, 0);
-    control.controller.signal.removeEventListener('abort', cancel);
-    request.abort();
-  }
-  return next ? { next } : true;
+async function resumeResourceStream() {
+  // Active preload uses the published cloud/CDN packs, never a game-server relay.
+  return false;
 }
 
 function download(group, options = {}) {
@@ -1437,7 +1391,7 @@ function download(group, options = {}) {
   const task = (async () => {
     let failed = false;
     try {
-      await loadManifest();
+      await loadManifest(true);
       await protectResources(true);
       await ensureReady();
       if (control.paused) return false;
@@ -1555,6 +1509,8 @@ const PACK_HEADER_LIMIT = 16 * 1024 * 1024;
 
 // Existing cached files are never rehashed. Validate only newly imported external pack bodies.
 async function validateImportedResource(packed, blob) {
+  // Sticker filenames are versioned names, rather than content-digest versions.
+  if (packed.item.selfHosted || packed.item.preloadOnly) return;
   const expected = packed.encoding === 'webp-lossless' ? packed.raw.transport.version : packed.raw.version;
   let digest;
   if (globalThis.crypto?.subtle) {
@@ -1692,7 +1648,7 @@ async function availableBlob(url) {
   // Only a local miss needs the manifest to determine download policy and any remaining aliases.
   await loadManifest();
   const item = resolve(mediaUrl(url));
-  const onDemand = item && (item.groups.includes('required') || !!localResourceOrigin());
+  const onDemand = item && !personalStickerUrl(item.url) && (item.groups.includes('required') || !!localResourceOrigin());
   if (!storageError && item && item.key !== direct?.key) {
     try {
       const hit = await cachedBlobItem(item);
@@ -1815,6 +1771,7 @@ export async function cachedFetch(url, opts = {}) {
 }
 
 export async function acquireResourceUrl(url, { cachedOnly = false } = {}) {
+  cachedOnly = cachedOnly || personalStickerUrl(url);
   if (pluginResource(url)) return { url, release() {} };
   if (/^(blob:|data:)/i.test(String(url))) return { url, release() {} };
   const item = localItem(url);

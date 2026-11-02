@@ -28,7 +28,8 @@ import { mergeMizukiSnapshot, mergeMizukiField, mergeMizukiEvents } from './mizu
 
 // Polyfills first (older Safari / Firefox ESR): every module evaluated after this one sees them.
 import './ui/compat.js';
-import { render } from '../vendor/preact.module.js';
+import { render, options as preactOptions } from '../vendor/preact.module.js';
+import { installUiClickMarkers } from './uiClickSfx.js';
 import { useErrorBoundary, useLayoutEffect } from '../vendor/hooks.module.js';
 import { html, UiHosts, Button, MicroLabel, closeAllDialogs, alertDialog } from './ui/components.js';
 import { ConnectionBanner } from './ui/connBanner.js';
@@ -59,7 +60,7 @@ import { recordResult, installStatsRecorder } from './ui/stats.js';
 import { zhajingEditorData } from './data.js';
 import { installLoadoutSync, zhajingLoadoutStore, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
 import { installSkinsSync } from './ui/skins.js';
-import { AnnouncementBanner, acceptAnnouncement } from './ui/announcement.js';
+import { AnnouncementBanner, acceptAnnouncement, showAnnouncementOnLogin } from './ui/announcement.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 
 import { initLang, useLang, tickerText } from './ui/lang.js';
@@ -150,6 +151,7 @@ function backToLobby(allowResult = false) {
 }
 
 function onWelcome(msg) {
+  showAnnouncementOnLogin();
   matchDismissed = false;
   const prev = store.get();
   const prevId = prev.me.playerId;
@@ -275,14 +277,14 @@ function wireNet() {
     else store.set({ chat: { items } });
   });
   net.on('chat.message', (msg) => {
-    if (!msg || typeof msg.id !== 'string' || !['text', 'invite'].includes(msg.kind)) return;
+    if (!msg || typeof msg.id !== 'string' || !['text', 'sticker', 'invite'].includes(msg.kind)) return;
     const key = msg.channel === 'match' ? 'matchChat' : 'chat';
     if (key === 'matchChat' && store.get().matchChat.matchId !== msg.matchId) return;
     store.set((s) => {
       const items = s[key]?.items || [];
       const previous = items.find((item) => item.id === msg.id);
-      // Live match text only: history and duplicate deliveries never replay the scrolling message.
-      const item = key === 'matchChat' && msg.kind === 'text'
+      // Live match messages only: history and duplicate deliveries never replay the scrolling message.
+      const item = key === 'matchChat' && (msg.kind === 'text' || msg.kind === 'sticker')
         ? { ...msg, danmakuAt: previous ? previous.danmakuAt : Date.now(), danmakuSeq: previous ? previous.danmakuSeq : ++seq }
         : msg;
       return { [key]: { ...s[key], items: [...items.filter((item) => item.id !== msg.id).slice(-49), item] } };
@@ -544,6 +546,7 @@ async function boot() {
   installSkinsSync({ net });
   net.attachBrowserHooks();
   // Audio: unlock on first gesture, BGM follows the route / match phase (js/audio.js).
+  installUiClickMarkers(preactOptions);
   installAudio({ getManifest: () => data.get('assets'), subscribe: store.subscribe, getState: store.get, selectRoute, settings: settingsStore.get(), onFailed: (url) => cosmetics.fail(url) });
   cosmetics.subscribe(() => audio.refreshBgm());
   data.load('assets').catch(() => {});

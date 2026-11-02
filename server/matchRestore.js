@@ -63,7 +63,7 @@ export function restoreLobbyRooms(lobby, docs, { Room, now = lobby.now() } = {})
         zhajingLoadout: session?.zhajingLoadout || s.zhajingLoadout || null, zhajingOps: session?.zhajingOps || s.zhajingOps || null,
         loadout: session?.loadout || s.loadout || null, ops: session?.ops || s.ops || null,
         notOwned: session?.notOwned || s.notOwned || null, diy: session?.diy || s.diy || null,
-        skins: session?.skins || s.skins || null, card: s.card || '', cardSkin: s.cardSkin || '',
+        skins: session?.skins || s.skins || null, card: s.card || '', cardSkin: s.cardSkin || '', nameplate: s.nameplate || '',
       };
       stats.seats++;
     }

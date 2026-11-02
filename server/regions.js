@@ -173,7 +173,7 @@ export function validateHeartbeat(value) {
 }
 
 // 租约不经过档案写盘队列；重启后等待旧租约全数失效才准入。
-export function createRegionAuthority({ now = () => performance.now(), startupGuard = false } = {}) {
+export function createRegionAuthority({ now = () => performance.now(), startupGuard = false, chatIdentity = () => ({}) } = {}) {
   const epoch = randomUUID(), readyAt = now() + (startupGuard ? LEASE_MS : 0);
   const owners = new Map(), generations = new Map(), states = new Map(), runtimes = new Map(), spectators = new Map(), recruitment = new Map();
   let directorySequence = 0;
@@ -356,8 +356,8 @@ export function createRegionAuthority({ now = () => performance.now(), startupGu
     publish(value) {
       const lease = current(value);
       if (!lease?.aid || !/^[A-Za-z0-9_-]{1,64}$/.test(value.playerId || '')) return failure('连接租约已失效，请重连');
-      const session = { name: lease.name, aid: lease.aid, playerId: value.playerId };
-      if (value.kind === 'text') return chat.publishText(session, value.text);
+      const session = { ...chatIdentity(lease.aid, lease.name), name: lease.name, aid: lease.aid, playerId: value.playerId };
+      if (value.kind === 'text') return chat.publishText(session, value.text, Date.now(), value.sticker);
       if (value.kind === 'invite' && roomServer(value.code) === lease.serverId) {
         return chat.publishInvite(session, { code: value.code, serverId: lease.serverId });
       }

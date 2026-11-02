@@ -11,7 +11,7 @@ export { prepCamera, prepCameraFor, foldCamera, deployFieldOf, fieldTile, boardT
 
 export { STATUS_META, snapHud, bossFrac, bossPctText, hasFlag, attackInterval, fmtNum, rangeGridBox } from './gameLogic/format.js';
 
-export { ownFieldId, homeFieldId, cycleField, watchTarget, switcherLabel, fieldLabel, activeBubbles } from './gameLogic/watch.js';
+export { ownFieldId, homeFieldId, cycleField, watchTarget, switcherLabel, fieldLabel, activeBubbles, activeSpectatorDirectory } from './gameLogic/watch.js';
 
 export { sortBonds, bondTier, nextThreshold, grantedBonds, pieceBondIds, morphPairings, HARMONY_BOND, harmonyMembers, bondMembers, memberHeadCount, bannedPerBond, disabledBondSets, briefingBondTip, modeOffBonds, bandOffBonds, bandOffLine } from './gameLogic/bonds.js';
 
@@ -27,7 +27,7 @@ export { shortcutFor, closesOnFieldPress, shortcutBlocked } from './gameLogic/sh
 
 export { DEFAULT_SETTINGS, sanitizeSettings } from './gameLogic/settings.js';
 
-export { normalizeResult } from './gameLogic/result.js';
+export { normalizeResult, resultChessRecord } from './gameLogic/result.js';
 
 export { chessLoadout, unitLoadout, unitCultivation } from './gameLogic/loadout.js';
 

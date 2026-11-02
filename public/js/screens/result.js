@@ -17,7 +17,7 @@ import { cardStandIn, cardDiy, standInForText, diyRecordFor } from '../ui/gameLo
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, MicroLabel, DifficultyTag } from '../ui/components.js';
 import { useGameData, Img, UnitThumb, BandIcon, PlayerAvatar, BondGlyph, LpTower, Sprite } from '../ui/gameComponents.js';
-import { normalizeResult, fmtNum } from '../ui/gameLogic.js';
+import { normalizeResult, fmtNum, resultChessRecord } from '../ui/gameLogic.js';
 import { rankIconUrl, rankOf, inactiveRank, normalizeRankLabel } from '../../../shared/ranks.js';
 import { enemyIconUrl, titleIconUrl, uiUrl } from '../ui/assetUrls.js';
 import { store, useStore, emptyMatch } from '../store.js';
@@ -25,6 +25,7 @@ import { audio } from '../audio.js';
 import { isZhajing } from '../../../shared/zhajing-constants.js';
 import { data } from '../data.js';
 import { useResourceUrl } from '../ui/cachedImage.js';
+import { Nameplate } from '../ui/nameplates.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -211,22 +212,23 @@ function PlayerCard({ p, myId, titles, best, solo = false, gd }) {
   const titleName = p.title?.name || titleRec?.name || null;
   const stats = STAT_ROWS.filter(([k]) => Number.isFinite(p.stats[k])).slice(0, 7);
   const band = p.bandId ? gd.band(p.bandId) : null;
+  const bandName = band?.name || p.bandName || p.bandId;
   const lineup = p.lineup.slice(0, 10);
   const bonds = detailResultBonds(p.bonds, (id) => gd.bond(id));
   return html`<article class=${cx('rcard', p.playerId === myId && 'is-self', p.alive === false && 'is-dead')}>
-    <header class="rcard__head">
+    <${Nameplate} as="header" class="rcard__head" nameplate=${p.nameplate}>
       <${PlayerAvatar} source=${data} player=${p} self=${p.playerId === myId} />
       <div class="rcard__who">
         <b class="rcard__name">${p.name}${p.isBot ? html`<span class="rcard__ai">AI</span>` : null}${p.playerId === myId ? html`<span class="rcard__you">${trA("你")}</span>` : null}</b>
-        <span class="rcard__band">${band ? html`<${BandIcon} source=${data} bandId=${band.bandId} size="xs" />${band.name}` : '—'}</span>
+        <span class="rcard__band">${p.bandId ? html`<${BandIcon} source=${data} bandId=${p.bandId} name=${bandName} iconId=${band?.iconId || p.bandIconId} size="xs" />${bandName}` : '—'}</span>
       </div>
       <div class="rcard__mid">
         <div class="rcard__lineup">
           ${lineup.length ? lineup.map((u, i) => html`<${LineupThumb} gd=${gd} u=${u} key=${i} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} skin=${u.skin ?? null} rec=${cardDiy(data.lookup('chess', u.id), { unit: u, data: { chess: data.get('chess'), backups: data.get('backups') } }) || cardStandIn(data.lookup('chess', u.id), { unit: u, backups: data.get('backups') })} golden=${!!u.golden} tier=${u.tier} size="sm" />`)
             : html`<span class="rcard__noinfo">${p.alive === false ? trA("阵容已撤离") : 'NO INFO'}</span>`}
         </div>
-        ${bonds.length ? html`<div class="rcard__bonds">${bonds.map((b) => html`<span key=${b.bondId} class=${cx('rbond', b.active && 'is-on')} title=${gd.bond(b.bondId)?.name || b.bondId}>
-          <${BondGlyph} source=${data} bondId=${b.bondId} /><b class="num">${b.layers ?? 0}</b></span>`)}</div>` : null}
+        ${bonds.length ? html`<div class="rcard__bonds">${bonds.map((b) => html`<span key=${b.bondId} class=${cx('rbond', b.active && 'is-on')} title=${b.name || gd.bond(b.bondId)?.name || b.bondId}>
+          <${BondGlyph} source=${data} bondId=${b.bondId} name=${b.name} iconId=${b.iconId} /><b class="num">${b.layers ?? 0}</b></span>`)}</div>` : null}
       </div>
       <div class="rcard__round"><${MicroLabel}>${p.settlementError ? trA('结算未完成') : 'ROUNDS'}</${MicroLabel}><b class="num">${p.settlementError ? '—' : p.roundsPassed}</b>
         ${p.reward > 0 ? html`<span class="rcard__gain"><span title=${trA("卫戍认证")}><${Icon} name="shield" /><b class="num">+${p.reward}</b></span></span>` : null}
@@ -236,7 +238,7 @@ function PlayerCard({ p, myId, titles, best, solo = false, gd }) {
         <${Img} src=${titleIconUrl(gd.m, titleRec?.picId || p.title?.picId || String(p.title.id || '').replace('comment_', 'comment_icon_'))} class="rcard__ticon" fallback=${html`<${Icon} name="crown" />`} />
         <span><${MicroLabel} tone="gold">${trA("评语")}</${MicroLabel}><b>${titleName}</b></span>
       </div>` : html`<span class="rcard__title rcard__title--none" aria-hidden="true"></span>`}
-    </header>
+    <//>
     <div class="rcard__stats">
       ${p.settlementError ? html`<p class="t-dim" role="status">${trA('结算未完成')} · ${trA('发生错误！请复制诊断信息并联系服主')}</p>` : null}
       ${stats.map(([k, label]) => html`<div key=${k} class=${cx('rstat', best[k] === p.playerId && 'is-best')}><span>${trA(label)}</span><b class="num">${fmtNum(p.stats[k])}</b></div>`)}
@@ -317,9 +319,10 @@ export function ResultView({ result, pub = null, myId, onBack, backLabel = '返�
 
 export function LineupThumb({ u, gd = { source: data, chess: id => data.lookup('chess', id), backups: data.get('backups') } }) {
   const source = gd.source || data;
-  const chess = u.kind === 'token' ? null : gd.chess(u.id);
-  const dr = u.diy && chess ? diyRecordFor(chess, u.diy, { chess: source.get('chess'), backups: gd.backups }) : null;
-  const si = !dr && chess ? cardStandIn(chess, { unit: u, backups: gd.backups }) : null;
-  return html`<${UnitThumb} source=${source} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} golden=${!!u.golden} tier=${u.tier} size="sm" skin=${u.skin ?? null} rec=${dr || si}
+  const sourceChess = u.kind === 'token' ? null : gd.chess(u.id);
+  const chess = resultChessRecord(u, gd.chess, gd.list?.('chess') || source.list('chess'));
+  const dr = u.diy && sourceChess ? diyRecordFor(sourceChess, u.diy, { chess: source.get('chess'), backups: gd.backups }) : null;
+  const si = !dr && sourceChess ? cardStandIn(sourceChess, { unit: u, backups: gd.backups }) : null;
+  return html`<${UnitThumb} source=${source} kind=${u.kind === 'token' ? 'token' : 'chess'} id=${u.id} golden=${!!u.golden} tier=${u.tier} size="sm" skin=${u.skin ?? null} rec=${dr || si || chess}
     title=${si ? t('{name}（{note}）', { name: si.name, note: standInForText(chess.name) }) : undefined} />`;
 }

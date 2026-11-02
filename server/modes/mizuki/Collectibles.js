@@ -62,3 +62,4 @@ export function mizukiCollectibleImmediateRewards(id) {
     .map(effect => bb(effect)).map(value => ({ id: value.id, count: Math.trunc(value.count || 0) }))
     .filter(value => typeof value.id === 'string' && value.count > 0);
 }
+

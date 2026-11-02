@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { ERR } from '../shared/constants.js';
+import { isChatStickerId } from '../shared/chatStickers.js';
 
 const MAX_HISTORY = 50;
 const MAX_TEXT_LENGTH = 200;
 const TEN_SECONDS = 10_000;
 const rateKeys = (session) => [`player:${session.playerId}`, ...(session.aid ? [`aid:${session.aid}`] : [])];
+const identityOf = session => ({
+  profileId: typeof session.profileId === 'string' ? session.profileId : null,
+  card: typeof session.card === 'string' ? session.card : '',
+  cardSkin: typeof session.cardSkin === 'string' ? session.cardSkin : '',
+  nameplate: typeof session.nameplate === 'string' ? session.nameplate : '',
+  rank: session.rank && typeof session.rank === 'object' ? session.rank : null,
+});
 
 // Keep this list specific: short everyday words would censor unrelated conversation.
 export const DEFAULT_SENSITIVE_WORDS = Object.freeze([
@@ -68,16 +76,20 @@ export class ChatHub {
 
   history() { return this.messages.map((message) => ({ ...message })); }
 
-  publishText(session, text, now = Date.now()) {
-    if (!session?.playerId || typeof session.name !== 'string' || typeof text !== 'string' ||
-        text.length > MAX_TEXT_LENGTH || !/[^\s\p{Cf}]/u.test(text)) return { error: ERR.BAD_MSG };
+  publishText(session, text, now = Date.now(), sticker = undefined) {
+    const hasText = typeof text === 'string' && /[^\s\p{Cf}]/u.test(text);
+    if (!session?.playerId || typeof session.name !== 'string'
+        || (text !== undefined && (typeof text !== 'string' || text.length > MAX_TEXT_LENGTH))
+        || (sticker !== undefined && !isChatStickerId(sticker))
+        || (!hasText && !sticker)) return { error: ERR.BAD_MSG };
     // Check both stable session identity and client-provided aid: rotating hello.aid must not reset a live session's limit.
     const keys = rateKeys(session);
     const states = keys.map((key) => this.limits.get(key) || { texts: [], invite: -Infinity });
     if (states.some((state) => { const recent = state.texts.filter((at) => now - at < TEN_SECONDS);
       return recent.length >= 3 || (recent.length && now - recent.at(-1) < 2_000); })) return { error: ERR.RATE };
-    const message = this.record({ kind: 'text', playerId: session.playerId,
-      name: mask(session.name, this.words), text: mask(text, this.words), at: now });
+    const message = this.record({ kind: sticker ? 'sticker' : 'text', playerId: session.playerId,
+      ...identityOf(session), name: mask(session.name, this.words), text: hasText ? mask(text, this.words) : '',
+      ...(sticker ? { sticker } : {}), at: now });
     states.forEach((state, index) => { state.texts = [...state.texts.filter((at) => now - at < TEN_SECONDS), now]; this.limits.set(keys[index], state); });
     return { ok: true, message };
   }
@@ -89,7 +101,8 @@ export class ChatHub {
     const states = keys.map((key) => this.limits.get(key) || { texts: [], invite: -Infinity });
     if (states.some((state) => now - state.invite < TEN_SECONDS)) return { error: ERR.RATE };
     const message = this.record({ kind: 'invite', playerId: session.playerId,
-      name: mask(session.name, this.words), code: room.code, ...(room.serverId ? { serverId: room.serverId } : {}), at: now });
+      ...identityOf(session), name: mask(session.name, this.words), code: room.code,
+      ...(room.serverId ? { serverId: room.serverId } : {}), at: now });
     states.forEach((state, index) => { state.invite = now; this.limits.set(keys[index], state); });
     return { ok: true, message };
   }

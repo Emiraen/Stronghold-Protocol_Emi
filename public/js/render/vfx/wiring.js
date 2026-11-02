@@ -45,6 +45,7 @@ import { GROUND_SPAWNS } from './effect.js';
 import { SkillFx, fitsAttack, pickGroup, formMode } from './skillfx.js';
 import { TalentFx } from './talentfx.js';
 import { FunnelFx } from './funnelfx.js';
+import { V79Fx } from './v79fx.js';
 import { formModes } from './talents.js';
 import { shotOf } from './skills.js';
 import { UF } from '../../../../shared/constants.js';
@@ -217,6 +218,7 @@ export class FxWiring {
     this.skills = new SkillFx(this);
     this.talents = new TalentFx(this);
     this.funnels = new FunnelFx(this);
+    this.v79 = new V79Fx(this);
   }
 
   get index() { return this.idx; }
@@ -338,6 +340,7 @@ export class FxWiring {
     for (const k of this.skills.keys(views)) keys.add(k);
     for (const k of this.talents.keys(views)) keys.add(k);
     for (const k of this.funnels.keys(views)) keys.add(k);   // the 驭械术士's floating units (render/vfx/funnelfx.js)
+    for (const k of this.v79.keys(views)) keys.add(k);
     return [...keys].map(lc).filter((k) => k && this.ofx.lib.has(k));
   }
 
@@ -1324,6 +1327,7 @@ export class FxWiring {
     this.skills.release(v);
     this.talents.release(v);
     this.funnels.release(v);
+    this.v79.release(v);
   }
 
   /** b.ev ['skill', id, on] (SkillFx.skill): true when the official layer shows the skill (no procedural burst / aura). */
@@ -1352,6 +1356,7 @@ export class FxWiring {
     this.skills.sync(list);
     this.talents.sync(list);
     this.funnels.sync(list);
+    this.v79.sync();
   }
 
   /**
@@ -1361,10 +1366,11 @@ export class FxWiring {
    */
   simFx(kind, x, y, extra) {
     if (!this.idx) return false;
+    const v79 = this.v79.simFx(kind, x, y, extra);
     const t = this.talents.fx(kind, extra);
     // the floating units stand for the kit's 'drone' / 'drones' / 'droneLock' / 'overload' (render/vfx/funnelfx.js)
     const f = this.funnels.simFx(kind, x, y, extra);
-    return this.skills.simFx(kind, x, y, extra) || t || f;
+    return v79 || this.skills.simFx(kind, x, y, extra) || t || f;
   }
 
   /** b.ev 'die': the unit's own death effect or the generic one. */
@@ -1418,6 +1424,7 @@ export class FxWiring {
     this.skills.clear();
     this.talents.clear();
     this.funnels.clear();
+    this.v79.clear();
     this.forms.clear();
     this.lastTargets.clear();
     this.picks.clear();

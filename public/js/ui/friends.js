@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
-import { html, Button, Icon, AvatarFrame, Spinner, Overlay, Modal, isTopOverlay } from './components.js';
+import { html, Button, Icon, AvatarFrame, Spinner, Overlay, Modal, CloseButton, isTopOverlay } from './components.js';
 import { toast, toastError } from './toasts.js';
 import { data, useData } from '../data.js';
 import { cardOperators, seatAvatar } from './seatArt.js';
@@ -11,6 +11,9 @@ import { rankIconUrl, normalizeRankLabel } from '../../../shared/ranks.js';
 import { friendPresenceText } from '../../../shared/friends.js';
 import { FRIEND_MESSAGE_MAX_LENGTH } from '../../../shared/friendMessages.js';
 import { localFriendMessages, onFriendMessageCache } from '../friendMessageCache.js';
+import { ChatIdentity } from './chatIdentity.js';
+import { StickerPicker, StickerArt } from './stickerPicker.js';
+import { visibleViewport } from './device.js';
 
 const TABS = [['list', '好友列表', 'users'], ['add', '添加好友', 'user'], ['requests', '好友申请', 'user'], ['recommend', '推荐好友', 'refresh']];
 const useFriends = selector => useStore(selector, Object.is, friendsStore);
@@ -30,7 +33,7 @@ export function FriendMessageDot({ targetId }) {
   return count ? html`<span class="friends-dot friends-dot--message" role="status" aria-label=${`${count}条未读私信`}></span>` : null;
 }
 
-export function FriendMessageDialog({ player, onClose }) {
+export function FriendMessageDialog({ player, onClose, compact = false }) {
   const self = useFriends(s => s.selfId);
   const cacheError = useFriends(s => s.cacheError || '');
   const latest = useFriends(s => (s.threads || []).find(thread => thread.targetId === player.id)?.lastSeq || 0);
@@ -39,6 +42,38 @@ export function FriendMessageDialog({ player, onClose }) {
   const [loading, setLoading] = useState(true), [sending, setSending] = useState(false), [older, setOlder] = useState(false);
   const scroll = useRef(null), currentItems = useRef([]), atBottom = useRef(true), read = useRef(0), pending = useRef(null), active = useRef(true);
   const olderBusy = useRef(false), sendBusy = useRef(false);
+  const panel = useRef(null);
+  const [bounds, setBounds] = useState(null);
+  useLayoutEffect(() => {
+    if (!compact) return;
+    const update = () => {
+      const viewport = visibleViewport();
+      const style = getComputedStyle(document.documentElement);
+      const inset = side => parseFloat(style.getPropertyValue(`--sa-${side}`)) || 0;
+      let top = viewport.top + inset('t') + 8;
+      for (const node of document.querySelectorAll('.topbar, .gtop')) {
+        const rect = node.getBoundingClientRect();
+        if (rect.width && rect.height) top = Math.max(top, rect.bottom + 6);
+      }
+      let bottom = viewport.bottom - inset('b') - 8;
+      const controls = document.querySelector('.room-bar, .gm__corner, .hub-entries');
+      if (!viewport.keyboard && controls) {
+        const rect = controls.getBoundingClientRect();
+        if (rect.width && rect.height) bottom = Math.min(bottom, rect.bottom);
+      }
+      setBounds({ bottom: Math.max(viewport.bottomGap + inset('b') + 8, innerHeight - bottom), height: Math.max(80, bottom - top) });
+    };
+    update();
+    window.addEventListener('resize', update);
+    globalThis.visualViewport?.addEventListener('resize', update);
+    globalThis.visualViewport?.addEventListener('scroll', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      globalThis.visualViewport?.removeEventListener('resize', update);
+      globalThis.visualViewport?.removeEventListener('scroll', update);
+    };
+  }, [compact]);
+  useDialogKeyboard(panel, compact ? onClose : null);
   useEffect(() => () => { active.current = false; }, []);
   const merge = incoming => {
     const bySeq = new Map(currentItems.current.map(item => [item.seq, item]));
@@ -94,33 +129,64 @@ export function FriendMessageDialog({ player, onClose }) {
     } catch (err) { if (active.current) setError(err.message); }
     finally { olderBusy.current = false; if (active.current) setLoading(false); }
   };
-  const send = async event => {
-    event.preventDefault();
-    const value = text.trim(); if (!value || sendBusy.current || !online) return;
+  const sendMessage = async (sticker = null) => {
+    const value = sticker ? '' : text.trim(); if ((!value && !sticker) || sendBusy.current || !online) return;
     sendBusy.current = true; setSending(true); setError('');
-    if (!pending.current || pending.current.text !== value) pending.current = { text: value, clientId: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('') };
+    if (!pending.current || pending.current.text !== value || pending.current.sticker !== (sticker || undefined)) pending.current = { text: value, ...(sticker ? { sticker } : {}), clientId: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('') };
     try {
       const result = await friendAction('message.send', { targetId: player.id, ...pending.current });
       pending.current = null;
       if (!active.current) return;
-      atBottom.current = true; merge([result.message]); setText('');
+      atBottom.current = true; merge([result.message]); if (!sticker) setText('');
       await friendAction('list');
       requestAnimationFrame(() => { if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; void markRead(); });
     } catch (err) { if (active.current) setError(err.message); }
     finally { sendBusy.current = false; if (active.current) setSending(false); }
   };
+  const send = event => { event.preventDefault(); void sendMessage(); };
+  const onScroll = () => {
+    const el = scroll.current; if (!el) return;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 36;
+    if (atBottom.current) void markRead();
+  };
+  const earlier = older ? html`<button type="button" class="friend-chat__older" disabled=${loading} onClick=${loadOlder}>更早消息</button>` : null;
+  const empty = loading && !items.length ? html`<${Spinner} size="sm" label="加载私信" />` : !items.length ? html`<p class="friends-empty">暂无私信</p>` : null;
+  if (compact) return html`<${Overlay} level="chat"><aside ref=${panel} tabindex="-1" role="dialog" aria-label=${`与 ${player.name} 私信`}
+      class="sp-chat sp-chat--compact sp-chat--private is-expanded is-open"
+      style=${bounds ? `bottom:${bounds.bottom}px;--chat-available:${bounds.height}px;` : undefined} data-chat-target=${player.id}>
+    <div class="sp-chat__panel">
+      <div class="sp-chat__heading"><div class="sp-chat__channel"><small>PRIVATE CHANNEL</small><strong>${player.name} · 私信</strong></div>
+        <span class=${`sp-chat__connection${online ? ' is-online' : ''}`}><i></i>${online ? '已连接' : '连接中'}</span><${CloseButton} class="sp-chat__close" label="私信" onClose=${onClose} /></div>
+      <div class="sp-chat__list" ref=${scroll} role="log" aria-label="私信记录" aria-live="polite" onScroll=${onScroll}>
+        ${earlier}${empty}${items.map(item => html`<article key=${item.seq} class=${`sp-chat__message${item.from === self ? ' is-mine' : ''}`} data-message-seq=${item.seq}>
+          <div class="sp-chat__meta"><${ChatIdentity} item=${{ ...item, playerId: item.from, name: item.name || (item.from === self ? '我' : player.name),
+            ...(item.from !== self ? { card: item.card || player.card, cardSkin: item.cardSkin || player.cardSkin, rank: item.rank || player.rank } : {}) }} me=${item.from === self} />
+            <time>${new Date(item.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time></div>
+          ${item.text ? html`<p class="sp-chat__text">${item.text}</p>` : null}
+          ${item.sticker ? html`<div class="sp-chat__sticker-message"><${StickerArt} id=${item.sticker} /></div>` : null}
+        </article>`)}
+      </div>
+      ${error || cacheError ? html`<p class="friends-error" role="alert">${error || cacheError}</p>` : null}
+      <form class="sp-chat__compose" onSubmit=${send}>
+        <${StickerPicker} disabled=${!online || sending} onSend=${id => sendMessage(id)} />
+        <input type="text" enterkeyhint="send" aria-label="私信内容" maxLength=${FRIEND_MESSAGE_MAX_LENGTH} value=${text} disabled=${sending}
+          placeholder="输入私信" onInput=${event => setText(event.currentTarget.value.slice(0, FRIEND_MESSAGE_MAX_LENGTH))}
+          onKeyDown=${event => { if (event.key === 'Enter' && event.isComposing) event.preventDefault(); }} />
+        <button type="submit" aria-label="发送私信" disabled=${!online || sending || !text.trim()}><span>${sending ? '发送中' : '发送'}</span><${Icon} name="chevrons" /></button>
+      </form>
+    </div>
+  </aside><//>`;
   return html`<${Modal} open=${true} title=${`与 ${player.name} 私信`} onClose=${onClose} width="min(660px, 94vw)">
     <div class="friend-chat" data-chat-target=${player.id}>
-      <div class="friend-chat__messages" ref=${scroll} role="log" aria-label="私信记录" aria-live="polite" onScroll=${() => {
-        const el = scroll.current; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 36; if (atBottom.current) void markRead();
-      }}>
-        ${older ? html`<button type="button" class="friend-chat__older" disabled=${loading} onClick=${loadOlder}>更早消息</button>` : null}
-        ${loading && !items.length ? html`<${Spinner} size="sm" label="加载私信" />` : !items.length ? html`<p class="friends-empty">暂无私信</p>` : null}
+      <div class="friend-chat__messages" ref=${scroll} role="log" aria-label="私信记录" aria-live="polite" onScroll=${onScroll}>
+        ${earlier}${empty}
         ${items.map(item => html`<article key=${item.seq} class=${`friend-chat__message${item.from === self ? ' is-mine' : ''}`} data-message-seq=${item.seq}>
-          <small>${item.from === self ? '我' : player.name} · ${new Date(item.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</small><p>${item.text}</p></article>`)}
+          <small>${item.from === self ? '我' : player.name} · ${new Date(item.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</small>${item.text ? html`<p>${item.text}</p>` : null}
+          ${item.sticker ? html`<div class="friend-chat__sticker"><${StickerArt} id=${item.sticker} /></div>` : null}</article>`)}
       </div>
       ${error || cacheError ? html`<p class="friends-error" role="alert">${error || cacheError}</p>` : null}
       <form class="friend-chat__compose" onSubmit=${send}>
+        <${StickerPicker} disabled=${!online || sending} onSend=${id => sendMessage(id)} />
         <textarea aria-label="私信内容" rows="2" maxlength=${FRIEND_MESSAGE_MAX_LENGTH} value=${text} disabled=${sending}
           onInput=${event => setText(event.currentTarget.value)}></textarea>
         <${Button} type="submit" disabled=${!online || sending || !text.trim()} loading=${sending}>发送<//>
@@ -132,12 +198,16 @@ export function FriendMessageDialog({ player, onClose }) {
 function useDialogKeyboard(ref, onClose) {
   const close = useRef(onClose); close.current = onClose;
   useLayoutEffect(() => {
+    if (!close.current) return;
     const previous = document.activeElement;
     const element = ref.current;
     element?.focus();
     const key = event => {
       if (!element || !isTopOverlay(element)) return;
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close.current?.(); }
+      if (event.key === 'Escape') {
+        if (element.querySelector('.sp-chat__stickers')) return;
+        event.preventDefault(); event.stopPropagation(); close.current?.();
+      }
       if (event.key !== 'Tab') return;
       const focusable = [...element.querySelectorAll('button:not(:disabled), input, [tabindex="0"]')].filter(el => el.getClientRects().length);
       if (!focusable.length) { event.preventDefault(); return element.focus(); }
@@ -165,7 +235,7 @@ function FriendSurfaceBody({ onClose, compact, anchor, children, title }) {
   const style = compact ? { width: `${width}px`, left: `${Math.max(10, Math.min(anchor?.left || 10, viewport.width - width - 10))}px`,
     top: `${Math.min(anchor?.bottom + 8 || 60, Math.max(10, viewport.height - 280))}px`,
     maxHeight: `${Math.max(220, viewport.height - Math.min(anchor?.bottom + 8 || 60, Math.max(10, viewport.height - 280)) - 10)}px` } : undefined;
-  return html`<div class=${compact ? 'friends-menu-backdrop' : 'friends-hall-backdrop'} onClick=${onClose}>
+  return html`<div class=${compact ? 'friends-menu-backdrop' : 'friends-hall-backdrop'} data-ui-sfx="back" onClick=${onClose}>
     <section ref=${ref} tabindex="-1" class=${`friends-surface ${compact ? 'friends-menu' : 'friends-hall proto east-hall'}`} style=${style}
       role="dialog" aria-modal="true" aria-label=${title} onClick=${event => event.stopPropagation()}>
       <header class="friends-head"><button type="button" class="friends-back" onClick=${onClose} aria-label=${compact ? '关闭好友列表' : '返回大厅'}><${Icon} name=${compact ? 'close' : 'chevronLeft'} /></button>
@@ -256,6 +326,7 @@ export function FriendsHall({ onClose, compact = false, anchor, initialTab = 'li
       if (await watchMatch(player.presence.watch)) onClose();
     } catch (err) { toastError(err); }
   };
+  if (compact && chat) return html`<${FriendMessageDialog} key=${state.selfId + ':' + chat.id} player=${chat} compact=${true} onClose=${() => setChat(null)} />`;
   return html`${!target ? html`<${FriendSurface} compact=${compact} anchor=${anchor} onClose=${onClose} title=${compact ? tab === 'requests' ? '好友申请' : '好友列表' : '好友列表'}>
     <div class="friends-layout"><nav class="friends-tabs" aria-label="好友功能">${tabs.map(([key, title, icon]) => html`<button type="button" key=${key} class=${tab === key ? 'is-active' : ''} aria-current=${tab === key ? 'page' : undefined} onClick=${() => setTab(key)}><${Icon} name=${icon} /><span>${title}</span>${key === 'requests' ? html`<${FriendRequestDot} />` : key === 'list' && state.threads?.some(thread => thread.unread) ? html`<span class="friends-dot" aria-label="未读私信"></span>` : null}</button>`)}</nav>
       <main class="friends-main">

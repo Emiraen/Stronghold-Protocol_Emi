@@ -21,14 +21,29 @@ import { t as trA } from '../../../shared/i18n.js';
 // Styles: public/css/emotes.css (injected on first use when the page does not link it).
 
 import { useEffect, useLayoutEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { EMOTE_THEMES, EMOTE_COOLDOWN_MS, EMOTE_BUBBLE_MS, emoteInfo, emoteArtGroup } from '../../../shared/constants.js';
+import { EMOTE_THEMES, EMOTE_COOLDOWN_MS, EMOTE_BUBBLE_MS } from '../../../shared/constants.js';
+import { IN_MATCH_STICKER_GROUPS, getChatSticker } from '../../../shared/chatStickers.js';
 import { html, Overlay, CloseButton } from './components.js';
 import { GIcon } from './gameComponents.js';
 import { data, useData, localAsset, artUrls, nextArtUrl } from '../data.js';
 import { loadPref, savePref } from '../store.js';
 import { useResourceUrl } from './cachedImage.js';
+import { resourceCache } from '../resourceCache.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
+const EMOTE_WHEEL_GROUPS = IN_MATCH_STICKER_GROUPS;
+const EMOTE_PAGES = [
+  ...EMOTE_THEMES.map(theme => ({ ...theme, groupId: 'official', part: 0, parts: 1 })),
+  ...(() => {
+    const stickers = IN_MATCH_STICKER_GROUPS.find(group => group.id === 'personal').stickers;
+    const parts = Math.ceil(stickers.length / 6);
+    return Array.from({ length: parts }, (_, part) => ({
+      themeId: `personal-${part}`, groupId: 'personal', name: '个性化', part, parts,
+      emotes: stickers.slice(part * 6, (part + 1) * 6),
+    }));
+  })(),
+];
+const emoteInfo = getChatSticker;
 
 export const EMOTE_CSS_HREF = '/css/emotes.css';
 const PREF_THEME = 'emoteTheme';
@@ -59,8 +74,10 @@ export function ensureEmoteCss(doc = globalThis.document) {
  * @returns {string[]}
  */
 export function emoteArtUrls(id) {
-  const e = emoteInfo(id);
-  return e ? artUrls(emoteArtGroup(id), e.picId) : [];
+  const sticker = getChatSticker(id);
+  if (sticker?.src) return [sticker.src];
+  const e = sticker?.emote;
+  return e ? artUrls(`emoticon/${e.dir}`, e.picId) : [];
 }
 
 /**
@@ -79,7 +96,7 @@ export const emoteUiSprite = (name) => localAsset('ui/battle', name);
 
 /** Index of a theme in the wheel (0 when unknown). */
 export function themeIndex(themeId) {
-  const i = EMOTE_THEMES.findIndex((t) => t.themeId === themeId);
+  const i = EMOTE_PAGES.findIndex(t => t.themeId === themeId || t.groupId === themeId || t.emotes.some(e => e.emote?.themeId === themeId));
   return i < 0 ? 0 : i;
 }
 
@@ -91,11 +108,11 @@ export function lastThemeIndex() {
 
 /** Remember the theme of a sent emote. */
 export function rememberTheme(themeId) {
-  if (EMOTE_THEMES.some((t) => t.themeId === themeId)) savePref(PREF_THEME, themeId);
+  if (EMOTE_PAGES.some(t => t.themeId === themeId || t.groupId === themeId)) savePref(PREF_THEME, themeId);
 }
 
 /** Clamp a page index into the wheel. */
-export const clampPage = (i) => Math.max(0, Math.min(EMOTE_THEMES.length - 1, Math.trunc(Number(i)) || 0));
+export const clampPage = (i) => Math.max(0, Math.min(EMOTE_PAGES.length - 1, Math.trunc(Number(i)) || 0));
 
 /**
  * Page change for a finished horizontal drag / swipe: -1 (previous), +1 (next) or 0.
@@ -173,6 +190,20 @@ function EmoteGlyph({ class: cls }) {
 export function EmoteArt({ id, class: cls }) {
   useData('local', 'assets');
   const [bad, setBad] = useState(() => new Set()); // URLs that failed to load
+  const sticker = getChatSticker(id);
+  const personalSource = sticker && !sticker.builtin ? sticker.src : null;
+  const [personalCached, setPersonalCached] = useState(() => !!personalSource && resourceCache.isCached(personalSource));
+  useEffect(() => {
+    const update = () => setPersonalCached(!!personalSource && resourceCache.isCached(personalSource));
+    update();
+    return personalSource ? resourceCache.subscribe(update) : undefined;
+  }, [personalSource]);
+  const customUrl = useResourceUrl(sticker?.src && (sticker.builtin || personalCached) ? sticker.src : null);
+  if (sticker?.src) {
+    return customUrl && !bad.has(customUrl)
+      ? html`<img key=${id} class=${cx('eart', cls)} src=${customUrl} alt="" draggable=${false} decoding="async" onError=${() => setBad(s => new Set(s).add(customUrl))} />`
+      : html`<${EmoteGlyph} class=${cls} />`;
+  }
   const src = nextArtUrl(emoteArtUrls(id), bad);
   if (src) {
     return html`<img key=${src} class=${cx('eart', cls)} src=${src} alt="" draggable=${false} decoding="async"
@@ -261,6 +292,8 @@ function TeamBubblePosition({ marker, ...props }) {
  *   cooldownMs?: number }} props
  */
 export function EmoteWheel({ onSend, open, onToggle, disabled = false, cooldownMs = EMOTE_COOLDOWN_MS }) {
+  const [, refreshPersonalCache] = useState(0);
+  useEffect(() => resourceCache.subscribe(() => refreshPersonalCache(value => value + 1)), []);
   useData('local');
   useEffect(() => { ensureEmoteCss(); }, []);
   const [page, setPage] = useState(lastThemeIndex);
@@ -313,9 +346,9 @@ export function EmoteWheel({ onSend, open, onToggle, disabled = false, cooldownM
     if (swallowClick.current) { swallowClick.current = false; return; }
     const e = emoteInfo(id);
     const now = Date.now();
-    if (!e || cooling || disabled || cooldownLeft(lastSentAt, now, cooldownMs) > 0) return;
+    if (!e || !e.builtin && e.src && !resourceCache.isCached(e.src) || cooling || disabled || cooldownLeft(lastSentAt, now, cooldownMs) > 0) return;
     lastSentAt = now;
-    rememberTheme(e.themeId);
+    rememberTheme(EMOTE_PAGES[clampPage(live.current.page)].themeId);
     setCooling(true);
     onSend(id);
     onToggle(false);
@@ -334,7 +367,7 @@ export function EmoteWheel({ onSend, open, onToggle, disabled = false, cooldownM
     const off = e.clientX - d.x0;
     if (!d.moved && Math.abs(off) < DRAG_SLOP_PX) return;
     if (!d.moved) { d.moved = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ } }
-    const edge = (off > 0 && live.current.page === 0) || (off < 0 && live.current.page === EMOTE_THEMES.length - 1);
+    const edge = (off > 0 && live.current.page === 0) || (off < 0 && live.current.page === EMOTE_PAGES.length - 1);
     setDx(edge ? off / 3 : off); // rubber band at the first / last page
   };
   const endDrag = (e, cancelled) => {
@@ -355,7 +388,7 @@ export function EmoteWheel({ onSend, open, onToggle, disabled = false, cooldownM
     if (step) go(live.current.page + step);
   };
 
-  const theme = EMOTE_THEMES[clampPage(page)];
+  const theme = EMOTE_PAGES[clampPage(page)];
   const btnSprite = useResourceUrl(emoteUiSprite(disabled || cooling ? 'emoji_btn_disable' : 'emoji_btn'));
   const panelBg = useResourceUrl(emoteUiSprite('emoji_bkg'));
   const cellBg = useResourceUrl(emoteUiSprite('emoji_cell_bkg'));
@@ -367,22 +400,25 @@ export function EmoteWheel({ onSend, open, onToggle, disabled = false, cooldownM
       ${btnSprite ? null : html`<${GIcon} name="emote" />`}<span class="ewheel__label">${trA("交流")}</span>
     </button>
     ${open ? html`<${Overlay}><div class=${cx('ewheel__panel', panelBg && 'has-sprite', cellBg && 'has-cell')} style=${panelStyle} role="dialog" aria-label=${trA("交流")}>
-      <header class="ewheel__head"><span>${trA("交流")}</span><${CloseButton} label=${trA("表情菜单")} onClose=${() => onToggle(false)} /></header>
+      <header class="ewheel__head"><div class="ewheel__groups" role="tablist" aria-label=${trA('表情分组')}>
+        ${EMOTE_WHEEL_GROUPS.map(group => html`<button type="button" role="tab" aria-selected=${theme.groupId === group.id} class=${cx('ewheel__group', theme.groupId === group.id && 'is-on')}
+          onClick=${() => go(EMOTE_PAGES.findIndex(p => p.groupId === group.id))}>${group.label}</button>`)}
+      </div><span class="ewheel__section" title=${theme.name}>${theme.name.replace('表情套组：', '')}${theme.parts > 1 ? ` ${theme.part + 1}/${theme.parts}` : ''}</span><${CloseButton} label=${trA("表情菜单")} onClose=${() => onToggle(false)} /></header>
       <div class="ewheel__viewport" onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
         onPointerUp=${(e) => endDrag(e, false)} onPointerCancel=${(e) => endDrag(e, true)} onWheel=${onWheel}>
         <div key=${theme.themeId} class=${cx('ewheel__page', dir > 0 && 'is-from-right', dir < 0 && 'is-from-left', dx !== 0 && 'is-dragging')}
           style=${dx ? `transform:translateX(${dx}px)` : ''} role="group" aria-label=${theme.name} data-theme=${theme.themeId}>
           ${theme.emotes.map((e) => html`<button key=${e.id} type="button" class="ewheel__item" data-emote=${e.id} aria-label=${e.label}
-              disabled=${cooling || disabled} onClick=${() => send(e.id)}>
+              disabled=${cooling || disabled || !e.builtin && e.src && !resourceCache.isCached(e.src)} onClick=${() => send(e.id)}>
             <${EmoteArt} id=${e.id} />
           </button>`)}
         </div>
       </div>
       <button type="button" class="ewheel__nav is-prev" aria-label=${trA("上一组表情")} disabled=${page <= 0} onClick=${() => go(page - 1)}><${GIcon} name="chevronLeft" /></button>
-      <button type="button" class="ewheel__nav is-next" aria-label=${trA("下一组表情")} disabled=${page >= EMOTE_THEMES.length - 1} onClick=${() => go(page + 1)}><${GIcon} name="chevronRight" /></button>
+      <button type="button" class="ewheel__nav is-next" aria-label=${trA("下一组表情")} disabled=${page >= EMOTE_PAGES.length - 1} onClick=${() => go(page + 1)}><${GIcon} name="chevronRight" /></button>
       <div class="ewheel__dots" role="tablist" aria-label=${trA("表情主题")}>
-        ${EMOTE_THEMES.map((t, i) => html`<button key=${t.themeId} type="button" role="tab" class=${cx('ewheel__dot', i === page && 'is-on')}
-          aria-selected=${i === page ? 'true' : 'false'} aria-label=${`${t.name} ${i + 1}/${EMOTE_THEMES.length}`} onClick=${() => go(i)}></button>`)}
+        ${EMOTE_PAGES.map((t, i) => t.groupId === theme.groupId ? html`<button key=${t.themeId} type="button" role="tab" class=${cx('ewheel__dot', i === page && 'is-on')}
+          aria-selected=${i === page ? 'true' : 'false'} aria-label=${`${t.name} ${t.part + 1}/${t.parts}`} onClick=${() => go(i)}></button>` : null)}
       </div>
     </div><//>` : null}
   </div>`;

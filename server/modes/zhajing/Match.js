@@ -11,6 +11,27 @@ export function getZhajingData() {
   if (!modeData) { modeData = loadData(dataDir); setModeData(modeData); }
   return modeData;
 }
+
+/** Adapt the shared character-key format to the embedded engine's skin lookup. */
+export function projectZhajingSkins(skins, data = getZhajingData()) {
+  const entries = skins && typeof skins === 'object' && !Array.isArray(skins) ? Object.entries(skins) : [];
+  const projected = Object.assign(Object.create(null), Object.fromEntries(entries));
+  const characters = new Map();
+  for (const [key, skin] of entries) {
+    if (!key.startsWith('char:') || key.length === 5 || typeof skin !== 'string' || !skin) continue;
+    const charId = key.slice(5);
+    characters.set(charId, skin);
+    projected[charId] = skin;
+  }
+  for (const [key, record] of Object.entries(data?.chess || {})) {
+    if (!record || record.isGolden || !characters.has(record.charId)) continue;
+    const chessId = record.chessId || key;
+    if (record.baseId && record.baseId !== chessId) continue;
+    projected[chessId] = characters.get(record.charId);
+  }
+  return projected;
+}
+
 const ALLOWED = new Set(['g.infoReady', 'g.band', 'g.bandSkip', 'g.bandFocus', 'g.buy', 'g.refresh',
   'g.freeze', 'g.levelUp', 'g.sell', 'g.move', 'g.equip', 'g.art', 'g.destroy', 'g.reward', 'g.choice',
   'g.ready', 'g.emote', 'g.watch', 'g.autoplay', 'g.pause', 'g.unitStats', 'g.spReroll',
@@ -19,12 +40,15 @@ const ALLOWED = new Set(['g.infoReady', 'g.band', 'g.bandSkip', 'g.bandFocus', '
 
 export class Match extends GameplayMatch {
   constructor(opts) {
-    super({ ...opts, data: getZhajingData(), difficulty: ZHAJING_DIFFICULTY,
+    const data = getZhajingData();
+    super({ ...opts, data, difficulty: ZHAJING_DIFFICULTY,
+      seats: opts.seats?.map(seat => ({ ...seat, skins: projectZhajingSkins(seat.skins, data) })),
       modeId: opts.mode === 'solo' ? 'mode_single_zhajing' : 'mode_multi_zhajing' });
     this.variant = ZHAJING_VARIANT;
     this.matchId = opts.matchId;
     this._persistRev = 1;
   }
+  setSkins(playerId, skins) { return super.setSkins(playerId, projectZhajingSkins(skins)); }
   publicView() { return { ...super.publicView(), variant: ZHAJING_VARIANT, matchId: this.matchId }; }
   markPublic(...args) { this._persistRev = (this._persistRev || 0) + 1; return super.markPublic(...args); }
   markPrivate(...args) { this._persistRev = (this._persistRev || 0) + 1; return super.markPrivate(...args); }

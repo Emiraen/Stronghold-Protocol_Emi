@@ -7,7 +7,7 @@ const pathOf = value => {
 
 export function personalImageFallback(src, manifest) {
   const path = pathOf(src);
-  if (!path || !/^\/assets\/char\/(?:portrait|skin_avatar|avatar)\//.test(path)) return null;
+  if (!path || !/^\/assets\/(?:char\/(?:portrait|skin_avatar|avatar)\/|local\/v79-operators\/(?:portrait|avatar)\/)/.test(path)) return null;
   if (manifest && typeof manifest === 'object') {
     let index = indexes.get(manifest);
     if (!index) {

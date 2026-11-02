@@ -90,6 +90,7 @@ export class MatchViews {
         seat: ps.seat,
         ...(this.isEntertainmentMulti ? { poolGroupId: ps.poolGroupId } : {}),
         name: ps.name,
+        nameplate: ps.nameplate || '',
         isBot: ps.isBot,
         ...(this.rankSnapshots.has(ps.playerId) ? { rank: { ...this.rankSnapshots.get(ps.playerId) } } : {}),
         connected: ps.isBot || (ps.connected && !ps.left),

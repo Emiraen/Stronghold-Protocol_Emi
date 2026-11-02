@@ -195,7 +195,11 @@ export function spineEntry(m, id, opts) {
     const sp = (opts && opts.back && isObj(ch.spine.back)) ? ch.spine.back : ch.spine.front;
     const skin = cachedSkin(ch, opts?.skin);
     const selected = opts?.back && isObj(skin?.spine?.back) ? skin.spine.back : skin?.spine?.front;
-    return validSpine(selected) ? selected : validSpine(sp) ? sp : null;
+    if (validSpine(selected)) {
+      if (validSpine(sp) && selected.skel !== sp.skel) return { ...selected, fallback: selected.fallback || sp };
+      return selected;
+    }
+    return validSpine(sp) ? sp : null;
   }
   const tk = get(get(m, 'tokens'), s);
   if (tk) {

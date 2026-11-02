@@ -141,22 +141,6 @@ async function main() {
     };
     walk(JSON.parse(await fsp.readFile(localManifest, 'utf8')));
   }
-  // Include the isolated mode catalogues and every resource referenced by them.
-  // Existing shared files stay authoritative; the importer only adds missing art.
-  const zhajingDir = path.join(ROOT, 'data/zhajing');
-  try {
-    for await (const file of runtimeFiles(zhajingDir)) {
-      if (!file.endsWith('.json')) continue;
-      add(resourceUrl(path.relative(ROOT, file)), 'required', 'application/json');
-      const walk = value => {
-        if (typeof value === 'string' && value.startsWith('/assets/')) add(value, 'required');
-        else if (value && typeof value === 'object') Object.values(value).forEach(walk);
-      };
-      walk(JSON.parse(await fsp.readFile(file, 'utf8')));
-    }
-  } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  add('/assets/relics/catalog.json', 'required', 'application/json');
-  add('/data/relics.json', 'required', 'application/json');
   // Do not silently publish a partial resource bundle.
   if (missing.length) {
     await fsp.writeFile(path.join(work, 'missing-resources.json'), JSON.stringify(missing, null, 2));

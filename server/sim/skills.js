@@ -345,6 +345,7 @@ export class SkillRuntime {
       if (this.charges >= this.maxCharges && this.sp >= cost) return 0;
     }
     if (cost <= 0) return 0; // free skills never recharge (see reset)
+    const notifyReady = !!b._hooks.skillReady && !this.ready;
     this.sp += amt;
     // within 1e-9 of the cost is the cost (the timer tolerance of `timeLeft` below; PR #402): 300 time gains of 1/30 SP
     // add up to 9.999999999999975 in floating point, which held a 10-SP charge one tick
@@ -354,6 +355,7 @@ export class SkillRuntime {
       else this.sp = cost;
     }
     if (this.charges >= this.maxCharges) this.sp = cost;
+    if (notifyReady && this.ready) b.emit('skillReady', { unit: this.unit, skill: this, reason });
     return amt;
   }
 

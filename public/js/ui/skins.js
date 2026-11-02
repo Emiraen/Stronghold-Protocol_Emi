@@ -9,11 +9,12 @@ import { audio } from '../audio.js';
 import { defaultPresentation, isPresentation, checkPresentation, skinKeyForRecord } from '../../../shared/protocol.js';
 import { toast } from './toasts.js';
 import { isSpecialNameCard } from '../../../shared/nameCards.js';
+import { isNameplate } from '../../../shared/nameplates.js';
 
 export const PORTRAITS_PREF = 'skinPortraits';
 const CARD_PREF = 'room.card';
 const APPEARANCE_OWNER_PREF = 'appearance.profileId';
-const completePresentation = (value) => ({ ...value, portraits: value.portraits || {}, card: value.card || '' });
+const completePresentation = (value) => ({ ...value, portraits: value.portraits || {}, card: value.card || '', nameplate: value.nameplate || '' });
 export function cleanSkinsMap(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -22,7 +23,7 @@ export function cleanSkinsMap(raw) {
   }
   return out;
 }
-export const skinsStore = createStore({ entries: {}, portraits: {}, card: '', installing: null, installingProgress: null, voice: defaultPresentation().voice,
+export const skinsStore = createStore({ entries: {}, portraits: {}, card: '', nameplate: '', installing: null, installingProgress: null, voice: defaultPresentation().voice,
   profileId: null, profileReady: false, identityEpoch: 0, sync: 'loading', locked: false });
 export function skinFor(recordOrId) {
   const key = typeof recordOrId === 'string' ? recordOrId : skinKeyForRecord(recordOrId);
@@ -46,6 +47,11 @@ export function setPortraits(entries) {
   const portraits = cleanSkinsMap(entries);
   savePref(PORTRAITS_PREF, portraits);
   skinsStore.set({ portraits });
+  return true;
+}
+export function setNameplate(nameplate) {
+  if (!skinsStore.get().profileReady || !isNameplate(nameplate)) return false;
+  skinsStore.set({ nameplate });
   return true;
 }
 export function setPlayerCard(card, choice) {
@@ -98,17 +104,17 @@ export function setVoice(patch) {
   if (!skinsStore.get().profileReady) return false;
   skinsStore.set({ voice: { ...skinsStore.get().voice, ...patch } }); return true;
 }
-export function availableSkins(charId) {
-  return (data.get('skins')?.chars?.[charId] || []).map(s => ({ ...s, installed: isInstalled(charId, s.id), downloadable: !!data.get('assets')?.chars?.[charId]?.skins?.[s.id] }));
+export function availableSkins(charId, source = data) {
+  return (source.get('skins')?.chars?.[charId] || []).map(s => ({ ...s, installed: isInstalled(charId, s.id, source), downloadable: !!source.get('assets')?.chars?.[charId]?.skins?.[s.id] }));
 }
-export const isInstalled = (charId, skinId) => isSkinCached(data.get('assets')?.chars?.[charId]?.skins?.[skinId])
+export const isInstalled = (charId, skinId, source = data) => isSkinCached(source.get('assets')?.chars?.[charId]?.skins?.[skinId])
   && skinSummonUrls(skinId).every(url => resourceCache.isCached(url));
-export const loadSkinData = () => Promise.all([data.load('skins'), data.load('assets')]);
+export const loadSkinData = (source = data) => Promise.all([source.load('skins'), source.load('assets')]);
 
-export async function requestSkinInstall(_net, skinId) {
+export async function requestSkinInstall(_net, skinId, source = data) {
   if (!await resourceCache.ensureManifestReady()) throw new Error('资源清单加载失败，请稍后重试');
   if (skinsStore.get().installing) return { ok: false };
-  const chars = data.get('assets')?.chars || {};
+  const chars = source.get('assets')?.chars || {};
   const char = Object.values(chars).find(value => value?.skins?.[skinId]);
   const skin = char?.skins?.[skinId];
   if (!skin) throw new Error('当前资源包未包含此皮肤');
@@ -141,13 +147,13 @@ export function installSkinsSync({ net, target = skinsStore, timers = globalThis
   };
   const reset = () => {
     cancel(); generation++; seq++; sending = dirty = false; accepted = completePresentation(defaultPresentation());
-    replace({ entries: {}, portraits: {}, card: '', voice: accepted.voice, profileId: null, profileReady: false,
+    replace({ entries: {}, portraits: {}, card: '', nameplate: '', voice: accepted.voice, profileId: null, profileReady: false,
       identityEpoch: target.get().identityEpoch + 1, sync: 'loading', locked: false });
   };
   async function flush() {
     if (disposed || sending || !dirty || !target.get().profileReady || net.status !== 'online') return;
     const state = target.get(), g = generation, editId = ++seq, before = serial;
-    const value = { skins: state.entries, voice: state.voice, portraits: state.portraits, card: state.card };
+    const value = { skins: state.entries, voice: state.voice, portraits: state.portraits, card: state.card, nameplate: state.nameplate || '' };
     dirty = false; sending = true; target.set({ sync: 'sending' });
     try {
       await net.request('profile.presentation', { v: 1, profileId: state.profileId, editId, value });
@@ -160,7 +166,7 @@ export function installSkinsSync({ net, target = skinsStore, timers = globalThis
         if (before === serial) { dirty = true; schedule(1500); }
       } else {
         cancel(); dirty = false;
-        replace({ entries: accepted.skins, portraits: accepted.portraits, card: accepted.card, voice: accepted.voice, sync: 'error' });
+        replace({ entries: accepted.skins, portraits: accepted.portraits, card: accepted.card, nameplate: accepted.nameplate, voice: accepted.voice, sync: 'error' });
         notify(trA("外观与语音保存失败，已恢复服务器配置"));
       }
     } finally {
@@ -170,9 +176,10 @@ export function installSkinsSync({ net, target = skinsStore, timers = globalThis
   const offWelcome = net.on('welcome', reset);
   const offStatus = net.on('status', (s) => { if (s?.status !== 'online') reset(); });
   const offState = net.on('presentation.state', (msg) => {
-    if (disposed || net.status !== 'online' || msg?.v !== 1 || !/^[0-9a-f]{32}$/.test(msg.profileId) || !isPresentation(msg.value)) return;
+    const value = msg?.value && { ...msg.value, ...(msg.nameplate !== undefined ? { nameplate: msg.nameplate } : {}) };
+    if (disposed || net.status !== 'online' || msg?.v !== 1 || !/^[0-9a-f]{32}$/.test(msg.profileId) || !isPresentation(value)) return;
     const s = target.get(); if (s.profileId && s.profileId !== msg.profileId) return;
-    serial++; accepted = completePresentation(structuredClone(msg.value));
+    serial++; accepted = completePresentation(structuredClone(value));
     const own = msg.editorId === net.playerId;
     const keepEdit = own && s.profileReady && (dirty || msg.editId < seq);
     if (!keepEdit) { cancel(); dirty = false; }
@@ -183,7 +190,7 @@ export function installSkinsSync({ net, target = skinsStore, timers = globalThis
     // Claim legacy choices before loading metadata; an account switch must not adopt them again.
     if (canMigrate) savePref(APPEARANCE_OWNER_PREF, msg.profileId);
     replace({ profileId: msg.profileId, profileReady: true, locked: !!msg.locked,
-      ...(!keepEdit ? { entries: accepted.skins, portraits: accepted.portraits, card: accepted.card, voice: accepted.voice, sync: 'synced' } : {}) });
+      ...(!keepEdit ? { entries: accepted.skins, portraits: accepted.portraits, card: accepted.card, nameplate: accepted.nameplate, voice: accepted.voice, sync: 'synced' } : {}) });
     if (canMigrate) {
       const g = generation, version = serial;
       // Adopt an old device's choices only into its first matching profile, never over cloud fields.
@@ -204,7 +211,7 @@ export function installSkinsSync({ net, target = skinsStore, timers = globalThis
     }
   });
   const offStore = target.subscribe((s, p) => {
-    if (!applying && s.profileReady && (s.entries !== p.entries || s.voice !== p.voice || s.portraits !== p.portraits || s.card !== p.card)) { dirty = true; schedule(); }
+    if (!applying && s.profileReady && (s.entries !== p.entries || s.voice !== p.voice || s.portraits !== p.portraits || s.card !== p.card || s.nameplate !== p.nameplate)) { dirty = true; schedule(); }
   });
   return { flush, dispose() { disposed = true; generation++; cancel(); offWelcome?.(); offStatus?.(); offState?.(); offStore?.(); } };
 }

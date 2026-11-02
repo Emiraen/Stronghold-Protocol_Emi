@@ -140,6 +140,7 @@ export class MatchViews {
         playerId: ps.playerId,
         seat: ps.seat,
         name: ps.name,
+        nameplate: ps.nameplate || '',
         // 头像 (shared/avatars.js): 房间 / 对局内名单 / 结算都要显示它；没设置就不占字节
         ...(ps.avatar ? { avatar: ps.avatar } : {}),
         isBot: ps.isBot,

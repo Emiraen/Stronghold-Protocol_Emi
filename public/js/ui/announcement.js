@@ -27,6 +27,14 @@ export function acceptAnnouncement(value) {
   if (old && value.updatedAt < old.updatedAt) return;
   if (old && value.updatedAt === old.updatedAt && value.title === old.title && value.content === old.content) return;
   notices.set({ notice: { title: value.title, content: value.content, updatedAt: value.updatedAt } });
+  showAnnouncementOnLogin();
+}
+// Reading/closing a version only clears its unread mark. Only today's explicit checkbox suppresses automatic dialogs.
+export function showAnnouncementOnLogin() {
+  const day = localDay(), hiddenDay = loadHiddenDay();
+  notices.set({ day, hiddenDay });
+  const notice = notices.get().notice;
+  if ((notice?.title || notice?.content) && hiddenDay !== day) openAnnouncement();
 }
 function dismissAnnouncement() {
   const notice = notices.get().notice;

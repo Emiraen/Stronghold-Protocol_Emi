@@ -31,7 +31,7 @@ wss.on('connection', (ws, request) => {
   const index = Number(request.url.slice(1)), room = Math.floor(index / 4);
   sockets[index] = ws; network.handleConnection(ws, request);
   const conn = network.conns.get(ws), old = legacy && index === 0;
-  conn.deltaEnabled = !old; conn.compactEnabled = !old; conn.streamEnabled = !old; conn.fieldMetadataEnabled = !old;
+  conn.deltaEnabled = !old; conn.compactEnabled = !old; conn.streamEnabled = !old;
   const original = ws.send.bind(ws);
   ws.send = (message, ...args) => {
     if (measuring) { stats[room].payloadBytes += Buffer.byteLength(message); stats[room].frames++; }

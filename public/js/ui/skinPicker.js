@@ -71,8 +71,8 @@ const clipLabel = (c) => (c.kind === 'raw' ? c.clipName
     : t(CLIP_LABEL[c.kind] || c.kind));
 
 /** A manifest asset URL of one operator (`chars[charId].<field>`), or null. */
-function charAsset(charId, field) {
-  return data.get('assets')?.chars?.[charId]?.[field] || null;
+function charAsset(charId, field, source = data) {
+  return source.get('assets')?.chars?.[charId]?.[field] || null;
 }
 
 /**
@@ -83,15 +83,16 @@ function charAsset(charId, field) {
  * catalogue does the same. A chess record carries both (`chess_char_1_01_a` → `charId: char_498_inside`), and
  * getting the two the wrong way round makes the whole section silently empty.
  */
-function modelArt(charId, skinId) {
-  const ready = previewState(charId, skinId).url;
+function modelArt(charId, skinId, source = data) {
+  const manifest = source.get('assets');
+  const ready = previewState(charId, skinId, manifest).url;
   if (ready) return ready;
-  return skinId ? (data.get('assets')?.chars?.[charId]?.skins?.[skinId]?.avatar || null) : charAsset(charId, 'avatar');
+  return skinId ? (manifest?.chars?.[charId]?.skins?.[skinId]?.avatar || null) : charAsset(charId, 'avatar', source);
 }
 
 /** The 商店立绘 tile's art: the skin's 180×360 立绘, falling back to its square avatar. */
-function skinPortrait(charId, skinId) {
-  const sk = data.get('assets')?.chars?.[charId]?.skins?.[skinId];
+function skinPortrait(charId, skinId, source = data) {
+  const sk = source.get('assets')?.chars?.[charId]?.skins?.[skinId];
   return sk?.portrait || sk?.avatar || null;
 }
 
@@ -159,11 +160,11 @@ function SkinGroup(p) {
 
 /**
  * 皮肤 section for one operator.
- * @param {{ chess: any, net?: any }} props `chess` is the chess record of the detail panel; `net` is injectable for tests
+ * @param {{ chess: any, net?: any, source?: any }} props `chess` is the detail panel record; `source` is its data store
  */
-export function SkinSection({ chess, net = appNet, locked = false }) {
+export function SkinSection({ chess, net = appNet, locked = false, source = data }) {
   const s = useStore((v) => v, shallowEqual, skinsStore);
-  const m = data.get('assets');
+  const m = source.get('assets');
   const [, bump] = useState(0);
   // The mount host as STATE, set by a callback ref: the frame's box appears only once the catalogue has loaded (the
   // section renders nothing before that), and a `useRef` would leave the mount effect with a null ref — it runs once,
@@ -187,7 +188,7 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
   // The catalogue may still be loading on the first render, and until it is here the section returns null — so the
   // frame's box does not exist yet. `renderable` is part of the mount effect's deps for exactly that reason: without
   // it the effect would run once against a null ref and never again, and the live canvas would never mount.
-  const list = charId ? availableSkins(charId) : [];
+  const list = charId ? availableSkins(charId, source) : [];
   // The section is NOT only about skins: the 商店立绘 switch (原始 / 精英二) and the model preview belong to any
   // operator that has art or a model, and plenty of them ship no outfit at all (溯光星源 has none and wants both).
   // So it renders when there is a catalogue, an operator record, or both — and hides only for a piece whose art is
@@ -207,36 +208,36 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
   // the catalogue lives in data/skins.json and the installed set in data/assets.json; both may still be loading
   useEffect(() => {
     let dead = false;
-    let manifest = data.get('assets');
-    loadSkinData();
-    const off = data.subscribe?.(() => {
+    let manifest = source.get('assets');
+    loadSkinData(source);
+    const off = source.subscribe?.(() => {
       // a manifest that changed identity means somebody installed a skin: URLs (and so the preview) may differ
-      const now = data.get('assets');
+      const now = source.get('assets');
       if (now !== manifest) { manifest = now; clearPreviews(); }
       if (!dead) bump((n) => n + 1);
     });
     const offPreview = subscribePreviews(() => { if (!dead) bump((n) => n + 1); });
     const offResources = resourceCache.subscribe(() => { if (!dead) bump((n) => n + 1); });
     return () => { dead = true; offResources(); off?.(); offPreview(); };
-  }, [chessId]);
+  }, [chessId, source]);
 
   // the static snapshot for the frame (the instant paint, and the fallback if the live canvas cannot start)
   useEffect(() => {
-    if (previewOpen && charId) requestPreview(charId, previewSkin);
-  }, [previewOpen, charId, previewSkin]);
+    if (previewOpen && charId) requestPreview(charId, previewSkin, { manifest: m });
+  }, [previewOpen, charId, previewSkin, m]);
 
   // a new model starts on 待机 (its first animation when it has no idle)
   useEffect(() => {
     setClipId('');
     setExtraOpen(false);
     setLive(false);
-  }, [charId, previewSkin]);
+  }, [charId, previewSkin, m]);
 
   // The frame's still image must keep ONE constant shape (see TRANSPARENT_PX above): a failed URL swaps its src for
   // the transparent pixel instead of dropping the img, or Preact re-diffs the box's children and takes the live canvas
   // with it. Reset per (operator, skin) — a different choice is a different file.
   const [artBad, setArtBad] = useState(false);
-  useEffect(() => { setArtBad(false); }, [charId, previewSkin]);
+  useEffect(() => { setArtBad(false); }, [charId, previewSkin, m]);
 
   // LIVE playback: mount the model in the frame and step it every frame, exactly like a battlefield view. Mounted
   // once per (operator, skin); the clip buttons only re-play on the existing instance.
@@ -246,7 +247,7 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
     let handle = null;
     (async () => {
       try {
-        handle = await mountPreview(boxNode, { assetId: charId, skinId: previewSkin, isCancelled: () => dead });
+        handle = await mountPreview(boxNode, { assetId: charId, skinId: previewSkin, manifest: m, isCancelled: () => dead });
         if (dead) { handle.dispose(); return; }
         liveRef.current = handle;
         setLive(true);
@@ -260,7 +261,7 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
       handle?.dispose();
       setLive(false);
     };
-  }, [previewOpen, boxNode, charId, previewSkin, renderable]);
+  }, [previewOpen, boxNode, charId, previewSkin, renderable, m]);
 
   // play the chosen animation (and the default one as soon as the model is mounted)
   useEffect(() => {
@@ -268,7 +269,7 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
     if (!h) return;
     const pick = clips.find((c) => c.id === (clipId || 'idle')) || clips[0];
     if (pick) h.play(pick.steps);
-  }, [clipId, live, charId, previewSkin]);
+  }, [clipId, live, charId, previewSkin, m]);
 
   if (!renderable) return null; // no slot, or a piece with neither a catalogue nor any art: nothing to show
 
@@ -288,7 +289,7 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
     if (!sock || installing) return;
     try {
       // acknowledged at once; the outcome arrives as skins.changed (ui/skins.js), which also reloads the manifest
-      await requestSkinInstall(sock, skinId);
+      await requestSkinInstall(sock, skinId, source);
       toast(t('皮肤已保存到本机，可以选择使用'), 'info');
     } catch (e) {
       toast(t('安装失败：{why}', { why: (e && (e.detail || e.code)) || t('未知错误') }), 'warn');
@@ -305,8 +306,8 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
   ];
   const shared = { list, installing, progLabel, onInstall: install, disabled: !s.profileReady };
   // the frame: the model of the CURRENT choice, with its name and the animation buttons under it
-  const previewStateNow = previewState(charId, previewSkin).status;
-  const previewUrl = modelArt(charId, previewSkin);
+  const previewStateNow = previewState(charId, previewSkin, m).status;
+  const previewUrl = modelArt(charId, previewSkin, source);
   const previewName = chosen ? (list.find((x) => x.id === chosen)?.name || chosen) : t('默认');
   const currentClip = clips.find((c) => c.id === (clipId || 'idle')) || clips[0] || null;
   const note = previewStateNow === 'failed' ? ` · ${t('模型不可用')}` : '';
@@ -324,7 +325,7 @@ export function SkinSection({ chess, net = appNet, locked = false }) {
     <h4 class="lo-skin__title">${t('角色立绘')}<${MicroLabel}>OPERATOR ART<//></h4>
     <${SkinGroup} ...${shared} name="portrait" ariaLabel=${t('选择角色立绘')} tall=${true}
       leading=${leading}
-      chosenId=${chosenPortrait} art=${(x) => skinPortrait(charId, x.id)}
+      chosenId=${chosenPortrait} art=${(x) => skinPortrait(charId, x.id, source)}
       onPick=${(id) => (id ? setPortrait(chessId, id) : clearPortrait(chessId))} />
     <details key=${previewKey} class="lo-model-fold lo-sec--fold" data-testid="model-fold"
       onToggle=${(event) => setOpenedModel(event.currentTarget.open ? previewKey : null)}>

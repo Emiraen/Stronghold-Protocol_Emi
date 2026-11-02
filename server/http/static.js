@@ -49,6 +49,10 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
       sendError(req, res, 400, '请求地址无效 · Bad request');
       return;
     }
+    if (decoded.startsWith('/assets/chat-stickers/') && req.headers['x-stronghold-resource-preload'] !== '1') {
+      sendError(req, res, 403, '个性化表情需要主动预载');
+      return;
+    }
     if (isStudioPath(decoded)) { sendError(req,res,404,'页面不存在 · Not found'); return; }
     if (pluginHttp && await pluginHttp(req,res,decoded,query)) return;
     if (decoded === '/zhajing/server/data.js') {

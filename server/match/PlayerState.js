@@ -92,6 +92,7 @@ export class PlayerState {
     this.playerId = seat.playerId;
     this.seat = seat.seat;
     this.name = seat.name;
+    this.nameplate = seat.isBot ? '' : seat.nameplate || '';
     this.isBot = !!seat.isBot;
     /** anonymous ranked-profile id (RANKED; hello.aid via the seat) */
     this.aid = seat.aid || null;

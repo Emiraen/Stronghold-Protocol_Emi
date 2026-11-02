@@ -53,7 +53,7 @@
   <link rel="stylesheet" href="/css/devices.css" />
 
   <!-- PR 643 presentation, adapted to East's original protocol and screens. -->
-  <link rel="stylesheet" href="/css/pr643-lobby.css" />
+  <link rel="stylesheet" href="/css/pr643-lobby.css?release=nameplate-fill-20261102-r3" />
   <link rel="stylesheet" href="/css/east-hub.css" />
   <link rel="stylesheet" href="/css/east-room.css" />
   <link rel="stylesheet" href="/css/east-media.css" />
@@ -72,6 +72,7 @@
   <link rel="stylesheet" href="/css/east-mobile-halls.css" />
   <link rel="stylesheet" href="/css/east-recruitment.css" />
   <link rel="stylesheet" href="/css/friends.css" />
+  <link rel="stylesheet" href="/css/chat-compact.css" />
 
   <script type="importmap">
     { "imports": { "preact": "/vendor/preact.module.js", "preact/hooks": "/vendor/hooks.module.js", "htm": "/vendor/htm.module.js" } }
@@ -85,6 +86,7 @@
   <link rel="prefetch" href="/vendor/pixi.min.js" as="script" />
   <link rel="prefetch" href="/vendor/pixi-spine.js" as="script" />
 <link rel="stylesheet" href="/css/zhajing.css">
+<link rel="stylesheet" href="/css/button-icon-fix.css">
 </head>
 <body>
   <div id="app"></div>
@@ -126,7 +128,7 @@
       if (/specifier|resolve|import|module/i.test(String(ev && ev.message))) window.__spBootFail('load');
     });
   </script>
-  <script type="module" src="/js/main.js" onerror="window.__spBootFail && window.__spBootFail('load')"></script>
+  <script type="module" src="/js/main.js?release=nameplate-fill-20261102-r3" onerror="window.__spBootFail && window.__spBootFail('load')"></script>
   <script type="module" src="/js/legacyNotice.js"></script>
   <script nomodule>window.__spBootFail && window.__spBootFail('old');</script>
   <script>

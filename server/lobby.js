@@ -231,7 +231,7 @@ export class Room {
           seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot,
           ...(!s.isBot ? { profileId: players?.profiles.get(s.aid)?.id || null } : {}),
           card: s.card || '',
-          cardSkin: s.cardSkin || '',
+          cardSkin: s.cardSkin || '', nameplate: s.nameplate || '',
           ready: s.ready, connected: s.connected && !s.left,
           ...(this.modded && !s.isBot ? {content:s.content || 'loading'} : {}),
           // 仅公开展示字段，不传播账号、重连凭据或隐藏分。
@@ -551,15 +551,22 @@ export class Lobby {
     }
   }
 
+  chatSender(session) {
+    const profile = this.players.profiles.get(session.aid);
+    return { ...session, profileId: profile?.id || null,
+      cardSkin: this.cardSkinFor(session.card, session.skins, session.portraits),
+      rank: this.ranked?.summary(session.aid, session.name, session.debugAuthorized === true) || null };
+  }
+
   sendChatText(session, msg) {
     const room = this.roomOf(session);
     if (msg.channel === 'match') {
       if (!session.connected || !room?.match || !room.matchCtx?.chat || msg.matchId !== room.matchCtx.matchId) return fail(ERR.NOT_IN_ROOM);
-      return room.matchCtx.chat.publishText(session, msg.text, this.now());
+      return room.matchCtx.chat.publishText(this.chatSender(session), msg.text, this.now(), msg.sticker);
     }
     if (room?.match || msg.matchId) return fail(ERR.BAD_TARGET, '对局中请使用本局频道');
-    return this.profiles ? this.profiles.publishChat(session, { kind: 'text', text: msg.text })
-      : this.chat.publishText(session, msg.text, this.now());
+    return this.profiles ? this.profiles.publishChat(session, { kind: 'text', text: msg.text, sticker: msg.sticker })
+      : this.chat.publishText(this.chatSender(session), msg.text, this.now(), msg.sticker);
   }
 
   sendMatchChat(room, session) {
@@ -650,7 +657,7 @@ export class Lobby {
     sendSession(session, { t: 'spectator.state', code: room.code, matchId: room.matchCtx.matchId,
       mode: room.mode, variant: room.variant, difficulty: room.difficulty, readOnly: true,
       seats: room.seats.filter(Boolean).map((seat) => ({ playerId: seat.playerId,
-        card: seat.card || '', cardSkin: seat.cardSkin || '' })),
+        card: seat.card || '', cardSkin: seat.cardSkin || '', nameplate: seat.nameplate || '' })),
       ...(room.content ? { content: room.content } : {}) });
   }
 
@@ -738,7 +745,7 @@ export class Lobby {
     if (room.match || room.disposed) return fail(ERR.ROOM_STARTED);
     if (room.mode !== 'coop' || room.freeSeat() < 0) return fail(ERR.ROOM_FULL);
     const result = await (this.profiles ? this.profiles.publishChat(session, { kind: 'invite', code: room.code })
-      : this.chat.publishInvite(session, { code: room.code, serverId: this.serverId }, this.now()));
+      : this.chat.publishInvite(this.chatSender(session), { code: room.code, serverId: this.serverId }, this.now()));
     if (result?.ok && this.rooms.get(room.code) === room && !room.disposed && !room.match) {
       this.recruitmentRooms.set(room.code, this.now());
       this.broadcastRecruitment();
@@ -1499,15 +1506,18 @@ export class Lobby {
         (key) => lookup('chess', key, data), data?.assets, data?.backups?.units).error));
     if (value.card !== undefined) clean.card = checkPresentation({ voice: value.voice, skins: {}, card: value.card },
       (key) => lookup('chess', key, data), data?.assets, data?.backups?.units).error ? '' : value.card;
+    if (value.nameplate !== undefined) clean.nameplate = value.nameplate;
     return clean;
   }
 
   sendPresentationState(session, extra = {}) {
     const profile = this.players.profiles.get(session.aid);
     if (!profile) return;
+    // Older clients validate value's exact key set. Carry the new display field beside it.
+    const { nameplate = '', ...value } = this.presentationFor(session);
     sendSession(session, { t: 'presentation.state', v: 1, profileId: profile.id,
       initialized: this.players.getPresentation(session.aid) !== null,
-      value: this.presentationFor(session),
+      value, nameplate,
       locked: !!this.roomOf(session)?.match && this.roomOf(session).match.phase !== 'INFO_CHECK', ...extra });
   }
 
@@ -1541,12 +1551,13 @@ export class Lobby {
     session.skins = Object.freeze({ ...value.skins });
     session.portraits = Object.freeze({ ...value.portraits });
     session.card = value.card || '';
+    session.nameplate = value.nameplate || '';
     const room = this.roomOf(session);
     const seat = room?.seatOf(session.playerId);
     if (seat) {
       const cardSkin = this.cardSkinFor(session.card, session.skins, session.portraits);
-      const changed = seat.card !== session.card || seat.cardSkin !== cardSkin;
-      seat.skins = session.skins; seat.card = session.card; seat.cardSkin = cardSkin;
+      const changed = seat.card !== session.card || seat.cardSkin !== cardSkin || seat.nameplate !== session.nameplate;
+      seat.skins = session.skins; seat.card = session.card; seat.cardSkin = cardSkin; seat.nameplate = session.nameplate;
       if (changed) this.broadcastState(room);
     }
     // 外观选择不调用 setLoadout，也不会解除技能和模组的本局锁定。
@@ -2115,7 +2126,7 @@ export class Lobby {
     return {
       seat: idx, playerId: session.playerId, name: session.name, isBot: false, ready: false, connected: session.connected, left: false,
       card: session.card || '',
-      cardSkin: this.cardSkinFor(session.card, session.skins, session.portraits),
+      cardSkin: this.cardSkinFor(session.card, session.skins, session.portraits), nameplate: session.nameplate || '',
       loadout: session.loadout || null,
       zhajingLoadout: session.zhajingLoadout || null,
       zhajingOps: session.zhajingOps || null,

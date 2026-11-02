@@ -61,6 +61,13 @@
 }
 .ewheel__panel.has-sprite { background: var(--ewheel-bg) center / 100% 100% no-repeat; }
 .ewheel__panel.has-sprite::before { content: none; }
+.ewheel__head { position: absolute; left: .15rem; right: .15rem; top: -.33rem; height: .4rem; display: flex; align-items: center; justify-content: space-between; gap: .08rem; padding: 0 .06rem; background: rgba(19, 19, 19, .96); border: 1px solid var(--line-2); border-radius: .04rem; }
+.ewheel__groups { display: flex; align-items: center; gap: .08rem; min-width: 0; }
+.ewheel__section { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-md); font-size: max(.11rem, 10px); text-align: right; }
+.ewheel__group { min-width: .6rem; min-height: .3rem; padding: .03rem .08rem; border: 1px solid transparent; border-radius: .03rem; background: transparent; color: var(--text-md); font-size: max(.13rem, 12px); cursor: pointer; touch-action: manipulation; }
+.ewheel__group.is-on { color: var(--mint-400); border-color: var(--mint-700); background: rgba(23, 249, 183, .08); }
+.ewheel__group:focus-visible { outline: 2px solid var(--mint-500); outline-offset: 2px; }
+.ewheel__head .close-button { flex: none; }
 .ewheel__viewport { position: absolute; left: .205rem; top: .19rem; width: 2.71rem; height: 1.78rem; overflow: hidden; touch-action: pan-y; cursor: grab; }
 .ewheel__viewport:active { cursor: grabbing; }
 .ewheel__page {
@@ -87,7 +94,7 @@
 .ewheel__item:disabled { opacity: .45; cursor: default; }
 
 /* pager: ‹ dots › in the strip under the cells */
-.ewheel__dots { position: absolute; left: .15rem; width: 2.82rem; top: 1.99rem; height: .12rem; display: flex; align-items: center; justify-content: center; gap: .1rem; }
+.ewheel__dots { position: absolute; left: .15rem; width: 2.82rem; top: 1.99rem; height: .12rem; display: flex; align-items: center; justify-content: center; gap: .045rem; }
 .ewheel__dot {
   position: relative; width: .11rem; height: .12rem; padding: 0; border: 0; border-radius: .015rem; background: rgba(255, 255, 255, .28);
   transition: background-color var(--t-fast), transform var(--t-fast);
@@ -100,8 +107,8 @@
   background: none; border: 0; color: rgba(255, 255, 255, .6); transition: color var(--t-fast), opacity var(--t-fast);
 }
 .ewheel__nav .icon { width: .18rem; height: .18rem; }
-.ewheel__nav.is-prev { left: .7rem; }
-.ewheel__nav.is-next { right: .7rem; }
+.ewheel__nav.is-prev { left: .25rem; }
+.ewheel__nav.is-next { right: .25rem; }
 .ewheel__nav:hover:not(:disabled) { color: #fff; }
 .ewheel__nav:disabled { opacity: .18; cursor: default; }
 

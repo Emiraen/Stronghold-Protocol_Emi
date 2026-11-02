@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { ProfileReplication } from './profileReplication.js';
+import { LocalProfileIntegrity } from './profileIntegrity.js';
 import { createRecruitmentCache } from './recruitmentDirectory.js';
 import { AccountAuth } from './accountAuth.js';
 import { FriendsService, validateSocialSync, validateSocialAction } from './friends.js';
@@ -150,7 +150,7 @@ function configuredUrl(value, key) {
 
 export function profileConfig(env = process.env) {
   const role = env.SP_SERVER_ROLE || 'main';
-  if (!['main', 'secondary'].includes(role)) throw new Error('SP_SERVER_ROLE 必须是 main 或 secondary');
+  if (role !== 'main') throw new Error('此部署仅允许 main 游戏服务器；南方入口仅提供静态资源');
   const id = env.SP_SERVER_ID || role;
   if (id !== role) throw new Error('SP_SERVER_ID 必须与 SP_SERVER_ROLE 相同');
   const secret = env.SP_PROFILE_SERVICE_SECRET || '';
@@ -158,12 +158,10 @@ export function profileConfig(env = process.env) {
   const serviceUrl = configuredUrl(env.SP_PROFILE_SERVICE_URL, 'SP_PROFILE_SERVICE_URL');
   const mainUrl = configuredUrl(env.SP_MAIN_PUBLIC_URL, 'SP_MAIN_PUBLIC_URL');
   const secondaryUrl = configuredUrl(env.SP_SECONDARY_PUBLIC_URL || 'http://120.24.21.224:3000', 'SP_SECONDARY_PUBLIC_URL');
-  if (role === 'secondary' && (!secret.trim() || !serviceUrl || !mainUrl)) {
-    throw new Error('附服必须配置 SP_PROFILE_SERVICE_SECRET、SP_PROFILE_SERVICE_URL 和 SP_MAIN_PUBLIC_URL');
-  }
   if (secret && !secret.trim()) throw new Error('SP_PROFILE_SERVICE_SECRET 不能只包含空白');
-  const serverIds = (env.SP_GAME_SERVERS || 'main,secondary').split(',').map(s => s.trim());
-  if (!serverIds.includes(id) || new Set(serverIds).size !== serverIds.length || serverIds.some(s => !['main', 'secondary'].includes(s))) {
+  const configuredServers = (env.SP_GAME_SERVERS || 'main').split(',').map(s => s.trim());
+  const serverIds = ['main'];
+  if (!configuredServers.includes(id) || new Set(configuredServers).size !== configuredServers.length || configuredServers.some(s => !['main', 'secondary'].includes(s))) {
     throw new Error('SP_GAME_SERVERS 必须包含当前服且仅包含有效游戏服务器');
   }
   const mainAliases = (env.SP_MAIN_PUBLIC_ALIASES || '').split(',').filter(Boolean).map(s => configuredUrl(s.trim(), 'SP_MAIN_PUBLIC_ALIASES'));
@@ -205,7 +203,7 @@ function createHostLoadSampler() {
 }
 
 export function serverDirectory(config, states = {}) {
-  return { current: config.id, servers: (config.serverIds || ['main', 'secondary']).map((id) => ({
+  return { current: config.id, servers: (config.serverIds || ['main']).map((id) => ({
     id, name: SERVER_NAMES[id], url: id === 'main' ? config.mainUrl || '/' : config.secondaryUrl,
     ...(id === 'main' && config.mainAliases?.length ? { aliases: config.mainAliases } : {}),
     bandwidthMbps: states[id]?.bandwidthMbps || (id === 'main' ? 5 : 3),
@@ -290,7 +288,6 @@ function validate(op, args) {
 }
 
 export function createAuthority({ players, ranked, history }, options = {}) {
-  const sharedWrites = options.sharedWrites !== false;
   const accounts = options.accounts || new AccountAuth();
   let serial = Promise.resolve();
   const checkCardEntitlement = (op, args) => {
@@ -300,17 +297,31 @@ export function createAuthority({ players, ranked, history }, options = {}) {
       throw new Error('名片尚未永久解锁');
     }
   };
-  const regions = createRegionAuthority(options);
+  const regions = createRegionAuthority({ ...options, chatIdentity: (aid, name) => {
+    const player = players.profiles.get(aid);
+    const appearance = player?.presentation?.value || {};
+    const uncertain = authority.integrity?.hasRankUncertainty() === true;
+    const rank = ranked.summary(aid, player?.name || name, false, uncertain ? new Map() : null);
+    return { profileId: player?.id || null, card: appearance.card || '',
+      cardSkin: cardSkinForPresentation(appearance.card, appearance, options.getData?.()),
+      nameplate: appearance.nameplate || '',
+      rank: uncertain ? { ...rank, globalRank: null, rankUnavailable: true, rankingPending: true } : rank };
+  } });
   const friends = new FriendsService({ players, ranked, history, file: options.friendsFile || null,
     isLeaseActive: key => !!regions.current(key),
     cardSkin: (card, presentation) => cardSkinForPresentation(card, presentation, options.getData?.()), log: options.log });
-  const snapshot = (aid) => {
-    authority.replication?.assertIndependent('read', [aid]);
+  const snapshot = (aid, finalReceipt = false) => {
+    let rankingPending;
+    if (finalReceipt && authority.integrity) {
+      rankingPending = authority.integrity.authorizeFinalReceiptSnapshot(aid);
+    } else {
+      authority.integrity?.assertIndependent('read', [aid]);
+      rankingPending = authority.integrity?.hasRankUncertainty() === true;
+    }
     const profile = ranked.profile(aid);
     const rank = profile ? { ...profile } : null;
     if (rank) delete rank.settlements;
     const player = players.profiles.get(aid) || null;
-    const rankingPending = authority.replication?.hasRankUncertainty() === true;
     // Retain known personal fields, but never calculate a global position or grant from uncertain ranks.
     const summary = (authorized) => {
       const value = ranked.summary(aid, player?.name || '', authorized, rankingPending ? new Map() : null);
@@ -323,17 +334,17 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     validate(op, args);
     if (['login', 'read', 'leaderboard', 'historyList', 'historyDetail', 'record', 'loadout',
       'presentation', 'rank.nameCards', 'complete', 'historyRecord'].includes(op)) {
-      authority.replication?.assertIndependent(op, op === 'login' ? [args[0].fixedAid] : args);
+      authority.integrity?.assertIndependent(op, op === 'login' ? [args[0].fixedAid] : args);
     }
     if (!replay) checkCardEntitlement(op, args);
     if (op === 'rank.nameCards') {
       if (args[1] === TRICKSTER_GRANT_MIGRATION) {
-        const cohort = authority.replication?.state.nameCardGrantSnapshots?.[args[1]]
+        const cohort = authority.integrity?.state.nameCardGrantSnapshots?.[args[1]]
           || ranked.nameCardGrantSnapshots[args[1]];
         if (!cohort?.aids.includes(args[0])) throw new Error('玩家不在纪念名片发放名单中');
       }
       if (args[1] !== null || ranked.isCurrentlyRadiant(args[0])
-        || authority.replication?.state.pendingNameCardUnlocks?.[args[0]]?.earned === true) {
+        || authority.integrity?.state.pendingNameCardUnlocks?.[args[0]]?.earned === true) {
         ranked.grantSpecialNameCard(args[0], args[1]);
       }
       await ranked.flush();
@@ -348,29 +359,11 @@ export function createAuthority({ players, ranked, history }, options = {}) {
         return { error: 'AUTH_INVALID', detail: '账户身份已变化，请重新登录' };
       }
       lease.aid = aid;
-      if (authority.replication && !sharedWrites) {
-        if (authority.canGrant && !authority.canGrant(aid, lease.serverId)) {
-          regions.release(args[0]);
-          return { error: 'BAD_TARGET', detail: '本服对局档案仍在写入，请稍后切服' };
-        }
-        const grant = await authority.replication.grant(aid, lease, regions);
-        if (!grant) {
-          regions.release(args[0]);
-          return { error: 'BAD_TARGET', detail: '华南档案尚未同步交接，请稍后重连' };
-        }
-        await authority.replication.transact('record', [aid, lease.name, args[0]], { coordinator: true });
-      } else if (authority.replication) {
-        await authority.replication.transact('record', [aid, lease.name, args[0]]);
-      } else {
-        players.record(aid, lease.name);
-        await players.flush();
-      }
+      players.record(aid, lease.name);
+      await players.flush();
       if (!regions.current(args[0])) return { error: 'BAD_TARGET', detail: '连接租约已失效，请重连' };
       return structuredClone({ aid, lease: { owner: lease.owner, generation: lease.generation,
-        serverId: lease.serverId, epoch: lease.epoch }, ...snapshot(aid),
-        ...(authority.replication ? { profileVersions: authority.replication.state.versions[aid] || {} } : {}),
-        ...(authority.replication && !sharedWrites ? { grant: { aid, token: authority.replication.state.owners[aid].token,
-          versions: authority.replication.state.versions[aid] || {} } } : {}) });
+        serverId: lease.serverId, epoch: lease.epoch }, ...snapshot(aid) });
     }
     if (!options.local && !replay && ['record', 'loadout', 'presentation'].includes(op)) {
       const lease = regions.current(args.at(-1));
@@ -390,7 +383,7 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     if (op === 'record') players.record(...args);
     if (op === 'loadout') players.setLoadout(...args);
     if (op === 'presentation') {
-      // 两服同时初始化默认外观时，保留先持久化的一份。
+      // 初始化默认外观时，保留先持久化的一份。
       if (!args[2] || !players.getPresentation(args[0])?.extraSkinDefaultsInitialized) players.setPresentation(args[0], args[1]);
     }
     if (['record', 'loadout', 'presentation'].includes(op)) {
@@ -418,22 +411,15 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     }
     await history.flush();
     return structuredClone({ result, profiles: [...new Set(job.seats.filter((s) => !s.isBot && aidOK(s.aid)).map((s) => s.aid))]
-      .map((aid) => ({ aid, ...snapshot(aid) })) });
+      .map((aid) => ({ aid, ...snapshot(aid, true) })) });
   }
   const persistNameCardUnlock = async (aid, migration = null) => {
-    if (authority.replication?.state?.owners?.[aid]?.serverId === 'secondary') {
-      await authority.replication.deferNameCardUnlock(aid, migration);
-      return false;
-    }
-    if (authority.replication) {
-      await authority.replication.transact('rank.nameCards', [aid, migration]);
-      await authority.replication.completeDeferredNameCardUnlock(aid, migration);
-    }
-    else await execute('rank.nameCards', [aid, migration]);
+    await execute('rank.nameCards', [aid, migration]);
+    await authority.integrity?.completeDeferredNameCardUnlock(aid, migration);
     return true;
   };
   const reconcileEarnedNameCard = async (aid) => {
-    if (authority.replication?.hasRankUncertainty()) return false;
+    if (authority.integrity?.hasRankUncertainty()) return false;
     let changed = false;
     if (aidOK(aid) && !ranked.hasSpecialNameCard(aid) && ranked.isCurrentlyRadiant(aid)) {
       changed = await persistNameCardUnlock(aid);
@@ -444,7 +430,7 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     return changed;
   };
   const reconcileCurrentRadiants = async () => {
-    authority.replication?.assertIndependent('leaderboard');
+    authority.integrity?.assertIndependent('leaderboard');
     for (const aid of ranked.currentRadiantAids()) {
       if (!ranked.hasSpecialNameCard(aid)) await persistNameCardUnlock(aid);
     }
@@ -456,15 +442,19 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     }
   };
   let deferredNameCardRetry = null;
-  const authority = { regions, friends, adminStateSource: null, replication: null,
+  const authority = { regions, friends, adminStateSource: null, integrity: null, replication: null,
     executeLocal: execute, snapshot,
+    reconcileCompletedRanks() {
+      const next = serial.then(() => reconcileCurrentRadiants());
+      serial = next.catch(() => {});
+      return next;
+    },
     retryDeferredNameCards() {
       if (deferredNameCardRetry) return deferredNameCardRetry;
-      if (!Object.keys(authority.replication?.state.pendingNameCardUnlocks || {}).length) return Promise.resolve();
+      if (!Object.keys(authority.integrity?.state.pendingNameCardUnlocks || {}).length) return Promise.resolve();
       const next = serial.then(async () => {
-        authority.replication?.assertIndependent('leaderboard');
-        for (const [aid, pending] of Object.entries(authority.replication.state.pendingNameCardUnlocks || {})) {
-          if (authority.replication.state.owners[aid]?.serverId === 'secondary') continue;
+        authority.integrity?.assertIndependent('leaderboard');
+        for (const [aid, pending] of Object.entries(authority.integrity.state.pendingNameCardUnlocks || {})) {
           if (pending.earned) await persistNameCardUnlock(aid);
           for (const migration of pending.migrations) await persistNameCardUnlock(aid, migration);
         }
@@ -476,7 +466,7 @@ export function createAuthority({ players, ranked, history }, options = {}) {
     migrateNameCards() {
       const paintbrushNames = arguments[0]?.paintbrushNames;
       const next = serial.then(async () => {
-        authority.replication?.assertIndependent('leaderboard');
+        authority.integrity?.assertIndependent('leaderboard');
         const report = { granted: [], unresolvedNames: [], deferredAids: [] };
         if (Array.isArray(paintbrushNames)) {
           const aids = new Set();
@@ -523,8 +513,8 @@ export function createAuthority({ players, ranked, history }, options = {}) {
           ...(accounts.existingAids?.() || []),
           ...[players, ranked, history].flatMap((store) => [...(store?.profiles?.keys() || [])]),
         ])].filter(aidOK);
-        return authority.replication
-          ? await authority.replication.freezeNameCardGrantSnapshot(TRICKSTER_GRANT_MIGRATION, existing)
+        return authority.integrity
+          ? await authority.integrity.freezeNameCardGrantSnapshot(TRICKSTER_GRANT_MIGRATION, existing)
           : await ranked.freezeNameCardGrantSnapshot(TRICKSTER_GRANT_MIGRATION, existing);
       });
       serial = freeze.catch(() => {});
@@ -573,53 +563,36 @@ export function createAuthority({ players, ranked, history }, options = {}) {
       return authority.adminStateSource.state();
     }
     if (op === 'lease.release') return Promise.resolve(regions.release(args[0]));
-    if (op === 'profile.bootstrap') {
-      if (!authority.replication) return Promise.reject(new Error('档案复制未启用'));
-      return authority.replication.bootstrap(args[0]);
-    }
+    if (op === 'profile.bootstrap') return Promise.reject(new Error('档案复制已移除'));
     if (op === 'region.heartbeat') {
+      if (args[0].serverId !== 'main' || args[0].replication) return Promise.reject(new Error('仅允许本地主服心跳'));
       const value = regions.heartbeat(args[0]);
       const announcement = authority.announcementProvider?.();
-      const withAnnouncement = announcement && (announcement.updatedAt === 0 || args[0].announcementVersion !== announcement.updatedAt)
-        ? { ...value, announcement } : value;
-      if (!args[0].replication) return Promise.resolve(withAnnouncement);
-      if (args[0].serverId !== 'secondary' || !authority.replication) return Promise.reject(new Error('档案复制未启用'));
-      return authority.replication.exchange(args[0].replication, regions)
-        .then(async (replication) => {
-          // exchange has released replication.run; retries enter serial only afterwards.
-          if (!authority.replication.hasRankUncertainty()) await authority.retryDeferredNameCards();
-          return { ...withAnnouncement, replication };
-        });
+      return Promise.resolve(announcement && (announcement.updatedAt === 0 || args[0].announcementVersion !== announcement.updatedAt)
+        ? { ...value, announcement } : value);
     }
     if (op === 'chat.history') return Promise.resolve(regions.chatHistory(...args));
     if (op === 'chat.publish') return Promise.resolve(regions.publish(args[0]));
     if (op === 'login') {
+      if (args[0].serverId !== 'main') return Promise.resolve({ error: 'BAD_TARGET', detail: '仅允许主服账户登录' });
       if (!aidOK(args[0].fixedAid)) return Promise.resolve({ error: 'AUTH_REQUIRED', detail: '请先登录账户' });
       const lease = regions.claim(args[0]);
       if (lease.error) return Promise.resolve(lease);
       args = [{ ...args[0], epoch: lease.epoch }];
     }
     const next = serial.then(async () => {
-      if (authority.replication) await authority.replication.run(() => {});
+      if (authority.integrity) await authority.integrity.run(() => {});
       const aid = op === 'login' ? args[0].fixedAid : args[0];
       if (['login', 'read', 'leaderboard', 'historyList', 'historyDetail', 'record', 'loadout',
         'presentation', 'rank.nameCards', 'complete', 'historyRecord'].includes(op)) {
-        authority.replication?.assertIndependent(op, op === 'login' ? [aid] : args);
+        authority.integrity?.assertIndependent(op, op === 'login' ? [aid] : args);
       }
       if (['login', 'read', 'presentation'].includes(op)) await reconcileEarnedNameCard(aid);
-      // Validate before replication records a mutation; replicas replay accepted facts.
       checkCardEntitlement(op, args);
-      if (authority.replication && ['record', 'loadout', 'presentation', 'complete', 'historyRecord'].includes(op)) {
-        if (['record', 'loadout', 'presentation'].includes(op)) {
-          const lease = regions.current(args.at(-1));
-          if (!lease || lease.aid !== args[0] || (!sharedWrites && lease.serverId !== 'main')) throw new Error('档案写入租约无效');
-        }
-        const value = await authority.replication.transact(op, args);
-        if (op === 'complete' && args[0].ranked) await reconcileCurrentRadiants();
-        return value;
-      }
       const value = await execute(op, args);
-      if (op === 'complete' && args[0].ranked) await reconcileCurrentRadiants();
+      // A bound durable queue first confirms the receipt, then reconciles
+      // entitlements. Its public wait timeout must not poison the real receipt.
+      if (op === 'complete' && args[0].ranked && !authority.integrity?.pendingResults) await reconcileCurrentRadiants();
       return value;
     });
     serial = next.catch(() => {});
@@ -793,7 +766,10 @@ export class PendingResults {
       }, this.requestTimeoutMs ?? 10000);
     });
     let request;
-    try { request = Promise.resolve(this.call(job.op, job.args)); }
+    try {
+      const invoke = () => this.call(job.op, job.args);
+      request = Promise.resolve(this.runActualRequest ? this.runActualRequest(job, invoke) : invoke());
+    }
     catch (error) { request = Promise.reject(error); }
     void request.then((value) => {
       if (!timedOut || job.op !== 'complete') return;
@@ -873,28 +849,29 @@ export class PendingResults {
 }
 
 export function createProfileAccess(config, stores, log) {
+  if (config.role !== 'main' || config.id !== 'main') throw new Error('此部署仅允许 main 游戏服务器');
+  config = { ...config, serverIds: ['main'] };
   if (!['players', 'ranked', 'history'].every((name) => stores[name]?.profiles instanceof Map && stores[name]?.writer)) {
-    throw new Error('两服均必须提供完整 players/ranked/history stores');
+    throw new Error('主服必须提供完整 players/ranked/history stores');
   }
   const dataDir = config.dataDir || dirname(stores.players.file || fileURLToPath(import.meta.url));
   const inMemory = !config.dataDir && ['players', 'ranked', 'history'].every((name) => !stores[name].file);
-  const accounts = config.role === 'main' ? new AccountAuth({
+  const accounts = new AccountAuth({
     file: config.accountFile !== undefined ? config.accountFile : inMemory ? null : join(dataDir, 'account-auth.json'),
-  }) : null;
-  const authority = config.role === 'main' ? createAuthority(stores, { accounts, startupGuard: !!config.secret, getData: config.getData,
-    friendsFile: config.friendsFile !== undefined ? config.friendsFile : inMemory ? null : join(dataDir, 'friends.json'), log }) : null;
-  const local = authority || createAuthority(stores, { local: true, getData: config.getData });
+  });
+  const authority = createAuthority(stores, { accounts, startupGuard: !!config.secret, getData: config.getData,
+    friendsFile: config.friendsFile !== undefined ? config.friendsFile : inMemory ? null : join(dataDir, 'friends.json'), log });
+  const local = authority;
   const announcementStore = createAnnouncementStore({
     file: authority ? config.announcementFile : null,
     initialFile: config.announcementInitialFile,
   });
   if (authority) authority.announcementProvider = () => announcementStore.read();
-  const replication = new ProfileReplication({ role: config.role, stores,
-    file: config.replicationFile !== undefined ? config.replicationFile : inMemory ? null : join(dataDir, `profile-replication-${config.id}.json`),
-    bootstrapFromCopiedStores: config.bootstrapFromCopiedStores === true,
+  const integrity = new LocalProfileIntegrity({ stores,
+    file: config.integrityFile !== undefined ? config.integrityFile : inMemory ? null : join(dataDir, 'profile-integrity-main.json'),
+    legacyFile: config.replicationFile !== undefined ? config.replicationFile : inMemory ? null : join(dataDir, 'profile-replication-main.json'),
     execute: (op, args) => local.executeLocal(op, args, true) });
-  if (authority) authority.replication = replication;
-  else local.replication = replication;
+  authority.integrity = integrity;
   const instance = randomUUID();
   const sessions = new Set();
   const logins = new Set();
@@ -1003,7 +980,7 @@ export function createProfileAccess(config, stores, log) {
     if (access.validSession(session)) finishRecovery(session, true);
     return true;
   };
-  const call = authority ? (op, args) => authority.call(op, args) : (op, args) => remoteCall(config, op, args);
+  const call = (op, args) => authority.call(op, args);
   let socialSyncing = null;
   const socialSeen = new Map();
   const syncFriends = () => {
@@ -1027,7 +1004,7 @@ export function createProfileAccess(config, stores, log) {
   };
   const signatures = new Map();
   const { players, ranked } = stores;
-  // 共享档案的修改在权威顺序执行；附服只复制结果，不再用旧快照独立结算。
+  // 所有档案修改在本地主服权威顺序执行。
   const localCall = async (op, args) => {
     const value = await call(op, args);
     if (!authority) await sync();
@@ -1041,7 +1018,18 @@ export function createProfileAccess(config, stores, log) {
   };
   const pending = new PendingResults(config.pendingFile !== undefined ? config.pendingFile : inMemory ? null
     : join(config.dataDir || dirname(fileURLToPath(import.meta.url)), `profile-pending-${config.id}.json`), localCall,
-    (job, value) => { access.onRecovered?.(job, value); }, log);
+    (job, value) => {
+      if (job.op === 'complete' && job.args[0].ranked && authority) {
+        void authority.reconcileCompletedRanks().catch(error => log.error('[profiles] 结算完成后的名片补发暂未完成', error));
+      }
+      access.onRecovered?.(job, value);
+    }, log);
+  // The durable queue is also the uncertainty fence after a local settlement
+  // fails or is restored without a receipt. Its currently executing first
+  // attempt remains authorized; failed/restored attempts cannot run again.
+  integrity.pendingResults = pending;
+  pending.runActualRequest = (job, invoke) => job.op === 'complete'
+    ? integrity.ownEconomicExecution(job, invoke) : invoke();
   // Runs in the parent even after a sandbox match worker has already been released.
   pending.failed = (entry) => {
     const job = entry.args[0];
@@ -1111,20 +1099,6 @@ export function createProfileAccess(config, stores, log) {
     publishAnnouncement: (value) => call('admin.announcement.publish', [value]),
     kick: (value) => call('admin.kick', [value]),
     kickStatus: (value) => call('admin.kick.status', [value]),
-  };
-  const activeAids = () => {
-    const active = new Set([...sessions].filter((s) => access.validSession(s)).map((s) => s.loginAid));
-    // main 按名字解析出的 aid 可能不是 requestedAid；响应返回前也保护同名档案。
-    for (const login of logins) {
-      active.add(login.aid); active.add(login.session.loginAid);
-      for (const [aid, player] of players.profiles) if (player.name === login.name) active.add(aid);
-    }
-    for (const job of pending.jobs.values()) for (const seat of job.args[0].seats || []) if (!seat.isBot) active.add(seat.aid);
-    for (const aid of replication.quarantinedAids()) active.add(aid);
-    for (const room of lobbySource?.rooms?.values?.() || []) {
-      if (room.matchCtx?.live && !room.matchCtx.ended) for (const seat of room.matchCtx.seats || []) if (!seat.isBot) active.add(seat.aid);
-    }
-    return active;
   };
   const consumeKicks = async (commands) => {
     if (!network || closed) return;
@@ -1211,16 +1185,12 @@ export function createProfileAccess(config, stores, log) {
     try { await exchangeHeartbeat(heartbeatPayload(true)); }
     catch (error) { log.error('[profiles] 运行快照上报失败，不影响登录和档案同步', error); }
   };
-  const sync = async (drain = true) => {
-    // 每一批真正发送时重取身份，不能用进入复制队列前的旧租约续命。
-    const exchange = (request) => exchangeHeartbeat({ ...heartbeatPayload(),
-      ...(request ? { replication: { ...request, sharedWrites: true } } : {}) });
-    if (authority) { await replication.run(() => {}); return exchange(); }
-    if (!replication.initialized) await replication.initialize((request) => call('profile.bootstrap', [request]));
-    return replication.sync(exchange, drain, activeAids);
+  const sync = async () => {
+    await integrity.run(() => {});
+    return exchangeHeartbeat(heartbeatPayload());
   };
   const access = {
-    players, ranked, authority, replication, adminControls, announcement: () => announcementStore.read(), onRecovered: null,
+    players, ranked, authority, integrity, replication: null, adminControls, announcement: () => announcementStore.read(), onRecovered: null,
     syncFriends,
     async friends(session, value) {
       if (!access.validSession(session)) throw new Error('连接租约失效，请重新连接');
@@ -1234,13 +1204,14 @@ export function createProfileAccess(config, stores, log) {
       }
       return result;
     },
-    get initialized() { return replication.initialized; },
+    get initialized() { return integrity.initialized; },
     async ready() {
       await sync(); await pending.drain();
-      if (authority && !replication.hasRankUncertainty()) {
+      if (authority && !integrity.hasRankUncertainty()) {
         const migration = await authority.migrateNameCards();
         if (migration.unresolvedNames.length) log.warn('[profiles] 晴雨同汪补发未找到唯一现有账户', migration.unresolvedNames);
-        if (migration.deferredAids.length) log.warn('[profiles] 晴雨同汪补发等待附服档案交接', migration.deferredAids);
+        if (migration.deferredAids.length) log.warn('[profiles] 晴雨同汪补发等待本地完整性恢复', migration.deferredAids);
+        await authority.retryDeferredNameCards();
       }
       if (!authority) await sync();
       return access;
@@ -1266,14 +1237,14 @@ export function createProfileAccess(config, stores, log) {
       };
     },
     validSession(session) {
-      return replication.initialized && !closed && !session.loginReleased && !session.loginRevoked && session.connected && !!session.loginLease
+      return integrity.initialized && !closed && !session.loginReleased && !session.loginRevoked && session.connected && !!session.loginLease
         && !session.loginInFlight && session.loginLease.generation === session.loginGeneration
         && performance.now() < session.leaseUntil
         && (!authority || !!authority.regions.current(session.loginLease));
     },
     ensureSession(session) {
       if (access.validSession(session)) return Promise.resolve(true);
-      if (!replication.initialized || !renewable(session) || session.loginInFlight) return Promise.resolve(false);
+      if (!integrity.initialized || !renewable(session) || session.loginInFlight) return Promise.resolve(false);
       if (session.leaseRecovery) return session.leaseRecovery.promise;
       const now = performance.now();
       const until = Math.min(now + RECOVERY_MS, (session.leaseUntil || 0) + RECOVERY_MS);
@@ -1293,13 +1264,13 @@ export function createProfileAccess(config, stores, log) {
       return row.promise;
     },
     async authenticate(name, auth) {
-      if (closed || !replication.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
+      if (closed || !integrity.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
       return call('account.authenticate', [name, auth ?? null]);
     },
     async login(session, name, requestedAid, socket, identityLocked = false, authenticatedAid = null) {
       if (!aidOK(authenticatedAid)) return { error: 'AUTH_REQUIRED', detail: '请先登录账户' };
       if (identityLocked && session.profileBound && session.aid !== authenticatedAid) return { error: 'AUTH_INVALID' };
-      if (!replication.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
+      if (!integrity.initialized) return { error: 'BAD_TARGET', detail: '本服档案正在初始化，请稍后重连' };
       if (session.loginReleased || session.loginRevoked) return { error: 'BAD_TARGET', detail: '连接身份已撤销，请重连' };
       const generation = session.loginGeneration = (session.loginGeneration || 0) + 1;
       session.loginOwner ||= `${instance}:${randomUUID()}`;
@@ -1324,18 +1295,14 @@ export function createProfileAccess(config, stores, log) {
           check();
           // An unrelated durable job may legitimately await a 10-second receipt; it cannot own this login's 7-second budget.
           if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
-          replication.assertIndependent('login', [key.fixedAid]);
+          integrity.assertIndependent('login', [key.fixedAid]);
           // Flush one ordered batch for the old handoff; unrelated moving history cannot own the login deadline.
           await sync(false); check();
           if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
           // Old single-writer mutations and release handoffs must be confirmed, never skipped or overwritten.
           const independent = () => {
             if (pending.affectsAid(key.fixedAid)) throw pending.blockedError();
-            replication.assertIndependent('login', [key.fixedAid]);
-            if (replication.state.pending.some(patch => patch.aid === key.fixedAid)
-              || replication.state.releases.some(release => release.aid === key.fixedAid)) {
-              throw new Error('档案交接尚未确认，请稍后重连');
-            }
+            integrity.assertIndependent('login', [key.fixedAid]);
           };
           independent();
           session.loginHandoffLease = null;
@@ -1345,32 +1312,6 @@ export function createProfileAccess(config, stores, log) {
           if (data.aid !== key.fixedAid) throw new Error('登录档案身份不匹配');
           login.aid = data.aid;
           independent();
-          if (!authority) {
-            // Stop once this committed login receipt is materialized, not at a moving global head.
-            const versions = data.profileVersions ?? data.grant?.versions;
-            const fields = ['identity', 'loadout', 'presentation', 'rank', 'history'];
-            if (!versions || typeof versions !== 'object' || Array.isArray(versions)
-              || Object.entries(versions).some(([field, version]) => !fields.includes(field)
-                || !Number.isSafeInteger(version) || version < 0)) {
-              throw new Error('登录回执缺少已确认的档案版本');
-            }
-            const synchronized = () => players.profiles.has(data.aid)
-              && fields.every(field => replication.version(data.aid, field) >= (versions[field] || 0));
-            while (!synchronized()) {
-              check();
-              const cursor = replication.state.cursor;
-              await sync(false); check();
-              independent();
-              if (!synchronized() && replication.state.cursor === cursor) {
-                throw new Error('登录档案版本尚未同步，请稍后重连');
-              }
-            }
-            if (data.grant) {
-              if (data.grant.aid !== data.aid) throw new Error('登录档案授权身份不匹配');
-              await replication.acceptGrant(data.grant); check();
-            }
-            independent();
-          }
           if (performance.now() >= started + LEASE_MS - 1000) throw new Error('连接租约已失效，请重连');
           if (!data.lease || data.lease.owner !== key.owner || data.lease.generation !== generation
             || data.lease.serverId !== config.id || typeof data.lease.epoch !== 'string') throw new Error('连接租约回执不匹配');
@@ -1484,28 +1425,28 @@ export function createProfileAccess(config, stores, log) {
     async canSelectNameCard(session, card) {
       if (!isSpecialNameCard(card)) return true;
       if (!access.validSession(session)) return false;
-      // Always ask main: only its replicated aid-bound entitlement can authorize a selection.
+      // Read the local aid-bound entitlement under the current authority lease.
       const aid = session.aid;
       const snapshot = await call('read', [aid]);
       return session.aid === aid && access.validSession(session) && canUseSpecialNameCard(snapshot.summary, card);
     },
     leaderboard() {
-      replication.assertIndependent('leaderboard');
+      integrity.assertIndependent('leaderboard');
       return Promise.resolve(publicLeaderboard(ranked, players, config.getData?.() || null));
     },
     history: {
       mizukiCognition(aid) {
-        replication.assertIndependent('historyList', [aid]);
+        integrity.assertIndependent('historyList', [aid]);
         if (pending.affectsAid(aid, { ignoreBank: true })) throw pending.blockedError();
         return stores.history.mizukiCognition(aid);
       },
       mizukiBank(aid) {
-        replication.assertIndependent('historyList', [aid]);
+        integrity.assertIndependent('historyList', [aid]);
         if (pending.affectsAid(aid, { ignoreBank: true })) throw pending.blockedError();
         return pending.mizukiBank(aid, stores.history.mizukiBank(aid));
       },
       updateMizukiBank(aid, account) {
-        if (!replication.initialized) throw new Error('档案尚未初始化');
+        if (!integrity.initialized) throw new Error('档案尚未初始化');
         // The match may commit only after submit has durably queued this aid's
         // account update. Later authority/replication failures keep the job for retry.
         return pending.submit('historyRecord', [{ matchId: randomUUID().replaceAll('-', ''),
@@ -1513,28 +1454,28 @@ export function createProfileAccess(config, stores, log) {
           bankUpdates: [{ aid, account }] }], { requireQueued: true });
       },
       mizukiEndingUnlocks(aid) {
-        replication.assertIndependent('historyList', [aid]);
+        integrity.assertIndependent('historyList', [aid]);
         if (pending.affectsAid(aid, { ignoreBank: true })) throw pending.blockedError();
         return stores.history.mizukiEndingUnlocks(aid);
       },
       list(aid) {
-        replication.assertIndependent('historyList', [aid]);
+        integrity.assertIndependent('historyList', [aid]);
         if (pending.affectsAid(aid)) return Promise.reject(pending.blockedError());
         return Promise.resolve(stores.history.list(aid));
       },
       detail(aid, matchId, playerId) {
-        replication.assertIndependent('historyDetail', [aid, matchId]);
+        integrity.assertIndependent('historyDetail', [aid, matchId]);
         if (pending.affectsAid(aid)) return Promise.reject(pending.blockedError());
         return Promise.resolve(stores.history.detail(aid, matchId, playerId));
       },
       record(value) {
-        if (!replication.initialized) return Promise.reject(new Error('档案尚未初始化'));
+        if (!integrity.initialized) return Promise.reject(new Error('档案尚未初始化'));
         return pending.submit('historyRecord', [value]);
       },
       flush() { return stores.history?.flush?.(); },
     },
     completeMatch(job) {
-      if (!replication.initialized) return Promise.reject(new Error('档案尚未初始化'));
+      if (!integrity.initialized) return Promise.reject(new Error('档案尚未初始化'));
       return pending.submit('complete', [job]);
     },
     async drain() {
@@ -1546,18 +1487,18 @@ export function createProfileAccess(config, stores, log) {
     start(registry, changed) {
       if (access.heartbeatTimer) return;
       void access.ready().catch((error) => log.error('[profiles] 档案初始化失败，心跳将重试', error));
-      let heartbeating = false, syncing = false, reporting = false, polling = false;
+      let heartbeating = false, retrying = false, reporting = false, polling = false;
       const report = async () => {
         if (reporting || closed || !network) return;
         reporting = true;
         try { await reportRuntime(); } finally { reporting = false; }
       };
-      const replicate = async () => {
-        if (syncing || closed) return;
-        syncing = true;
-        try { await sync(false); pending.start(); }
-        catch (error) { log.error('[profiles] 档案同步失败，保留复制待办', error); }
-        finally { syncing = false; }
+      const retryPending = async () => {
+        if (retrying || closed) return;
+        retrying = true;
+        try { await integrity.run(() => {}); pending.start(); }
+        catch (error) { log.error('[profiles] 本地档案恢复失败，保留待办', error); }
+        finally { retrying = false; }
       };
       const heartbeat = async () => {
         if (heartbeating || closed || !network) return;
@@ -1573,7 +1514,7 @@ export function createProfileAccess(config, stores, log) {
       };
       void heartbeat(); void report();
       access.heartbeatTimer = setInterval(() => {
-        void heartbeat(); void replicate(); void report();
+        void heartbeat(); void retryPending(); void report();
         optional('好友状态同步暂不可用，将自动重试', syncFriends);
         // Also prune stale remote invitations when the profile bridge is unavailable.
         optional('招募展示广播暂不可用', () => lobbySource?.broadcastRecruitment());

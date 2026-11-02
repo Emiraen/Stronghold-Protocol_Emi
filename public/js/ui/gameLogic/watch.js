@@ -1,9 +1,16 @@
 import { t as trA } from '../../../../shared/i18n.js';
+import { isGameEmoteId } from '../../../../shared/chatStickers.js';
 // 从 A 原正文按职责拆分；保持原有行为。
 import { isObj, sortedPlayers } from './shared.js';
 import { isCombatPhase } from './phases.js';
 
 export const ownFieldId = (playerId) => `n:${playerId}`;
+
+export function activeSpectatorDirectory(message) {
+  const items = Array.isArray(message?.items) ? message.items.filter((item) => item?.serverId === 'main') : [];
+  const unavailable = Array.isArray(message?.unavailable) ? message.unavailable.filter((id) => id === 'main') : [];
+  return { items, unavailable };
+}
 
 /** Keep the original emote protocol; only battle teammates share the battlefield overlay. */
 export function battleEmotes(emotes, pub, myId, now, ttl = 6000) {
@@ -19,13 +26,15 @@ export function battleEmotes(emotes, pub, myId, now, ttl = 6000) {
   }).map(e => ({ ...e, name: players.get(e.playerId).name || trA('队友') }));
 }
 
-/** Only live match text has a local arrival marker; reconnect history must not scroll across the field. */
+/** Only live match chat has a local arrival marker; reconnect history must not scroll across the field. */
 export function battleChatDanmaku(items, pub, myId, now, ttl = 6000) {
   const messages = (Array.isArray(items) ? items : []).filter(item => item?.channel === 'match'
-    && item.kind === 'text' && typeof item.text === 'string' && item.text.trim()
+    && (item.kind === 'text' && typeof item.text === 'string' && item.text.trim()
+      || item.kind === 'sticker' && isGameEmoteId(item.sticker))
     && Number.isFinite(item.danmakuAt) && Number.isInteger(item.danmakuSeq));
   return battleEmotes(messages.map(item => ({
-    seq: item.danmakuSeq, playerId: item.playerId, kind: 'text', text: item.text,
+    seq: item.danmakuSeq, playerId: item.playerId, kind: item.kind,
+    ...(item.kind === 'sticker' ? { id: item.sticker } : { text: item.text }),
     at: item.danmakuAt, messageId: item.id,
   })), pub, myId, now, ttl);
 }

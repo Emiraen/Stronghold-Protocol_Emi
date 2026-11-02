@@ -29,6 +29,7 @@ import { RoomFriendsButton, RoomPlayerMenu } from '../ui/friends.js';
 import { data, useData } from '../data.js';
 import { CardPicker, cardOperators, seatAvatar, seatPortrait, useSpecialNameCardCache, isSpecialCardPortrait } from '../ui/seatArt.js';
 import { skinsStore, setPlayerCard } from '../ui/skins.js';
+import { Nameplate, NameplatePicker } from '../ui/nameplates.js';
 import { ProtocolScene } from '../ui/protocolScene.js';
 import { usePresence, useRise, afterLeave } from '../ui/transitions.js';
 import { SettingsModal } from '../ui/settings.js';
@@ -153,7 +154,7 @@ function RankPyramidBadge({ view }) {
   return html`<div class="rseat__pyramid"><${RankPyramidGraphic} view=${view} mini=${true} /></div>`;
 }
 
-function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, onRemoveBot, onKick, onCancelReady, portraits, onPickCard, onInvite, onPlayer, pyramid }) {
+function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, onRemoveBot, onKick, onCancelReady, portraits, onPickCard, onEditNameplate, myNameplate, onInvite, onPlayer, pyramid }) {
   const [bad, setBad] = useState(null);
   const flash = useRise(!!seat && (seat.ready || seat.isBot || seat.playerId === room.hostId));
   if (!seat) {
@@ -191,12 +192,14 @@ function SeatCard({ seat, index, room, facts, myId, busy, matching, onAddBot, on
     </div>
     ${seat.isBot && facts.isHost ? html`<button type="button" class="rseat__kick" disabled=${!!busy} onClick=${() => onRemoveBot(index)} title=${trA("移除该 AI 队友")} aria-label=${trA("移除 AI 队友")}><${Icon} name="robot" /><${Icon} name="close" /></button>` : null}
     ${!seat.isBot && !isMe && facts.isHost ? html`<button type="button" class="rseat__kick" disabled=${!!busy || matching || !!room.matchCandidate} onClick=${() => onKick(index, seat.name, seat.playerId)} title=${trA("移出该博士")} aria-label=${trA("移出该博士")}><${Icon} name="user" /><${Icon} name="close" /></button>` : null}
-    <div class="rseat__plate">
+    <${Nameplate} as=${canPick ? 'button' : 'div'} type=${canPick ? 'button' : undefined}
+      class=${`rseat__plate${canPick ? ' rseat__plate--editable' : ''}`} nameplate=${isMe ? myNameplate : seat.nameplate} variant="short"
+      onClick=${canPick ? onEditNameplate : undefined} aria-label=${canPick ? trA('编辑展示栏') : undefined} title=${canPick ? trA('编辑展示栏') : undefined}>
       ${isMe ? html`<span class="rseat__me" title=${trA("你")}><${Icon} name="user" /></span>` : null}
       <${AvatarFrame} size="sm" src=${avatarSrc} fallbackIcon="user" name=${seat.name} seat=${index} bot=${seat.isBot} self=${isMe} />
       <span class="rseat__who">${!isMe && !seat.isBot && seat.profileId ? html`<button type="button" class="rseat__name rseat__name-button" onClick=${event => onPlayer(seat, event.currentTarget.getBoundingClientRect())}>${seat.name || trA('博士')}</button>` : html`<b class="rseat__name">${seat.name || trA("博士")}</b>`}</span>
       <small class="rseat__doc">${seat.isBot ? 'AUTONOMOUS UNIT' : `DOCTOR #${doctorNo(seat.playerId)}`}</small>
-    </div>
+    <//>
     ${!isEntertainmentRoom(room) && room.ranked === true ? html`<div class="rseat__rank">${seat.isBot ? html`<span>${trA("人机 · 不参与排位")}</span>` : html`<${RankBadge} rank=${seat.rank} size="sm" />`}</div>` : null}
     ${isEntertainmentRoom(room) && !seat.isBot && !isMe && facts.isHost && seat.ready ? html`<button type="button" class="rseat__cancel" disabled=${!!busy} onClick=${() => onCancelReady(index, seat.playerId)}>取消准备</button>` : null}
   </article>`;
@@ -251,9 +254,11 @@ export function RoomScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [optsOpen, setOptsOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [editingNameplate, setEditingNameplate] = useState(false);
   const [since] = useState(() => Date.now());
   const [clockTick, tick] = useState(0);
   const myCard = useStore((s) => s.card, Object.is, skinsStore);
+  const myNameplate = useStore((s) => s.nameplate, Object.is, skinsStore);
   const protocol = usePresence(protocolOpen);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 1000); return () => clearInterval(id); }, []);
   useData('chess', 'assets', 'backups');
@@ -380,7 +385,7 @@ export function RoomScreen() {
       ${facts.seats.map((s, i) => html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
         myId=${me.playerId} busy=${busy} matching=${matching} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick}
         pyramid=${showPyramids && s && !s.isBot ? rankPyramidMiniView(s.rankPyramid ?? (s.playerId === me.playerId ? rank?.rankPyramid : null)) : null}
-        portraits=${portraits} onPickCard=${() => setPicking(true)} onInvite=${invite}
+        portraits=${portraits} onPickCard=${() => setPicking(true)} onEditNameplate=${() => setEditingNameplate(true)} myNameplate=${myNameplate} onInvite=${invite}
         onPlayer=${(player, anchor) => setPlayerMenu({ player, anchor })}
         onCancelReady=${(seat, playerId) => run('cancelReady', () => net.request('room.cancelReady', { seat, playerId }))} />`)}
       ${coop ? null : html`<aside class="solo-brief rs-brief brackets">
@@ -427,6 +432,7 @@ export function RoomScreen() {
     ${protocol[0] ? html`<${RoomProtocol} room=${room} onClose=${() => setProtocolOpen(false)} busy=${busy} leaving=${protocol[1]} onPick=${async d => { if (await setDifficulty(d)) setProtocolOpen(false); }} />` : null}
     ${picking ? html`<${CardPicker} current=${myCard} list=${cardList} m=${m} online=${online}
       loading=${!m || !data.get('chess') || !data.get('backups')} onPick=${pickCard} onClose=${() => setPicking(false)} />` : null}
+    ${editingNameplate ? html`<${NameplatePicker} name=${me.name} rank=${rank?.rank?.label} onClose=${() => setEditingNameplate(false)} />` : null}
     <${SettingsModal} open=${settingsOpen} onClose=${() => setSettingsOpen(false)} />
     ${playerMenu && !room.inMatch ? html`<${RoomPlayerMenu} player=${playerMenu.player} anchor=${playerMenu.anchor} onClose=${() => setPlayerMenu(null)} />` : null}
   </div>`;

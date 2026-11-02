@@ -670,8 +670,6 @@ export class UnitView {
       if (req === this._spineReq) { this._spineBusy = false; this._stuckAt = 0; }
       if (this.destroyed || req !== this._spineReq) { release(); return; }
       this._cancelSpineWait = null;
-      this._spineTries = 0;
-      this._retryAt = 0;
       let actor = null;
       try {
         actor = new SpineActor(data, entry);
@@ -682,8 +680,12 @@ export class UnitView {
       } catch (err) {
         console.warn('[render] spine build failed', id, err?.message || err);
         release();
+        if (entry.fallback) { this._acquireSpine(entry.fallback, id, retry); return; }
+        if (!this.actor && this._spineTries < SPINE_RETRY_MS.length) this._retryAt = nowMs() + SPINE_RETRY_MS[this._spineTries++];
         return;
       }
+      this._spineTries = 0;
+      this._retryAt = 0;
       // a Front ⇄ Back swap (setDir, or knocked out / standing again: _syncModel) replaces the previous model in place:
       // no fallback diamond in between; a deploy clip it was playing goes on on the new model (an operator facing UP
       // redeployed: its Back model takes over from the Front model it lay down with)

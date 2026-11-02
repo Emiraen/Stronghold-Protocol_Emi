@@ -1,10 +1,12 @@
 // Public share credentials are short-lived and scoped to these published files.
 // Resource bytes travel directly from the chosen source to the player's browser.
+import { PRELOAD_DELTAS, preloadDelta, preloadDeltaPack } from './preloadDeltas.js';
 export const PRELOAD_CDN_ORIGIN = 'https://sources.emiraen.cfd';
 export const PRELOAD_CLOUD_API = 'https://bj40593.api.aliyunfile.com';
 export const PRELOAD_CLOUD_DATA = 'https://5180167180b0486ea77bda19b2d8e7a7.data.aliyunfile.com';
 const SHARE_ID = '1xfF9z8duTt';
 export const PRELOAD_FILES = Object.freeze({
+  ...Object.fromEntries(PRELOAD_DELTAS.map(pack => [pack.name, pack])),
   'resource-required-lossless.sprpack': { fileId: '6ae6d34e8415d29fb7a84a17ac610ef70db4b6a8', bytes: 1287414277, sha1: '8e371fbecb3f8ddab3fe2fae451a4dd2f5ccd003' },
   'resource-optional.sprpack': { fileId: '6ae6d3aa5200a4d5e18e41baa539a2f5cfd14c5c', bytes: 765238697, sha1: 'ef14ee473a8d460b3746ccb48b5e4c57920b7b50' },
   'resource-voice.sprpack': { fileId: '6ae6d34e4142ad88c973454f89cbb0c190e8412f', bytes: 160584738, sha1: '2e08529205bed8f2a6b601023635120a4f76eae3' },
@@ -54,14 +56,31 @@ async function downloadLink(name, signal) {
   if (!cached?.promise) {
     cached = {};
     cached.promise = (async () => {
+      let fileId = file.fileId;
+      if (!fileId && file.discover) {
+        // Resolve additions inside the existing public share; keep the large,
+        // already-published base files and their signed metadata untouched.
+        let marker = '', pages = 0;
+        const matches = [];
+        do {
+          const listing = await api('/v2/file/list', { share_id: SHARE_ID,
+            parent_file_id: file.parentFileId, limit: 100, marker }, await shareToken());
+          if (!Array.isArray(listing.items)) throw new Error('企业网盘增量目录不可用。');
+          matches.push(...listing.items.filter(row => row.type === 'file' && row.name === name));
+          marker = listing.next_marker || '';
+          if (++pages > 100) throw new Error('企业网盘增量目录过大。');
+        } while (marker);
+        if (matches.length !== 1 || typeof matches[0].file_id !== 'string') throw new Error('企业网盘增量尚未上传。');
+        fileId = matches[0].file_id;
+      }
       let value;
       for (let attempt = 0; attempt < 2; attempt++) {
-        try { value = await api('/v2/file/get_download_url', { share_id: SHARE_ID, file_id: file.fileId }, await shareToken()); break; }
+        try { value = await api('/v2/file/get_download_url', { share_id: SHARE_ID, file_id: fileId }, await shareToken()); break; }
         catch (error) { if (attempt || ![401, 403].includes(error.status)) throw error; token = undefined; }
       }
       const url = new URL(value.url);
-      if (url.origin !== PRELOAD_CLOUD_API || value.file_id !== file.fileId || value.size !== file.bytes ||
-          value.content_hash_name !== 'sha1' || value.content_hash?.toLowerCase() !== file.sha1) throw new Error('企业网盘资源版本与当前资源包不符。');
+      if (url.origin !== PRELOAD_CLOUD_API || value.file_id !== fileId || value.size !== file.bytes ||
+          (file.sha1 && (value.content_hash_name !== 'sha1' || value.content_hash?.toLowerCase() !== file.sha1))) throw new Error('企业网盘资源版本与当前资源包不符。');
       cached.url = url.href;
       cached.until = Date.parse(value.expiration) || Date.now() + 60000;
       return cached.url;
@@ -139,7 +158,7 @@ async function transfer(name, path, options) {
         failure = error;
         report(options.onProgress, 0, options.end === undefined ? file.bytes : options.end - options.start + 1);
         if (cloud && !attempt && [401, 403].includes(error.status)) { links.delete(name); continue; }
-        if (cloud) cloudRetryAt = Date.now() + 30000;
+        if (cloud && !file.discover) cloudRetryAt = Date.now() + 30000;
         break;
       }
     }
@@ -164,4 +183,17 @@ export async function fetchPreloadManifest(path, options = {}) {
   const hex = [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('');
   if (hex !== PRELOAD_FILES[name].sha1) throw new Error('资源清单内容与发布版本不符。');
   return new Response(bytes, { headers: { 'Content-Type': name.endsWith('.gz') ? 'application/gzip' : 'application/json' } });
+}
+
+export async function fetchPreloadDeltaResource(item, start = 0, options = {}) {
+  const row = preloadDelta(item);
+  if (!row || !Number.isSafeInteger(start) || start < 0 || start >= row.bytes) throw new Error('增量资源区间无效。');
+  const pack = preloadDeltaPack(item);
+  const { bytes } = await transfer(pack.name, '/assets/' + pack.name, {
+    ...options, start: row.offset + start, end: row.offset + row.bytes - 1,
+  });
+  return new Response(bytes, { status: start ? 206 : 200, headers: {
+    'Content-Type': row.type, 'Content-Length': String(bytes.length),
+    ...(start ? { 'Content-Range': `bytes ${start}-${row.bytes - 1}/${row.bytes}` } : {}),
+  } });
 }

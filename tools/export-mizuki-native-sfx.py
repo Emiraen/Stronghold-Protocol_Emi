@@ -182,9 +182,8 @@ def finalize(selection, records):
             return [rewrite(child) for child in value]
         return value
 
-    decoded_clips = sum(record.get('kind') == 'PCM_WAV' for record in files.values())
     report = {**selection['report'], 'playableResources': len(assets),
-              'nativeDecodedClips': decoded_clips, 'indexedFiles': len(files), 'missing': missing}
+              'nativeDecodedClips': len(records), 'indexedFiles': len(files), 'missing': missing}
     manifest = {'schema': 1, 'format': 'mizuki-native-sfx',
         'source': {**selection['source'], 'nativeClient': read(TASK / 'client-sfx-containers.json')['client'],
                    'quality': 'Existing SFX preserved. Missing clips decoded from exact native containers without lossy encoding; original encoded resources retained.'},
@@ -197,7 +196,7 @@ def finalize(selection, records):
         print(json.dumps({'incomplete': missing, 'playableResources': len(assets)}, ensure_ascii=False), flush=True)
         return 1
     save(DEST / 'manifest.json', manifest)
-    print(json.dumps({'complete': True, 'playableResources': len(assets), 'nativeDecodedClips': decoded_clips,
+    print(json.dumps({'complete': True, 'playableResources': len(assets), 'nativeDecodedClips': len(records),
                       'indexedFiles': len(files), 'mappedUnits': len(manifest['audio']['sfx']['units'])}), flush=True)
     return 0
 

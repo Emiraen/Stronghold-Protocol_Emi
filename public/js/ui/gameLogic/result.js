@@ -1,6 +1,30 @@
 // 从 A 原正文按职责拆分；保持原有行为。
 import { isObj, int, sortedPlayers } from './shared.js';
 
+export function resultChessRecord(unit, getChess, chessList = []) {
+  if (!isObj(unit) || unit.kind === 'token') return null;
+  const direct = typeof getChess === 'function' ? getChess(unit.id) : null;
+  if (direct) return direct;
+  const charId = typeof unit.charId === 'string' ? unit.charId
+    : typeof unit.id === 'string' && /^char_[A-Za-z0-9_]+$/.test(unit.id) ? unit.id : null;
+  if (!charId) return null;
+  const source = Array.isArray(chessList)
+    ? chessList.find((rec) => rec?.charId === charId && !rec.isGolden && !rec.isHidden && !rec.isDiy)
+    : null;
+  return {
+    ...(source || {}),
+    chessId: source?.chessId || unit.id,
+    charId,
+    name: unit.name || source?.name || charId,
+    tier: Number.isFinite(unit.tier) ? unit.tier : source?.tier,
+    isGolden: unit.golden ?? source?.isGolden ?? false,
+    ...(unit.avatarId || unit.portraitId ? { assets: {
+      ...(unit.avatarId ? { avatar: unit.avatarId } : {}),
+      ...(unit.portraitId ? { portrait: unit.portraitId } : {}),
+    } } : {}),
+  };
+}
+
 export function normalizeResult(res, pub) {
   const r = isObj(res) ? res : {};
   const pubPlayers = new Map(sortedPlayers(pub).map((p) => [p.playerId, p]));
@@ -16,11 +40,14 @@ export function normalizeResult(res, pub) {
       playerId: p.playerId,
       seat: int(p.seat, int(pp.seat, 0)),
       name: p.name || pp.name || '博士',
+      nameplate: p.nameplate ?? pp.nameplate ?? '',
       isBot: !!(p.isBot ?? pp.isBot),
       alive,
       lp: teamLp != null ? (alive === false ? 0 : Math.max(0, teamLp)) : ownLp,
       lpShared: teamLp != null,
       bandId: p.bandId ?? pp.bandId ?? null,
+      bandName: p.bandName ?? pp.bandName ?? null,
+      bandIconId: p.bandIconId ?? pp.bandIconId ?? null,
       roundsPassed: Number.isFinite(p.roundsPassed) ? p.roundsPassed : (Number.isFinite(r.roundsPassed) ? r.roundsPassed : 0),
       title,
       lineup: (Array.isArray(p.lineup) ? p.lineup : Array.isArray(p.board) ? p.board : []).filter(isObj).slice(0, 12),

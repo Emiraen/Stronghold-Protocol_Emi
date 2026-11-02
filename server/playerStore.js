@@ -2,8 +2,7 @@
 import { randomBytes } from 'node:crypto';
 import { sanitizeName } from './net.js';
 import { isLoadoutEntries, isLoadoutOps, isPresentation } from '../shared/protocol.js';
-import { readFileSync } from 'node:fs';
-import { StoreWriter } from './historyStore.js';
+import { ProfileRecordWriter, loadProfileDocument } from './profileRecordStore.js';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,11 +18,11 @@ export class PlayerStore {
     this.log = log;
     // Internal only: never serialize this Map or expose its aid keys through the public list.
     this.profiles = new Map();
-    this.writer = new StoreWriter(this.file, () => ({ version: 1,
-      profiles: [...this.profiles.values()] }), this.log, 'players');
+    this.writer = new ProfileRecordWriter({ file: this.file,
+      record: aid => this.profiles.get(aid) || null, log: this.log, label: 'players' });
     if (!this.file) return;
     try {
-      const data = JSON.parse(readFileSync(this.file, 'utf8'));
+      const data = loadProfileDocument(this.file);
       if (!Array.isArray(data?.profiles)) return;
       const ids = new Set();
       for (const value of data.profiles) {
@@ -46,6 +45,7 @@ export class PlayerStore {
         });
       }
     } catch (error) {
+      if (error.code === 'PROFILE_RECORD_INTEGRITY') throw error;
       if (error.code !== 'ENOENT') this.log?.warn?.(`[players] cannot read ${this.file}: ${error.message}`);
     }
   }
@@ -108,7 +108,7 @@ export class PlayerStore {
       profile.name = nextName;
       profile.lastSeen = Math.max(profile.lastSeen, at);
     }
-    this.writer.save();
+    this.writer.save(aid);
     return profile.id;
   }
 
@@ -123,11 +123,11 @@ export class PlayerStore {
     const previous = profile.presentation;
     // Older clients send only skins/voice. Preserve cloud appearance fields they do not know.
     const merged = { ...value.value };
-    for (const key of ['portraits', 'card']) {
+    for (const key of ['portraits', 'card', 'nameplate']) {
       if (merged[key] === undefined && previous?.value?.[key] !== undefined) merged[key] = previous.value[key];
     }
     profile.presentation = structuredClone({ ...value, value: merged });
-    if (!this.save()) {
+    if (!this.save(aid)) {
       if (previous === undefined) delete profile.presentation;
       else profile.presentation = previous;
       throw new Error('presentation save failed');
@@ -149,7 +149,7 @@ export class PlayerStore {
     profile.loadout = value.scope === 'zhajing'
       ? { ...(previous || { v: 1, entries: {}, ops: {}, normalInitialized: false }), zhajing: next }
       : { ...next, ...(previous?.zhajing ? { zhajing: previous.zhajing } : {}) };
-    if (!this.save()) {
+    if (!this.save(aid)) {
       if (previous === undefined) delete profile.loadout;
       else profile.loadout = previous;
       throw new Error('loadout save failed');
@@ -158,7 +158,7 @@ export class PlayerStore {
 
   /** Import historical identities once on startup, merging ranked/history by aid. */
   mergeExisting(ranked, history) {
-    let changed = false;
+    const changed = new Set();
     const merge = (aid, name, times) => {
       if (!validAid(aid)) return;
       const dates = times.filter(validTime);
@@ -170,7 +170,7 @@ export class PlayerStore {
       if (!profile) {
         profile = { id: newId(), aid, name: nameOf(name), firstSeen: first, lastSeen: last };
         this.profiles.set(aid, profile);
-        changed = true;
+        changed.add(aid);
       } else {
         const oldFirst = profile.firstSeen;
         const oldLast = profile.lastSeen;
@@ -178,14 +178,14 @@ export class PlayerStore {
         profile.firstSeen = Math.min(profile.firstSeen, first);
         profile.lastSeen = Math.max(profile.lastSeen, last);
         if (!profile.name && name) profile.name = nameOf(name);
-        if (profile.firstSeen !== oldFirst || profile.lastSeen !== oldLast || profile.name !== oldName) changed = true;
+        if (profile.firstSeen !== oldFirst || profile.lastSeen !== oldLast || profile.name !== oldName) changed.add(aid);
       }
     };
     for (const [aid, profile] of ranked?.profiles || []) merge(aid, profile?.name, [profile?.lastActive]);
     for (const [aid, profile] of history?.profiles || []) {
       merge(aid, profile?.name, Array.isArray(profile?.items) ? profile.items.map((item) => item?.at) : []);
     }
-    if (changed) this.writer.save();
+    if (changed.size) this.writer.save(changed);
   }
 
   /** Safe to serialize: no aid, socket token, network address, or other private fields. */
@@ -198,7 +198,7 @@ export class PlayerStore {
     return [...this.profiles.values()].map(({ id, aid, name, firstSeen, lastSeen }) => ({ id, aid, name, firstSeen, lastSeen }));
   }
 
-  save() { return this.writer.saveSync(); }
+  save(aids = []) { return this.writer.saveSync(aids); }
 
   flush() { return this.writer.flush(); }
 }

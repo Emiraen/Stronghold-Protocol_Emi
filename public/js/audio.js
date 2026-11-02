@@ -38,6 +38,9 @@ import { PHASE } from '../../shared/constants.js';
 import { mediaUrl } from './media.js';
 import { cachedFetch, resourceCache } from './resourceCache.js';
 import { voiceLangFor } from './voicePrefs.js';
+import { UI_CLICK_SOUNDS } from '../../shared/uiClickSounds.js';
+import { installUiClickSfx } from './uiClickSfx.js';
+import { v79EffectRole } from './v79Audio.js';
 
 const MAX_VOICES = 8;
 const UNIT_COOLDOWN_MS = 160;
@@ -376,6 +379,10 @@ export class AudioManager {
       // (pageshow / focus) resumes it (plus the next gesture, below)
       this.win.addEventListener?.('pageshow', this._onVis);
       this.win.addEventListener?.('focus', this._onVis);
+      this.uiClicks = installUiClickSfx({ win: this.win, play: name => {
+        const url = UI_CLICK_SOUNDS[name] ?? this.getManifest()?.audio?.sfx?.ui?.[name];
+        if (typeof url === 'string') this._play(url, { volume: 0.65 });
+      } });
     } catch { /* ignore */ }
   }
 
@@ -419,6 +426,7 @@ export class AudioManager {
         });
       } catch { /* ignore */ }
       this._applyVolumes();
+      this.preload(Object.values(UI_CLICK_SOUNDS).filter(url => resourceCache.isCached(url)));
       if (this.landWarm) this.warmLandings();
       this._primeOutput();
       if (this.ctx.state === 'running') this._dropUnlock();
@@ -696,8 +704,13 @@ export class AudioManager {
    */
   sfx(name, o = {}) {
     try {
-      const url = this.getManifest()?.audio?.sfx?.ui?.[name];
-      if (typeof url === 'string') this._play(url, { volume: o.volume ?? 0.9 });
+      const sound = this.uiClicks?.resolve(name) ?? name;
+      const url = UI_CLICK_SOUNDS[sound] ?? this.getManifest()?.audio?.sfx?.ui?.[sound];
+      if (typeof url === 'string') {
+        const handled = this.uiClicks?.consume();
+        if (handled && Object.hasOwn(UI_CLICK_SOUNDS, sound)) return;
+        this._play(url, { volume: o.volume ?? 0.9 });
+      }
     } catch { /* ignore */ }
   }
 
@@ -920,12 +933,12 @@ export class AudioManager {
           // only a hostile attack authors the target's next impact (a heal — an ally aiming at an ally — never does)
           const tgt = this.units.get(e[2]);
           if (tgt && tgt.side !== src.side) {
-            this.lastAttacker.set(e[2], { def: src.def, at: now, skillIndex: src.skillIndex, skillActive: !!src.skillActive });
+            this.lastAttacker.set(e[2], { def: src.def, at: now, skillIndex: src.skillIndex, skillActive: !!src.skillActive || !!src.oxiEnhanced });
             if (unitSoundClass(src) === 'char' && !this.engaged.has(e[1])) {
               this.engaged.add(e[1]); this.voice(src.def, 'faceEnemy');
             }
           }
-          if (!this.unit(src.def, 'attack', e[1], src.skillIndex ?? undefined, src.skillActive) && src.side === 'enemy') this.battle('enemyHit', { unitKey: `${e[1]}:atk`, volume: 0.35 });
+          if (!this.unit(src.def, 'attack', e[1], src.skillIndex ?? undefined, src.skillActive || src.oxiEnhanced) && src.side === 'enemy') this.battle('enemyHit', { unitKey: `${e[1]}:atk`, volume: 0.35 });
         } else if (kind === 'dmg') {
           const by = this.lastAttacker.get(e[1]);
           if (!by || !IMPACT_TYPES.has(e[3])) continue;
@@ -981,9 +994,17 @@ export class AudioManager {
         } else if (kind === 'fx') {
           // a summon used up by its own effect (香槟炸弹 exploding: `consumed`): its impact sound now, no death sound
           const ex = e[4];
-          if (!ex || typeof ex !== 'object' || !ex.consumed || ex.id == null) continue;
+          if (!ex || typeof ex !== 'object' || ex.id == null) continue;
           const u = this.units.get(ex.id);
           if (!u || u.side === 'enemy') continue;
+          if (u.def === 'char_4247_oxi' && e[1] === 'oxiEnhance') u.oxiEnhanced = !!ex.on;
+          const role = v79EffectRole(u.def, e[1], ex);
+          if (role) {
+            const own = this.getManifest()?.audio?.sfx?.units?.[u.def];
+            const mix = own?.effectMix?.[role];
+            if (unitSoundPlays(mix, this.random())) this._playUnitUrl(own?.effects?.[role], `${ex.id}:fx:${role}`, unitGain(0.8, mix));
+          }
+          if (!ex.consumed) continue;
           this.consumed.add(ex.id);
           if (this.consumed.size > 200) this.consumed.delete(this.consumed.values().next().value);
           this.unit(u.def, 'hit', `${ex.id}:boom`);

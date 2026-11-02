@@ -3,6 +3,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ERR, EMOTES, EMOTE_COOLDOWN_MS, layerGainRoom, canStackBond, clearNonStackingBondLayers } from '../../../shared/constants.js';
+import { isGameEmoteId } from '../../../shared/chatStickers.js';
 import { MIZUKI_VARIANT, MIZUKI_MODE_ID, MIZUKI_PHASES as PHASE, MIZUKI_TITLE } from '../../../shared/mizuki-constants.js';
 import { RealScheduler } from '../../match/scheduler.js';
 import { markSend } from '../../sendMetadata.js';
@@ -240,8 +241,6 @@ export class MizukiMatch {
     this.endingUnlocks = [...new Set(['ro2_ending_1', ...(Array.isArray(opts.endingUnlocks) ? opts.endingUnlocks : [])])]
       .filter((id) => MIZUKI_ENDING_IDS.includes(id));
     this.endingProgress = createMizukiEndingProgress();
-    // New runs start with the complete tree. Explicit snapshots remain usable
-    // for older runs; profile scores and cells keep their real earned values.
     this.cognition = normalizeCognition(opts.cognition ?? { totalScore: MIZUKI_COGNITION_MAX_SCORE });
     this.cognitionMods = cognitionEffects(this.cognition);
     this.cognitionLegacy = false;
@@ -257,7 +256,7 @@ export class MizukiMatch {
     if (this.catalog.length < 3) throw new TypeError('Mizuki operator content is unavailable');
     this.players = new Map();
     this.order = [...opts.seats].sort((a, b) => a.seat - b.seat).map((seat) => {
-      const player = { playerId: seat.playerId, seat: seat.seat, name: String(seat.name || seat.playerId),
+      const player = { playerId: seat.playerId, seat: seat.seat, name: String(seat.name || seat.playerId), nameplate: seat.nameplate || '',
         isBot: false, autoplay: false, connected: seat.connected !== false && seat.left !== true, left: seat.left === true, alive: seat.left !== true,
         fieldId: `n:${seat.playerId}`, gold: initial.initialGold + this.cognitionMods.initialGold, hope: initial.initialPopulation, hopeCapacity: initial.initialPopulation,
         life: initial.initialHp + this.cognitionMods.initialMaxLife, maxLife: initial.initialMaxHp + this.cognitionMods.initialMaxLife, shield: initial.initialShield,
@@ -568,21 +567,6 @@ export class MizukiMatch {
       virtueId: check.kind === 'virtue' ? this._rng('virtue:' + check.zoneId + ':' + rerolls).pick(pool) : null };
   }
 
-  _rerollSan(pending) {
-    const members = pending.memberIds.map((id) => this.players.get(id)).filter(Boolean);
-    if (!this._canSanReroll()) { pending.votes = {}; return fail(ERR.NO_FUNDS, '当前检定不能重投或骰子不足。'); }
-    const result = rerollMizukiSanCheck({ check: pending.check, dice: this.dice,
-      rng: this._rng('san:' + pending.check.zoneId + ':' + (pending.rerolls + 1)), players: members });
-    if (!result.ok) {
-      pending.votes = {};
-      return fail(result.error, '检定重投失败，表决已重置，请重新选择。');
-    }
-    this.dice = result.dice; this.sanRerollsUsed++; this.floorState.pending = this._pendingSan(result.check, pending.memberIds, pending.rerolls + 1);
-    this._collectibleDiceSpent?.(1);
-    this._routeMissionProgress({ diceUsed: 1, diceRoll: result.check.roll, diceSpent: 1 }, { memberIds: pending.memberIds });
-    return OK;
-  }
-
   _resolveSanIfReady() {
     const pending = this.floorState.pending;
     if (!pending) return false;
@@ -598,7 +582,16 @@ export class MizukiMatch {
     const choice = accepts === rerolls ? pending.votes[leader.playerId] : accepts > rerolls ? 'accept' : 'reroll';
     const members = pending.memberIds.map((id) => this.players.get(id)).filter(Boolean);
     if (choice === 'reroll') {
-      return this._rerollSan(pending);
+      if (!this._canSanReroll()) { pending.votes = {}; return fail(ERR.NO_FUNDS, '当前检定不能重投或骰子不足。'); }
+      const result = rerollMizukiSanCheck({ check: pending.check, dice: this.dice,
+        rng: this._rng('san:' + pending.check.zoneId + ':' + (pending.rerolls + 1)), players: members });
+      if (!result.ok) {
+        pending.votes = {};
+        return fail(result.error, '检定重投失败，表决已重置，请重新选择。');
+      }
+      this.dice = result.dice; this.sanRerollsUsed++; this.floorState.pending = this._pendingSan(result.check, pending.memberIds, pending.rerolls + 1);
+      this._collectibleDiceSpent?.(1);
+      this._routeMissionProgress({ diceUsed: 1, diceRoll: result.check.roll, diceSpent: 1 }, { memberIds: pending.memberIds });
     } else {
       const result = commitMizukiSanCheck({ state: this.floorState.mutations, check: pending.check, players: members });
       if (!result.ok) {
@@ -626,11 +619,6 @@ export class MizukiMatch {
     if (!pending || message.id !== pending.id || !pending.memberIds.includes(playerId)
       || !['accept', 'reroll'].includes(message.choice)) return fail(ERR.BAD_TARGET, '层间检定已失效。');
     if (message.choice === 'reroll' && (!pending.check.canReroll || this.dice < 1 || !this._canSanReroll())) return fail(ERR.NO_FUNDS, '当前检定不能重投或骰子不足。');
-    if (message.choice === 'reroll') {
-      const result = this._rerollSan(pending);
-      this._commit();
-      return result;
-    }
     pending.votes[playerId] = message.choice;
     const result = this._resolveSanIfReady();
     this._commit();
@@ -671,12 +659,6 @@ export class MizukiMatch {
     const view = this._wishPublicView(), pending = this.event?.state?.pendingWish;
     if (!view || message.id !== view.id || !view.memberIds.includes(playerId) || !['accept', 'reroll'].includes(message.choice)) return fail(ERR.BAD_TARGET, '层间检定已失效。');
     if (message.choice === 'reroll' && !view.check.canReroll) return fail(ERR.NO_FUNDS, '当前检定不能重投或骰子不足。');
-    if (message.choice === 'reroll') {
-      this.votes = Object.fromEntries(this._actors().map(player => [player.playerId, pending.choiceId]));
-      this._resolveVoteIfReady(true, 'reroll');
-      this._commit();
-      return OK;
-    }
     pending.votes[playerId] = message.choice;
     this._resolveWishIfReady(); this._commit(); return OK;
   }
@@ -2796,7 +2778,7 @@ export class MizukiMatch {
       return OK;
     }
     if (type === 'g.emote') {
-      if (!EMOTES.includes(message.id)) return fail(ERR.BAD_MSG, 'unknown emote');
+      if (!isGameEmoteId(message.id)) return fail(ERR.BAD_MSG, 'unknown emote');
       const now = this.now();
       if (Number.isFinite(player.lastEmoteAt) && now - player.lastEmoteAt < EMOTE_COOLDOWN_MS) return fail(ERR.RATE);
       player.lastEmoteAt = now;
@@ -3255,7 +3237,7 @@ export class MizukiMatch {
     const pause = this._pauseView();
     return { t: 'm.public', mode: this.mode, variant: this.variant, modeId: this.modeId, difficulty: this.difficulty,
       ranked: false, round: this.round, phase: this.phase, combatMode: 'server', gameSpeed: 2, serverNow: this.now(), ...pause,
-      players: this.order.map((player) => ({ playerId: player.playerId, name: player.name, seat: player.seat,
+      players: this.order.map((player) => ({ playerId: player.playerId, name: player.name, seat: player.seat, nameplate: player.nameplate || '',
         isBot: false, autoplay: player.autoplay === true, connected: player.connected && !player.left, left: player.left, alive: player.alive,
         lp: player.life, life: player.life, maxLife: player.maxLife, shield: player.shield,
         fieldId: player.fieldId, ready: player.ready, bandId: player.bandId,
@@ -3393,7 +3375,7 @@ export class MizukiMatch {
       matchId: this.matchId, victory: !!victory, reason,
       roundsPassed: this.completedNodes, light: this.light,
       mizuki: this._scoreResult(this.hostId),
-      players: this.order.map((player) => ({ playerId: player.playerId, name: player.name, seat: player.seat,
+      players: this.order.map((player) => ({ playerId: player.playerId, name: player.name, seat: player.seat, nameplate: player.nameplate || '',
         victory: !!victory && player.alive && !player.left, roundsPassed: this.completedNodes, left: player.left,
         alive: player.alive, life: player.life, maxLife: player.maxLife, shield: player.shield,
         gold: player.gold, hope: player.hope, hopeCapacity: hopeCapacityOf(player), rosterCount: player.roster.length, fieldId: player.fieldId,

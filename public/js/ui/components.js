@@ -145,6 +145,7 @@ export function Button({
 }) {
   const isDisabled = disabled || loading;
   return html`<button type=${type} title=${title}
+    data-ui-sfx=${['back', 'chevronLeft', 'close', 'x', 'exit'].includes(icon) ? 'back' : icon === 'check' || type === 'submit' ? 'confirm' : undefined}
     class=${cx('btn', `btn--${variant}`, `btn--${size}`, block && 'btn--block', square && 'btn--square',
       active && 'is-active', loading && 'is-loading', cls)}
     disabled=${isDisabled} aria-busy=${loading ? 'true' : undefined} aria-pressed=${active ? 'true' : undefined}
@@ -503,6 +504,7 @@ function ModalDialog({ title, micro, tone = 'mint', onClose, actions, width, clo
     };
   }, []);
   return html`<div class=${cx('modal', utility && 'modal--utility', overlayClass)} role="presentation"
+      data-ui-sfx=${closeOnBackdrop && onClose ? 'back' : 'none'} data-ui-sfx-event="mousedown"
       onMouseDown=${(e) => { if (closeOnBackdrop && e.target === e.currentTarget && onClose) onClose(); }}>
     <div ref=${boxRef} class=${cx('modal__box', 'brackets', `modal__box--${tone}`, utility && 'utility-modal', cls)} role="dialog" aria-modal="true" tabindex="-1"
          style=${width ? `width:${width}` : undefined}>

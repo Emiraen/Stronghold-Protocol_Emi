@@ -232,21 +232,23 @@ export function CoinGlyph({ class: cls }) {
 }
 
 /** Bond glyph image (white mask tinted by CSS) or first-letter fallback. */
-export function BondGlyph({ bondId, class: cls, source = data }) {
+export function BondGlyph({ bondId, name = null, iconId = null, class: cls, source = data }) {
   const data = source;
   const b = data.lookup('bonds', bondId);
-  const src = bondIconUrl(data.get('assets'), bondId);
-  return html`<span class=${cx('bglyph', cls)} title=${b?.name || bondId}>
-    <${Img} src=${src} fallback=${html`<span class="bglyph__txt">${[...(b?.name || '?')][0]}</span>`} />
+  const label = b?.name || name || bondId || '';
+  const src = bondIconUrl(data.get('assets'), bondId, iconId || b?.iconId);
+  return html`<span class=${cx('bglyph', cls)} title=${label}>
+    <${Img} src=${src} fallback=${html`<span class="bglyph__txt">${[...label][0] || '·'}</span>`} />
   </span>`;
 }
 
 /** Band (strategy) icon. */
-export function BandIcon({ bandId, class: cls, size = 'md', source = data }) {
+export function BandIcon({ bandId, name = null, iconId = null, class: cls, size = 'md', source = data }) {
   const data = source;
   const b = data.lookup('bands', bandId);
-  return html`<span class=${cx('bandicon', `bandicon--${size}`, cls)} title=${b?.name || ''}>
-    <${Img} src=${bandIconUrl(data.get('assets'), bandId)} fallback=${html`<span class="bandicon__txt">${[...(b?.name || '?')][0]}</span>`} />
+  const label = b?.name || name || bandId || '';
+  return html`<span class=${cx('bandicon', `bandicon--${size}`, cls)} title=${label}>
+    <${Img} src=${bandIconUrl(data.get('assets'), bandId, iconId || b?.iconId)} fallback=${html`<span class="bandicon__txt">${[...label][0] || '·'}</span>`} />
   </span>`;
 }
 

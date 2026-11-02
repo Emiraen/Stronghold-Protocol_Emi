@@ -1,0 +1,2 @@
+// Original animated mode emote, delivered through the existing share and CDN.
+export const EMOTE_ANIMATION_DELTA = Object.freeze({"name":"resource-emote-amiya-animated-20261102.sprpack","bytes":1394942,"group":"required","discover":true,"parentFileId":"6ae6d3288f6fa618090a4240894426ce6532858d","resources":[{"url":"/assets/local/emoticon/sifeng/pic_amiya.animated-20261102.gif","version":"game-emotes-20261102:sifeng_amiya","bytes":1394707,"type":"image/gif","offset":235}]});

@@ -22,7 +22,7 @@ function ResourceGroup({ group, state, checking, options }) {
   return html`<section class=${`resource-preload__group resource-tier resource-preload__group--${group}`}>
     <header class="resource-tier__head"><div><h3><${Icon} name=${required ? 'shield' : voice ? 'mic' : 'image'} />${t(required ? '画面与必要资源' : voice ? '干员语音' : '个性化资源')}</h3>
       <${MicroLabel}>${required ? 'ESSENTIAL ASSETS' : voice ? 'OPERATOR VOICES' : 'PERSONALIZATION'}<//></div><span class="resource-tier__badge">${t('主动预载')}</span></header>
-    <p>${t(required ? '低清原皮立绘、默认模型、原棋盘支持资源、表情、玩法说明与音效，以及下列湮灭必需资源。点击下方按钮后主动预载；未预载时，必要资源可由当前游戏服务器按需提供。' : voice ? '语音保存在本机，选择下方语言后下载。已有语音会保留，缺少时可以继续补齐。' : '皮肤与精英二立绘、官方地图场景、官方战斗特效、额外皮肤模型、模组图标与背景音乐。仅点击预载后从直连来源下载；未预载的皮肤立绘使用原皮，地图使用原棋盘，特效使用原演算效果。')}</p>
+    <p>${t(required ? '低清原皮立绘、默认模型、原棋盘支持资源、原生表情、玩法说明与音效，以及下列湮灭必需资源。点击下方按钮后主动预载；未预载时，必要资源可由当前游戏服务器按需提供。' : voice ? '语音保存在本机，选择下方语言后下载。已有语音会保留，缺少时可以继续补齐。' : '聊天与局内表情、皮肤与精英二立绘、官方地图场景、官方战斗特效、额外皮肤模型、模组图标与背景音乐。点击预载后下载到当前浏览器；表情从当前游戏服务器获取。未预载的皮肤立绘使用原皮，地图使用原棋盘，特效使用原演算效果。')}</p>
     ${required ? html`<p class="resource-preload__note">${t('湮灭藏品：88 项（87 张藏品图标＋1 份藏品目录）。')}</p><p class="resource-preload__note">${t('湮灭介绍素材：10 项（8 张介绍幻灯片、1 份 PPTX、1 张「不息恶火」背景）。')}</p>` : null}
     <div class="resource-tier__summary"><b>${t(checking ? '正在检查' : done ? '已缓存完整' : state.running ? state.paused ? '正在暂停…' : '正在下载…' : state.paused ? '已暂停' : state.done ? '等待继续' : '尚未下载')}</b><span class="num">${percent.toFixed(1)}%</span></div>
     <${ProgressBar} value=${percent} max=${100} tone=${required ? 'mint' : 'amber'} />

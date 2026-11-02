@@ -1,3 +1,4 @@
+import { Nameplate } from '../ui/nameplates.js';
 // Mizuki cooperative expedition: authoritative parties and native automatic fields.
 import { h, Icon, Spinner, Button as ProtocolButton, Modal } from '../ui/components.js';
 import { Fragment } from '../../vendor/preact.module.js';
@@ -315,13 +316,14 @@ function SanCheckControls({ model, players, mine, busy, act, library }) {
   return e('div', {}, e(ProtocolButton, { size:'sm', variant:'secondary', onClick:() => setDismissed(null), 'data-mz-san-open':true }, '层间检定 · ' + check.roll),
     e(Modal, { open: dismissed !== pending.id, onClose: () => setDismissed(pending.id), title:'灯火检定', micro:'SAN CHECK',
       actions: [e(ProtocolButton, { disabled:!!busy || !eligible, onClick:() => vote('accept'), 'data-mz-san-vote':'accept' }, pending.votes?.[mine] === 'accept' ? '已选择接受' : '接受结果'),
-        e(ProtocolButton, { variant:'secondary', disabled:!!busy || !eligible || !check.canReroll || num(model.dice?.count) < 1, onClick:() => vote('reroll'), 'data-mz-san-vote':'reroll' }, '消耗团队骰子重投 · 1')] },
+        e(ProtocolButton, { variant:'secondary', disabled:!!busy || !eligible || !check.canReroll || num(model.dice?.count) < 1, onClick:() => vote('reroll'), 'data-mz-san-vote':'reroll' }, pending.votes?.[mine] === 'reroll' ? '已选择重投' : '消耗团队骰子重投 · ' + num(model.dice?.count))] },
       e('div', { class:'mz-panel', style: background ? { backgroundImage:'url(' + JSON.stringify(background) + ')', backgroundSize:'100% 100%' } : null, 'data-mz-san-id':pending.id },
         e('p', {}, e(Art, { src:nativePicture(library, 'DICE'), alt:'原版骰子', class:'mz-resource-icon' }), e('b', {}, '点数 ' + check.roll), ' · 灯火 ' + check.light),
         e('p', {}, plainDescription(check.resultDescription || ({ mutation:'排异反应', virtue:'获得正面效果', quiet:'无新增排异反应' })[check.kind] || check.kind).replace(/\{0\}/g, arr(check.targets).map(target => target.operatorName || '干员 ' + target.uid).join('、'))),
         arr(check.targets).map(target => e('div', { key:target.playerId + ':' + target.uid }, e('b', {}, target.playerName || names.get(target.playerId) || target.playerId, ' · ', target.operatorName || '干员 ' + target.uid),
           e('p', {}, e(Art, { src:nativePicture(library, target.mutationIcon), alt:'', class:'mz-resource-icon' }), target.mutationName || target.mutationId, ' · ', plainDescription(target.mutationDescription)))),
         pending.virtue ? e('p', {}, e(Art, { src:nativePicture(library, pending.virtue.iconId), alt:'', class:'mz-resource-icon' }), pending.virtue.name, ' · ', plainDescription(pending.virtue.description)) : null),
+      e('p', {}, '全体在线成员完成表决后结算；票数相同时采用房主选择。'),
       e('div', { class:'mz-native-lineup', role:'status' }, arr(pending.memberIds).map(id => {
         const player = players.find(value => same(value.playerId, id));
         const vote = ({ accept:'接受', reroll:'重投' })[pending.votes?.[id]];
@@ -799,7 +801,7 @@ export function ResultPhase({ model, result, room, player, priv, myId }) {
     bossBattles: '险路恶敌', recruits: '招募干员', itemsGained: '获得道具' };
   const health = mizukiPersonalHealth(finalPlayer || player, finalPlayer ? null : priv);
   const reasons = { ending_not_cleared: '最终首领尚未成功完成', abandoned: '本次探索已放弃', defeat: '队伍生命耗尽', victory: '探索完成' };
-  return e('section', { class: 'mz-phase mz-result' }, e('div', { class: 'mz-result__mark' }, e(Icon, { name: r.victory ? 'crown' : 'shield' })), e('p', { class: 'mz-eyebrow' }, 'EXPEDITION COMPLETE'), e('h2', {}, r.ending?.name || (r.victory ? '穿越深蓝，共迎黎明' : '暂别深海')), e('p', {}, plainDescription(r.ending?.desc) || reasons[r.reason] || r.reason || (r.victory ? '联合探索完成。感谢每一位并肩守线的博士。' : '本次探索已结束，积累的经验将照亮下一段旅途。')), e('div', { class: 'mz-result__stats' }, e('div', {}, e('b', {}, num(r.completedNodes, model.completedNodes)), e('span', {}, '探索节点')),
+  return e('section', { class: 'mz-phase mz-result' }, e('div', { class: 'mz-result__mark' }, e(Icon, { name: r.victory ? 'crown' : 'shield' })), e('p', { class: 'mz-eyebrow' }, 'EXPEDITION COMPLETE'), e('h2', {}, r.ending?.name || (r.victory ? '穿越深蓝，共迎黎明' : '暂别深海')), e(Nameplate, { class: 'mz-result__nameplate', hideUncached: true, nameplate: finalPlayer?.nameplate ?? player?.nameplate }, e('b', {}, finalPlayer?.name || player?.name || '博士')), e('p', {}, plainDescription(r.ending?.desc) || reasons[r.reason] || r.reason || (r.victory ? '联合探索完成。感谢每一位并肩守线的博士。' : '本次探索已结束，积累的经验将照亮下一段旅途。')), e('div', { class: 'mz-result__stats' }, e('div', {}, e('b', {}, num(r.completedNodes, model.completedNodes)), e('span', {}, '探索节点')),
     e('div', { 'data-mz-personal-health': myId }, e('b', {}, health.life ?? '--', '/', health.maxLife ?? '--'), e('span', {}, '我的剩余生命 · 护盾 ' + (health.shield ?? '--'))),
     e('div', {}, e('b', {}, num(r.light, model.light)), e('span', {}, '剩余灯火'))),
     score ? e('div', { class: 'mz-score', 'data-mz-score': myId },

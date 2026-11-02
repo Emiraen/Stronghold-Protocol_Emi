@@ -187,6 +187,7 @@ export function performAttack(b, u, prof, targets, opts = null) {
   if (b._hooks.beforeAttack) {
     const ctx = { attacker: u, targets, isSkill, profile: prof };
     b.emit('beforeAttack', ctx);
+    prof = ctx.profile || prof;
     targets = (ctx.targets || []).filter((t) => t && t.alive);
     if (!targets.length || !u.alive) return;
   }

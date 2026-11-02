@@ -29,6 +29,7 @@ import { useDocClass } from '../ui/device.js';
 import { createStore, useStore, selectRoute, loadPref } from '../store.js';
 import { cardOperators, seatAvatar } from '../ui/seatArt.js';
 import { skinsStore } from '../ui/skins.js';
+import { Nameplate, NameplatePicker } from '../ui/nameplates.js';
 import { ResultView } from './result.js';
 import { toast, toastError } from '../ui/toasts.js';
 import {
@@ -182,7 +183,7 @@ function BestRecord({ best, gd }) {
     <div class="ach-best__left">
       <span class="ach-pill">${t('战果纪录')}<${Icon} name="chevrons" /></span>
       <span class="ach-best__mount">
-        <span class="ach-best__glyph" title=${bond?.name || best.bondId}><${BondGlyph} bondId=${best.bondId} /></span>
+        <span class="ach-best__glyph" title=${bond?.name || best.bondId}><${BondGlyph} bondId=${best.bondId} name=${bond?.name} iconId=${bond?.iconId} /></span>
         <span class="ach-best__label">${t('盟约最高叠加')}</span>
         <b class="ach-best__num num">${best.layers}</b>
         <i class="ach-best__wire" aria-hidden="true"></i>
@@ -193,8 +194,8 @@ function BestRecord({ best, gd }) {
         <div class="ach-best__row">${slots.slice(0, 5).map((u, i) => html`<${OpCard} key=${i} u=${u} gd=${gd} i=${i} />`)}</div>
         <div class="ach-best__row">${slots.slice(5).map((u, i) => html`<${OpCard} key=${i} u=${u} gd=${gd} i=${i + 5} />`)}</div>
       </div>
-      <div class="ach-best__bonds">${bonds.map((b, i) => html`<span key=${b.bondId} class=${cx('sbond', b.active && 'is-on')} style=${`--i:${i}`} title=${gd.bond?.(b.bondId)?.name || b.bondId}>
-        <span class="sbond__disc"><${BondGlyph} bondId=${b.bondId} /></span><b class="num">${b.hidden ? '—' : b.layers}</b></span>`)}</div>
+      <div class="ach-best__bonds">${bonds.map((b, i) => html`<span key=${b.bondId} class=${cx('sbond', b.active && 'is-on')} style=${`--i:${i}`} title=${b.name || gd.bond?.(b.bondId)?.name || b.bondId}>
+        <span class="sbond__disc"><${BondGlyph} bondId=${b.bondId} name=${b.name} iconId=${b.iconId} /></span><b class="num">${b.hidden ? '—' : b.layers}</b></span>`)}</div>
     </div>
   </div>`;
 }
@@ -207,7 +208,7 @@ export function recordBonds(list, noStack = () => false, isCore = () => false) {
   const activeCore = (b) => Number(b.active && !!isCore(b.bondId));
   return (Array.isArray(list) ? list : [])
     .filter((b) => b && b.bondId && (b.active || Number(b.layers) > 0))
-    .map((b) => ({ bondId: b.bondId, active: !!b.active, layers: Math.max(0, Number(b.layers) || 0), hidden: noStack(b.bondId) }))
+    .map((b) => ({ bondId: b.bondId, active: !!b.active, layers: Math.max(0, Number(b.layers) || 0), hidden: noStack(b.bondId), name: b.name, iconId: b.iconId }))
     .sort((a, b) => activeCore(b) - activeCore(a) || (b.active - a.active)
       || ((b.hidden ? -1 : b.layers) - (a.hidden ? -1 : a.layers)));
 }
@@ -224,44 +225,75 @@ function Maxima({ maxima }) {
   </div>`;
 }
 
-function BondRecord({ topBonds, gd }) {
+function recordDisplayMeta(records, kind, id) {
+  for (const rec of Array.isArray(records) ? records : []) {
+    for (const player of Array.isArray(rec?.players) ? rec.players : []) {
+      if (kind === 'band' && player?.bandId === id && (player.bandName || player.bandIconId)) {
+        return { name: player.bandName, iconId: player.bandIconId };
+      }
+      if (kind === 'bond') {
+        const bond = (Array.isArray(player?.bonds) ? player.bonds : []).find((entry) => entry?.bondId === id);
+        if (bond && (bond.name || bond.iconId)) return { name: bond.name, iconId: bond.iconId };
+      }
+    }
+  }
+  return null;
+}
+
+function BondRecord({ topBonds, gd, records }) {
   if (!topBonds.length) return html`<p class="ach-empty">${t('暂无盟约记录')}</p>`;
   const ops = bondOperators(data.list('chess'), topBonds[0].bondId);
   return html`<div class="ach-list">
     <p class="ach-sub">${t('最常使用的盟约:')}</p>
-    <div class="ach-tops">${topBonds.map((b, i) => html`<div key=${b.bondId} class="ach-top ach-top--bond" title=${t('{n} 局中激活', { n: b.games })}>
-      <span class="ach-top__frame"><i class="ach-top__rank">TOP${i + 1}</i><${BondGlyph} bondId=${b.bondId} /></span>
-      <b class="ach-top__name">${gd.bond?.(b.bondId)?.name || b.bondId}</b></div>`)}</div>
+    <div class="ach-tops">${topBonds.map((b, i) => {
+      const meta = recordDisplayMeta(records, 'bond', b.bondId);
+      const bond = gd.bond?.(b.bondId);
+      const name = bond?.name || meta?.name || b.bondId;
+      return html`<div key=${b.bondId} class="ach-top ach-top--bond" title=${t('{n} 局中激活', { n: b.games })}>
+      <span class="ach-top__frame"><i class="ach-top__rank">TOP${i + 1}</i><${BondGlyph} bondId=${b.bondId} name=${name} iconId=${bond?.iconId || meta?.iconId} /></span>
+      <b class="ach-top__name">${name}</b></div>`;
+    })}</div>
     ${ops.length ? html`<p class="ach-sub">${t('盟约下干员为:')}</p>
       <div class="ach-ops">${ops.map((c) => html`<span key=${c.chessId} class=${cx('ach-op', `sop--t${c.tier}`)} title=${c.name}>
         <${UnitThumb} kind="chess" id=${c.chessId} size="md" showTier=${false} /><b class="ach-op__tier">${ROMAN[c.tier] || ''}</b></span>`)}</div>` : null}
   </div>`;
 }
 
-function BandRecord({ topBands, marked, gd }) {
+function BandRecord({ topBands, marked, gd, records }) {
   if (!topBands.length) return html`<p class="ach-empty">${t('暂无策略记录')}</p>`;
-  const name = (id) => gd.band?.(id)?.name || id;
+  const meta = (id) => recordDisplayMeta(records, 'band', id);
+  const name = (id) => gd.band?.(id)?.name || meta(id)?.name || id;
   return html`<div class="ach-list">
     <p class="ach-sub">${t('最常使用的策略:')}</p>
-    <div class="ach-tops ach-tops--band">${topBands.map((b, i) => html`<div key=${b.bandId} class="ach-top ach-top--band">
-      <span class="ach-top__frame"><i class="ach-top__rank">TOP${i + 1}</i><${BandIcon} bandId=${b.bandId} size="lg" /></span>
-      <span class="ach-top__side"><b class="ach-top__name">${name(b.bandId)}</b><span class="ach-top__count"><small>x</small><b class="num">${b.games}</b></span></span></div>`)}</div>
+    <div class="ach-tops ach-tops--band">${topBands.map((b, i) => {
+      const rec = gd.band?.(b.bandId);
+      const display = meta(b.bandId);
+      return html`<div key=${b.bandId} class="ach-top ach-top--band">
+      <span class="ach-top__frame"><i class="ach-top__rank">TOP${i + 1}</i><${BandIcon} bandId=${b.bandId} name=${name(b.bandId)} iconId=${rec?.iconId || display?.iconId} size="lg" /></span>
+      <span class="ach-top__side"><b class="ach-top__name">${name(b.bandId)}</b><span class="ach-top__count"><small>x</small><b class="num">${b.games}</b></span></span></div>`;
+    })}</div>
     <p class="ach-sub" title=${t('用该策略在绝境模拟或终极模拟中成功卫戍')}>${t('已获得特殊标识的策略:')}</p>
-    ${marked.length ? html`<div class="ach-marks">${marked.map((id) => html`<div key=${id} class="ach-mark">
-      <span class="ach-mark__frame"><${BandIcon} bandId=${id} size="lg" /><i class="ach-mark__badge" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 1.5 14 13H2zM8 6v3.6M8 11v.6" fill="none" stroke="currentColor" stroke-width="1.8" /></svg></i></span>
-      <b>${name(id)}</b></div>`)}</div>` : html`<p class="ach-empty">${t('在绝境模拟或终极模拟中成功卫戍，所用策略会获得特殊标识')}</p>`}
+    ${marked.length ? html`<div class="ach-marks">${marked.map((id) => {
+      const rec = gd.band?.(id);
+      const display = meta(id);
+      return html`<div key=${id} class="ach-mark">
+      <span class="ach-mark__frame"><${BandIcon} bandId=${id} name=${name(id)} iconId=${rec?.iconId || display?.iconId} size="lg" /><i class="ach-mark__badge" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 1.5 14 13H2zM8 6v3.6M8 11v.6" fill="none" stroke="currentColor" stroke-width="1.8" /></svg></i></span>
+      <b>${name(id)}</b></div>`})}</div>` : html`<p class="ach-empty">${t('在绝境模拟或终极模拟中成功卫戍，所用策略会获得特殊标识')}</p>`}
   </div>`;
 }
 
 
 function AchievementOverview({ records, gd, me, rank, avatarSrc }) {
+  const nameplate = useStore(s => s.nameplate, Object.is, skinsStore);
+  const [editing, setEditing] = useState(false);
   const s = useMemo(() => achievementStats(records, { hiddenLayers: id => !!gd.bond?.(id)?.noStack }), [records, gd]);
   return html`<div class="east-achievements">
+    ${editing ? html`<${NameplatePicker} name=${me?.name} rank=${rank?.rank?.label} onClose=${() => setEditing(false)} />` : null}
     <section class="ach-top-area">
       <div class="ach-top-area__left">
         <div class="ach-plate">
-          <div class="ach-card"><span class="ach-card__ava"><${Img} src=${avatarSrc} fallback=${html`<${Icon} name="user" />`} /></span>
-            <span class="ach-card__who"><b class="ach-card__name">${me?.name || t('博士')}</b><span class="ach-card__id">${t('卫戍模拟档案')}</span><span class="east-ach-rank">${rank?.rank?.label || t('未定级')}</span></span><span class="ach-card__brand">STRONGHOLD<br />PROTOCOL</span></div>
+          <${Nameplate} class="ach-card ach-card--editable" nameplate=${nameplate} variant="short"><span class="ach-card__ava"><${Img} src=${avatarSrc} fallback=${html`<${Icon} name="user" />`} /></span>
+            <span class="ach-card__who"><b class="ach-card__name">${me?.name || t('博士')}</b><span class="ach-card__id">${t('卫戍模拟档案')}</span><span class="east-ach-rank">${rank?.rank?.label || t('未定级')}</span><${Button} class="ach-card__edit" variant="secondary" size="sm" icon="edit" onClick=${() => setEditing(true)}>${t('编辑展示栏')}<//></span><span class="ach-card__brand">STRONGHOLD<br />PROTOCOL</span><//>
           <div class="ach-counts"><span class="ach-counts__badge"><img src=${rankIconUrl(rank?.rank?.icon || 'unranked')} alt="" /></span>
             <span class="ach-counts__row"><small>${t('排位积分')}</small><b class="num">${rank?.points ?? 0}</b></span>
             <span class="ach-counts__badge"><${Icon} name="chevrons" /></span><span class="ach-counts__row"><small>${t('最高回合')}</small><b class="num">${s.bestRound}</b></span></div>
@@ -271,8 +303,8 @@ function AchievementOverview({ records, gd, me, rank, avatarSrc }) {
     </section>
     <${SectionBar} title=${t('卫戍成就')} micro="ACHIEVEMENTS" />
     <${BestRecord} best=${s.best} gd=${gd} /><${Maxima} maxima=${s.maxima} />
-    <${SectionBar} title=${t('盟约纪录')} micro="BONDS" /><${BondRecord} topBonds=${s.topBonds} gd=${gd} />
-    <${SectionBar} title=${t('策略纪录')} micro="STRATEGIES" /><${BandRecord} topBands=${s.topBands} marked=${s.markedBands} gd=${gd} />
+    <${SectionBar} title=${t('盟约纪录')} micro="BONDS" /><${BondRecord} topBonds=${s.topBonds} gd=${gd} records=${records} />
+    <${SectionBar} title=${t('策略纪录')} micro="STRATEGIES" /><${BandRecord} topBands=${s.topBands} marked=${s.markedBands} gd=${gd} records=${records} />
   </div>`;
 }
 
@@ -403,7 +435,7 @@ function Overview({ agg, gd }) {
 }
 
 /** 策略: per-band used / passed / pass rate, most used first (the user's headline ask). */
-function Bands({ agg, gd }) {
+function Bands({ agg, gd, records }) {
   const rows = Object.entries(agg.bands).sort((a, b) => (b[1].games - a[1].games) || (b[1].wins - a[1].wins));
   return html`<${Section} title=${t('策略')} micro="STRATEGIES">
     ${rows.length ? html`<div class="st-tablewrap"><table class="st-table">
@@ -411,9 +443,11 @@ function Bands({ agg, gd }) {
       <tbody>
         ${rows.map(([bandId, v]) => {
           const band = gd.band(bandId);
+          const meta = recordDisplayMeta(records, 'band', bandId);
+          const name = band?.name || meta?.name || bandId;
           const rate = v.games > 0 ? Math.round((v.wins / v.games) * 100) : 0;
           return html`<tr key=${bandId}>
-            <td><span class="st-band">${band ? html`<${BandIcon} bandId=${band.bandId} size="xs" />${band.name}` : bandId}</span></td>
+            <td><span class="st-band"><${BandIcon} bandId=${bandId} name=${name} iconId=${band?.iconId || meta?.iconId} size="xs" />${name}</span></td>
             <td class="num">${fmtNum(v.games)}</td>
             <td class="num">${fmtNum(v.wins)}</td>
             <td class="num st-rate"><span class="st-bar" aria-hidden="true"><i style=${`width:${rate}%`}></i></span><b>${pct(v.wins, v.games)}</b></td>
@@ -447,6 +481,7 @@ function HistoryRow({ rec, gd, onOpen }) {
   const counted = countsTowardStats(rec);
   const won = self ? !!self.victory : !!rec.victory;
   const band = self?.bandId ? gd.band(self.bandId) : null;
+  const bandName = band?.name || self?.bandName || self?.bandId;
   const rounds = roundsOf(rec);
   const known = Number.isFinite(self?.roundsPassed) || Number.isFinite(rec.roundsPassed);
   const view = !quit && !rec.compact; // a quit has nothing settled; a compacted record no rows left
@@ -458,7 +493,7 @@ function HistoryRow({ rec, gd, onOpen }) {
     <td class="st-t">${dateTime(rec.t)}</td>
     <td>${difficultyName(rec.difficulty)}</td>
     <td>${rec.variant === 'entertainment_endless' ? t('娱乐 · 无尽模式 · 不计排位') : rec.variant === 'entertainment_multi' ? t('娱乐 · 多人同盟 · 不计排位') : rec.roomMode === 'solo' ? t('单人') : rec.roomMode === 'coop' ? t('同盟') : '—'}</td>
-    <td><span class="st-band">${band ? html`<${BandIcon} bandId=${band.bandId} size="xs" />${band.name}` : self?.bandId || '—'}</span></td>
+    <td><span class="st-band">${self?.bandId ? html`<${BandIcon} bandId=${self.bandId} name=${bandName} iconId=${band?.iconId || self.bandIconId} size="xs" />${bandName}` : '—'}</span></td>
     <td class="st-res">${quit ? html`<span class="t-quit">${t('中途退出')}</span>` : html`<span class=${won ? 't-win' : 't-lose'}>${won ? t('胜') : t('负')}</span>`}
       ${rec.unofficial ? html`<em class="st-chip" data-testid="history-unofficial">${t('非官方')}</em>` : null}
       ${!counted ? html`<em class="st-chip">${t('不计入统计')}</em>` : null}</td>
@@ -615,7 +650,7 @@ function StatsScreen({ tab }) {
       ${!ready ? html`<div class="st-loading"><${Spinner} size="md" /></div>`
         : stats.newer ? html`<p class="st-empty">${t('检测到更新版本的统计数据，请先升级客户端再查看，以免覆盖数据。')}</p>`
           : empty && tab !== 'overview' ? html`<p class="st-empty">${t('还没有记录 —— 完成一局对局后，这里会开始积累。')}</p>`
-            : tab === 'bands' ? html`<${Bands} agg=${agg} gd=${gd} />`
+            : tab === 'bands' ? html`<${Bands} agg=${agg} gd=${gd} records=${stats.records} />`
               : tab === 'totals' ? html`<div><${CombatSums} agg=${agg} /><${Overview} agg=${agg} gd=${gd} /></div>`
                 : tab === 'history' ? html`<${History} records=${stats.records} gd=${gd} onOpen=${setReplay} />`
                   : html`<${AchievementOverview} records=${stats.records} gd=${gd} me=${me} rank=${rank} avatarSrc=${avatarSrc} />`}

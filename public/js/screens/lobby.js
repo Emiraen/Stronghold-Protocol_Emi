@@ -26,6 +26,7 @@ import { LoadoutButton } from './loadout.js';
 import { openStats } from './stats.js';
 import { net, identity } from '../net.js';
 import { serversState, joinRoom, watchMatch } from '../servers.js';
+import { activeSpectatorDirectory } from '../ui/gameLogic/watch.js';
 import { store, useStore, shallowEqual, loadPref, savePref, loadRankedPref } from '../store.js';
 import { data, getConfig, getMode, getStage, useData } from '../data.js';
 import { Emblem } from './title.js';
@@ -44,7 +45,7 @@ import { rankPyramidView } from '../ui/rankPyramid.js';
 import { RankPyramidGraphic, rankPyramidCaption } from '../ui/rankPyramidGraphic.js';
 import { rankingPending } from '../ui/rankStatus.js';
 import { useNameCardNotice } from '../ui/nameCardNotices.js';
-import { FriendsHall, FriendActivityDot } from '../ui/friends.js';
+import { FriendsHall, FriendActivityDot, RoomFriendsButton } from '../ui/friends.js';
 import { friendAction } from '../friends.js';
 
 /** Official mode texts (activity_table act2autochess.modeDataDict), fallback when config.json is absent. */
@@ -329,7 +330,10 @@ function SpectatorHall({ online, onBack }) {
       pending = true;
       try {
         const msg = await net.request('spectator.list', {});
-        if (active) { setItems(msg.items || []); setUnavailable(msg.unavailable || []); setError(''); }
+        if (active) {
+          const directory = activeSpectatorDirectory(msg);
+          setItems(directory.items); setUnavailable(directory.unavailable); setError('');
+        }
       } catch (err) {
         if (active) { setItems([]); setUnavailable([]); setError(trA("暂时无法刷新，连接恢复后会自动重试")); }
       }
@@ -354,7 +358,6 @@ function SpectatorHall({ online, onBack }) {
     ${online && watchError ? html`<p role="alert">${watchError}</p>` : null}
     <div class="spectator-hall__list screen__scroll" aria-live="polite">
       ${!online || error ? html`<p>${error || trA("连接中断，请稍候…")}</p>` : null}
-      ${online && unavailable.length ? html`<p role="status">${unavailable.map(regionName).join(' / ')}观战列表暂不可用，其余服务器仍可观战。</p>` : null}
       ${online && !error && items.length ? items.map((item) => html`<article class="spectator-hall__card" key=${item.matchId}>
         <h2>${regionName(item.serverId)} · ${item.variant === MIZUKI_VARIANT ? '娱乐 · 水月联合探索' : item.variant === ENDLESS_VARIANT ? '娱乐 · 无尽模式' : item.variant === 'entertainment_multi' ? '娱乐 · 多人同盟' : item.mode === 'solo' ? trA("独立模拟") : trA("同盟模拟")} · ${item.code}</h2>
         <p>${trA(DIFFICULTY_NAMES[item.difficulty] || item.difficulty)} · ${item.ranked ? trA("排位") : trA("普通")} ${trA("· 第")} ${item.round || 0} ${trA("回合 ·")} ${trA(PHASE_NAMES[item.phase] || item.phase)} · ${item.spectators} ${trA("人观战")}</p>
@@ -865,6 +868,7 @@ export function LobbyScreen() {
           <${GuideButton} class="lobby-guide" variant="secondary" square=${true} />
           <${Button} variant="secondary" size="sm" square=${true} onClick=${() => setDialog('backdrop')} title=${trA('大厅背景')} aria-label=${trA('大厅背景')}><${BackdropGlyph} /><//>
           <${LobbyMusicButton} /><${FullscreenButton} class="btn btn--secondary btn--sm btn--square" />
+          <${RoomFriendsButton} />
         </div></div>
       <div class="topbar__right"><button type="button" class="me-chip me-chip--btn" onClick=${() => setDialog('card')} aria-label=${trA(unreadNameCards ? '名片编辑 · 有新获得的卡面' : '名片编辑')} title=${trA(unreadNameCards ? '名片编辑 · 有新获得的卡面' : '名片编辑')}><span class="me-chip__avatar"><${AvatarFrame} size="sm" name=${me.name} src=${avatarSrc} fallbackIcon="user" seat=${0} self=${true} />${unreadNameCards ? html`<span class="me-chip__unread" aria-hidden="true"></span>` : null}</span><div class="me-chip__text"><span class="me-chip__name">${me.name || trA('博士')}</span><${MicroLabel}>${me.playerId != null ? `DOCTOR #${doctorNo(me.playerId)}` : 'DOCTOR'}<//></div></button></div>
     </header>

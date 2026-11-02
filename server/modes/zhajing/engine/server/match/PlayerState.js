@@ -145,6 +145,7 @@ export class PlayerState {
     this.playerId = seat.playerId;
     this.seat = seat.seat;
     this.name = seat.name;
+    this.nameplate = seat.isBot ? '' : seat.nameplate || '';
     /** @type {string|null} 头像 id (shared/avatars.js); null = 未设置 */
     this.avatar = seat.avatar ?? null;
     this.isBot = !!seat.isBot;

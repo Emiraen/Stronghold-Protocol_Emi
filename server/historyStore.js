@@ -4,11 +4,12 @@ import { mizukiEndingUnlocksAfter } from './modes/mizuki/EndingProgression.js';
 import { normalizeCognition, advanceCognition } from './modes/mizuki/Cognition.js';
 // Private match history keyed by the existing anonymous hello.aid (not authentication).
 import { randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'node:fs';
+import { writeFileSync, renameSync, mkdirSync, unlinkSync } from 'node:fs';
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAX_SEATS, ENTERTAINMENT_MAX_SEATS, CYCLOPS_MAX_SEATS, ENDLESS_VARIANT } from '../shared/constants.js';
+import { loadProfileDocument, ProfileRecordWriter } from './profileRecordStore.js';
 
 const MAX_MATCHES = 10;
 const MAX_RESULT_BYTES = 48 * 1024;
@@ -214,11 +215,13 @@ export class HistoryStore {
     this.now = now;
     this.log = log;
     this.profiles = new Map();
-    this.writer = new StoreWriter(this.file, () => ({ version: 1,
-      profiles: [...this.profiles].map(([aid, value]) => ({ aid, ...value })) }), this.log, 'history');
+    this.writer = new ProfileRecordWriter({ file: this.file, record: (aid) => {
+      const value = this.profiles.get(aid);
+      return value ? { aid, ...value } : null;
+    }, log: this.log, label: 'history' });
     if (!this.file) return;
     try {
-      const data = JSON.parse(readFileSync(this.file, 'utf8'));
+      const data = loadProfileDocument(this.file);
       if (!Array.isArray(data?.profiles)) return;
       for (const profile of data.profiles) {
         if (!validAid(profile?.aid)) continue;
@@ -234,6 +237,7 @@ export class HistoryStore {
         }
       }
     } catch (error) {
+      if (error.code === 'PROFILE_RECORD_INTEGRITY') throw error;
       if (error.code !== 'ENOENT') this.log?.warn?.(`[history] cannot read ${this.file}: ${error.message}`);
     }
   }
@@ -272,7 +276,7 @@ export class HistoryStore {
     const profile = this.profiles.get(aid) || { name: '', items: [] };
     profile.mizukiBank = next;
     this.profiles.set(aid, profile);
-    this.save();
+    this.save(aid);
     return true;
   }
 
@@ -294,7 +298,7 @@ export class HistoryStore {
       this.log?.warn?.(`[history] skipped invalid or oversized result for ${matchId}`);
       return false;
     }
-    let changed = false;
+    const changed = new Set();
     for (const seat of seats) {
       if (seat.isBot || !validAid(seat.aid) || !result.players.some((row) => row?.playerId === seat.playerId)) continue;
       let profile = this.profiles.get(seat.aid);
@@ -302,7 +306,7 @@ export class HistoryStore {
       const endingId = completedMizukiEnding(result, seat.playerId);
       if (endingId && !(profile.mizuki?.completedEndings || []).includes(endingId)) {
         profile.mizuki = { ...profile.mizuki, completedEndings: endingIds([...(profile.mizuki?.completedEndings || []), endingId]) };
-        changed = true;
+        changed.add(seat.aid);
       }
       const settlement = cognitionResult(summary, seat.playerId), receipt = cognitionReceipt(matchId, seat.playerId);
       const receipts = cognitionReceipts(profile.mizuki?.cognitionReceipts);
@@ -312,7 +316,7 @@ export class HistoryStore {
           cognition: advanceCognition(settlement.explorationScore, profile.mizuki?.cognition),
           totalCells: Math.min(Number.MAX_SAFE_INTEGER, totalCells(profile.mizuki?.totalCells) + cells),
           cognitionReceipts: [...receipts, receipt] };
-        changed = true;
+        changed.add(seat.aid);
       }
       if (profile.items.some((item) => item.matchId === matchId && item.playerId === seat.playerId)) continue;
       profile.name = text(seat.name);
@@ -320,13 +324,13 @@ export class HistoryStore {
       if (!entry) continue;
       profile.items.unshift(entry);
       profile.items.length = Math.min(profile.items.length, MAX_MATCHES);
-      changed = true;
+      changed.add(seat.aid);
     }
-    if (changed) this.save();
+    if (changed.size) this.save(changed);
     return true;
   }
 
-  save() { this.writer.save(); }
+  save(aids = []) { this.writer.save(aids); }
 
   flush() { return this.writer.flush(); }
 }

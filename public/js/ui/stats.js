@@ -149,6 +149,7 @@ function normalizePlayerRow(raw) {
       id: str(u.id) || '', golden: bool(u.golden), tier: int(u.tier, 0),
       items: (Array.isArray(u.items) ? u.items : []).slice(0, MAX_ITEMS).map((i) => str(i)).filter(Boolean),
     };
+    for (const k of ['charId', 'name', 'avatarId', 'portraitId']) if (str(u[k], 128)) e[k] = str(u[k], 128);
     if (u.kind === 'token') e.kind = 'token';
     if (str(u.skin, 128)) e.skin = str(u.skin, 128);
     if (isObj(u.diy) && str(u.diy.charId)) {
@@ -157,13 +158,16 @@ function normalizePlayerRow(raw) {
     if (str(u.standInFor)) e.standInFor = str(u.standInFor);
     return e;
   }).filter((u) => u.id);
-  const bonds = (Array.isArray(p.bonds) ? p.bonds : []).slice(0, MAX_BONDS).filter(isObj).map((b) => ({
-    bondId: str(b.bondId) || str(b.id) || '', layers: int(b.layers, 0), active: bool(b.active),
-  })).filter((b) => b.bondId);
+  const bonds = (Array.isArray(p.bonds) ? p.bonds : []).slice(0, MAX_BONDS).filter(isObj).map((b) => {
+    const entry = { bondId: str(b.bondId) || str(b.id) || '', layers: int(b.layers, 0), active: bool(b.active) };
+    for (const k of ['name', 'iconId']) if (str(b[k], 128)) entry[k] = str(b[k], 128);
+    return entry;
+  }).filter((b) => b.bondId);
   return {
     playerId: str(p.playerId) || '',
     seat: int(p.seat, 0),
     name: str(p.name, MAX_NAME) || '',
+    nameplate: str(p.nameplate, 64) || '',
     isBot: bool(p.isBot),
     left: bool(p.left),
     alive: bool(p.alive, true),
@@ -172,6 +176,8 @@ function normalizePlayerRow(raw) {
     eliminatedRound: num(p.eliminatedRound),
     lp: num(p.lp),
     bandId: str(p.bandId),
+    bandName: str(p.bandName, 128),
+    bandIconId: str(p.bandIconId, 128),
     title,
     trophies: int(p.trophies, 0),
     reward: int(p.reward, 0),

@@ -5,9 +5,8 @@
 //            wins, losses, matches, dominantStreak, dominantDivision, lastActive }
 // 结算入口 settleMatch(row, ctx) 由 Match.finish 调用（见 server/match/Match.js），全部参数服务端权威。
 
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { StoreWriter } from './historyStore.js';
+import { ProfileRecordWriter, loadProfileDocument } from './profileRecordStore.js';
 import { cleanRankPyramid, observeRankProgress } from '../shared/rankPyramid.js';
 import { SPECIAL_GOOD_BOY_CARD, isSpecialNameCard } from '../shared/nameCards.js';
 import { isNameCardGrantMigration, cardForGrantMigration, earnedRankNameCards } from './nameCardUnlocks.js';
@@ -41,13 +40,14 @@ export class RankedStore {
     /** @type {Map<string, any>} aid → profile */
     this.profiles = new Map();
     this.nameCardGrantSnapshots = {};
-    this.writer = new StoreWriter(this.file, () => ({ version: 1, savedAt: this.now(),
-      nameCardGrantSnapshots: this.nameCardGrantSnapshots,
-      profiles: [...this.profiles.values()] }), this.log, 'ranked');
+    this.writer = new ProfileRecordWriter({ file: this.file,
+      record: aid => this.profiles.get(aid) || null,
+      metadata: () => ({ nameCardGrantSnapshots: this.nameCardGrantSnapshots }),
+      log: this.log, label: 'ranked' });
     if (this.file) {
       let invalidGrantSnapshot = null;
       try {
-        const raw = JSON.parse(readFileSync(this.file, 'utf8'));
+        const raw = loadProfileDocument(this.file);
         if (raw && typeof raw === 'object' && Array.isArray(raw.profiles)) {
           if (raw.nameCardGrantSnapshots != null && (typeof raw.nameCardGrantSnapshots !== 'object'
             || Array.isArray(raw.nameCardGrantSnapshots))) {
@@ -68,6 +68,7 @@ export class RankedStore {
           }
         }
       } catch (e) {
+        if (e.code === 'PROFILE_RECORD_INTEGRITY') throw e;
         if (invalidGrantSnapshot) throw invalidGrantSnapshot;
         this.log?.warn?.(`[ranked] cannot read ${this.file}: ${e.message}`);
       }
@@ -108,15 +109,18 @@ export class RankedStore {
 
   ensure(aid, name = '') {
     let p = this.profiles.get(aid);
+    let changed = false;
     if (!p) {
       p = this.sanitize({ aid, name, mmr: 1000 });
       this.profiles.set(aid, p);
+      changed = true;
     }
-    if (name && p.name !== name) p.name = name;
+    if (name && p.name !== name) { p.name = name; changed = true; }
+    if (changed) this.save(aid);
     return p;
   }
 
-  save() { this.writer.save(); }
+  save(aids = []) { this.writer.save(aids); }
 
   flush() { return this.writer.flush(); }
 
@@ -137,7 +141,7 @@ export class RankedStore {
     if (!Object.hasOwn(this.nameCardGrantSnapshots, migration)) {
       this.nameCardGrantSnapshots[migration] = { createdAt: this.now(), aids: [...new Set(aids)]
         .filter((aid) => typeof aid === 'string' && /^[0-9a-f]{8,64}$/.test(aid)).sort() };
-      this.save();
+      this.writer.save([], { metadata: true });
     }
     await this.flush();
     return [...this.nameCardGrantSnapshots[migration].aids];
@@ -162,7 +166,7 @@ export class RankedStore {
     if (isNameCardGrantMigration(migration) && !p.nameCardGrantMigrations?.includes(migration)) {
       p.nameCardGrantMigrations = [...(p.nameCardGrantMigrations || []), migration]; changed = true;
     }
-    if (changed) this.save();
+    if (changed) this.save(aid);
     return changed;
   }
 
@@ -421,7 +425,7 @@ export class RankedStore {
       inactive,
     };
     if (key) p.settlements[key] = structuredClone(out);
-    this.save();
+    this.save(who.aid);
     return out;
   }
 }
