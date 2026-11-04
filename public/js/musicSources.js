@@ -3,13 +3,13 @@
 import { readMusicPackRange as readExternalPackRange } from './preloadSources.js';
 
 export const MUSIC_PLAYLISTS = Object.freeze([
-  Object.freeze({ id: 'ost', title: '明日方舟原声带', category: 'ost-music', packName: 'resource-music-ost-20261103.sprpack' }),
-  Object.freeze({ id: 'personal', title: 'The music so good even a devil may cry', category: 'personal-music', packName: 'resource-music-personal-20261103.sprpack' }),
+  Object.freeze({ id: 'ost', title: '明日方舟原声带', category: 'ost-music', packName: 'resource-music-ost-20261104-r2.sprpack', legacyPackName: 'resource-music-ost-20261103.sprpack' }),
+  Object.freeze({ id: 'personal', title: 'The music so good even a devil may cry', category: 'personal-music', packName: 'resource-music-personal-20261104-r2.sprpack', legacyPackName: 'resource-music-personal-20261103.sprpack' }),
 ]);
 
 const HEADER_LIMIT = 16 * 1024 * 1024;
 const DATABASE = 'sp-music-resource-cache', TABLE = 'tracks';
-const catalogFlights = new Map(), trackFlights = new Map(), recent = new Map();
+const catalogFlights = new Map(), trackFlights = new Map(), coverFlights = new Map(), recent = new Map(), recentCovers = new Map();
 let databasePromise;
 const abortError = signal => signal?.reason || new DOMException('请求已取消', 'AbortError');
 const checkAbort = signal => { if (signal?.aborted) throw abortError(signal); };
@@ -57,12 +57,25 @@ function keepRecent(key, blob) {
 
 function trackKey(track) {
   if (!track || typeof track.id !== 'string' || !track.id || typeof track.version !== 'string' || !track.version
-    || !MUSIC_PLAYLISTS.some(playlist => playlist.id === track.playlistId && playlist.packName === track.packName)
+    || !MUSIC_PLAYLISTS.some(playlist => playlist.id === track.playlistId
+      && (playlist.packName === track.packName || playlist.legacyPackName === track.packName))
     || !integer(track.offset) || !integer(track.bytes) || !track.bytes || !integer(track.packBytes)
     || track.offset + track.bytes > track.packBytes || !String(track.type).startsWith('audio/')) {
     throw new Error('歌曲资源信息无效，请重新打开大厅音乐');
   }
   return track.playlistId + ':' + track.id + ':' + track.version;
+}
+
+export function musicCoverCacheKey(track) {
+  if (!track?.coverResource) return null;
+  trackKey(track);
+  const cover = track.coverResource;
+  if (typeof cover.url !== 'string' || !cover.url || typeof cover.version !== 'string' || !cover.version
+    || !integer(cover.offset) || !integer(cover.bytes) || !cover.bytes || cover.bytes > 4 * 1024 * 1024
+    || cover.offset + cover.bytes > track.packBytes || !/^image\/(?:webp|png|jpeg)$/.test(cover.type)) {
+    throw new Error('专辑封面信息无效，请重新打开大厅音乐');
+  }
+  return 'cover:' + track.playlistId + ':' + cover.url + ':' + cover.version;
 }
 
 // All offsets are derived from the resource-service header, never from a bundled
@@ -94,9 +107,15 @@ export function parseMusicPackHeader(descriptor, header, headerLength, packBytes
       || track.bytes !== row.bytes || track.type !== row.type || track.version !== row.version) {
       throw new Error('音乐资源包包含无效歌曲');
     }
+    const cover = track.cover ? resources.get(track.cover) : null;
+    if (track.cover && (!cover || !/^image\/(?:webp|png|jpeg)$/.test(cover.type)
+      || cover.bytes > 4 * 1024 * 1024)) throw new Error('音乐资源包包含无效专辑封面');
     ids.add(track.id);
     return Object.freeze({ id: track.id, title: track.title, artist: descriptor.id !== 'ost' && typeof track.artist === 'string' ? track.artist : '',
       duration: Number.isFinite(track.duration) && track.duration >= 0 ? track.duration : null,
+      album: typeof track.album === 'string' ? track.album : '', cover: cover?.url || null,
+      coverResource: cover ? Object.freeze({ url: cover.url, bytes: cover.bytes, type: cover.type,
+        version: cover.version, offset: cover.offset }) : null,
       url: row.url, bytes: row.bytes, type: row.type, version: row.version, offset: row.offset,
       playlistId: descriptor.id, playlistTitle: title, packName: descriptor.packName, packBytes });
   });
@@ -139,20 +158,27 @@ export async function loadMusicPlaylist(id, options = {}) {
   // Share simultaneous opens only; remove the flight after it finishes so the
   // next open always asks the external resource service for the current list.
   return joinFlight(catalogFlights, id, async signal => {
-    try {
-      const first = await readExternalPackRange(descriptor.packName, 0, 11, { signal });
-      if (first.bytes.length !== 12 || new TextDecoder().decode(first.bytes.subarray(0, 8)) !== 'SPPACK03') {
-        throw new Error('音乐资源包格式无效');
+    let failure;
+    // Keep the existing playlist usable until the user publishes the new cover pack.
+    // Each candidate starts from its own prefix, header, total size and resource offsets.
+    for (const packName of [descriptor.packName, descriptor.legacyPackName]) {
+      try {
+        const candidate = { ...descriptor, packName };
+        const first = await readExternalPackRange(packName, 0, 11, { signal });
+        if (first.bytes.length !== 12 || new TextDecoder().decode(first.bytes.subarray(0, 8)) !== 'SPPACK03') {
+          throw new Error('音乐资源包格式无效');
+        }
+        const length = new DataView(first.bytes.buffer, first.bytes.byteOffset, first.bytes.byteLength).getUint32(8, true);
+        if (!length || length > HEADER_LIMIT || length + 12 >= first.total) throw new Error('音乐歌单大小无效');
+        const second = await readExternalPackRange(packName, 12, 11 + length, { signal, total: first.total });
+        const header = JSON.parse(new TextDecoder().decode(second.bytes));
+        return parseMusicPackHeader(candidate, header, length, first.total);
+      } catch (error) {
+        checkAbort(signal);
+        failure = error;
       }
-      const length = new DataView(first.bytes.buffer, first.bytes.byteOffset, first.bytes.byteLength).getUint32(8, true);
-      if (!length || length > HEADER_LIMIT || length + 12 >= first.total) throw new Error('音乐歌单大小无效');
-      const second = await readExternalPackRange(descriptor.packName, 12, 11 + length, { signal, total: first.total });
-      const header = JSON.parse(new TextDecoder().decode(second.bytes));
-      return parseMusicPackHeader(descriptor, header, length, first.total);
-    } catch (error) {
-      checkAbort(signal);
-      throw new Error('无法从资源服务器获取“' + descriptor.title + '”歌单：' + (error?.message || '下载失败'));
     }
+    throw new Error('无法从资源服务器获取“' + descriptor.title + '”歌单：' + (failure?.message || '下载失败'));
   }, options);
 }
 
@@ -186,8 +212,34 @@ export async function loadMusicTrack(track, options = {}) {
   }, options);
 }
 
+/** A current-song cover is a separate small range; it never delays song playback. */
+export async function loadMusicCover(track, options = {}) {
+  const key = musicCoverCacheKey(track);
+  if (!key) return null;
+  checkAbort(options.signal);
+  if (recentCovers.has(key)) return recentCovers.get(key);
+  return joinFlight(coverFlights, key, async signal => {
+    let cached;
+    try { cached = await cacheOperation('readonly', table => table.get(key)); } catch { /* Fetch the small image. */ }
+    checkAbort(signal);
+    if (cached instanceof Blob) return cached;
+    const cover = track.coverResource;
+    const { bytes } = await readExternalPackRange(track.packName, cover.offset, cover.offset + cover.bytes - 1,
+      { signal, total: track.packBytes });
+    checkAbort(signal);
+    const blob = new Blob([bytes], { type: cover.type });
+    try { await cacheOperation('readwrite', table => table.put(blob, key)); } catch { /* Display can use memory. */ }
+    checkAbort(signal);
+    return blob;
+  }, options).then(blob => {
+    recentCovers.delete(key); recentCovers.set(key, blob);
+    while (recentCovers.size > 8) recentCovers.delete(recentCovers.keys().next().value);
+    return blob;
+  });
+}
+
 export async function clearMusicTrackCache() {
-  recent.clear();
-  for (const entry of trackFlights.values()) entry.controller.abort(new DOMException('音乐缓存已清理', 'AbortError'));
+  recent.clear(); recentCovers.clear();
+  for (const entry of [...trackFlights.values(), ...coverFlights.values()]) entry.controller.abort(new DOMException('音乐缓存已清理', 'AbortError'));
   await cacheOperation('readwrite', table => table.clear());
 }

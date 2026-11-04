@@ -4,11 +4,13 @@ import { getLocalMedia, putLocalMedia, deleteLocalMedia, readLocalImage, probeLo
 // 烬野, 静默 — or the player's own picture. A picture is downscaled on this device and kept in IndexedDB (never
 // uploaded); the choice and its dim / blur / overlay / motion settings are a localStorage pref. The ridges and the
 // stronghold silhouette are generated from fixed seeds, so every visit draws the same skyline.
-import { html } from './components.js';
+import { html, Button, Icon } from './components.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { loadPref, savePref } from '../store.js';
 import { toast } from './toasts.js';
 import { t, N_ } from '../../../shared/i18n.js';
+import { wallpaperResources, loadWallpaperCover, loadWallpaperVideo } from '../wallpaperResources.js';
+import { music } from './lobbyMusic.js';
 
 export const HUB_THEMES = [
   { id: 'night', name: N_('夜巡'), en: 'NIGHT WATCH' },
@@ -35,6 +37,7 @@ export function loadBackdropPref() {
     overlay: o.overlay !== false,
     motion: o.motion !== false,
     videoSound: o.videoSound === true,videoPaused: o.videoPaused === true,
+    wallpaperId: typeof o.wallpaperId === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(o.wallpaperId) ? o.wallpaperId : '',
   };
 }
 
@@ -94,8 +97,20 @@ export function useHubBackdrop() {
     try { await putLocalMedia('backdrop', blob); } catch { saved = false; }
     if (!mounted.current || currentRevision !== revision.current) return saved;
     setImageUrl(URL.createObjectURL(blob));
-    setMediaKind(video?'video':'image');update({ theme: 'custom',videoPaused:false,videoSound:false });
+    setMediaKind(video?'video':'image');update({ theme: 'custom',wallpaperId:'',videoPaused:false,videoSound:false });
     return saved;
+  };
+  const setWallpaper = async (item) => {
+    audio._unlock();
+    const currentRevision = ++revision.current;
+    const blob = await loadWallpaperVideo(item);
+    if (!mounted.current || currentRevision !== revision.current) return;
+    let saved = true;
+    try { await putLocalMedia('backdrop', blob); } catch { saved = false; }
+    if (!mounted.current || currentRevision !== revision.current) return;
+    setImageUrl(URL.createObjectURL(blob)); setMediaKind('video');
+    update({ theme: 'custom', wallpaperId: item.id, videoPaused: false, videoSound: item.hasAudio === true });
+    if (!saved) toast(t('壁纸已应用，本机存储暂不可用，刷新后可能需要重新选择'), 'warn');
   };
   const clearImage = async () => {
     const currentRevision=++revision.current;
@@ -103,9 +118,9 @@ export function useHubBackdrop() {
     if (!mounted.current || currentRevision !== revision.current) return;
     setMediaKind('image');
     setImageUrl(null);
-    update({ theme: 'night', dim: 45, blur: 0 });
+    update({ theme: 'night', wallpaperId: '', dim: 45, blur: 0 });
   };
-  return { pref, update, imageUrl, mediaKind, ready, setImage, clearImage };
+  return { pref, update, imageUrl, mediaKind, ready, setImage, setWallpaper, clearImage };
 }
 
 /** What the backdrop draws: a theme id, 'photo' (custom picture) or 'blank' (custom picture still loading). */
@@ -242,13 +257,13 @@ const videoSoundEvent = active => window.dispatchEvent(new CustomEvent('sp:lobby
 function HubVideo({bg}) {
   const ref=useRef(null),prefRef=useRef(bg.pref);prefRef.current=bg.pref;
   useEffect(()=>{
-    const v=ref.current;let node=null,dead=false,claimed=false;
+    const v=ref.current;let node=null,dead=false,claimed=false,customMusicPlaying=music.snapshot().playing;
     const claim=active=>{if(claimed!==active){claimed=active;videoSoundEvent(active);}};
     const sync=()=>{
       const pref=prefRef.current;
       if(dead)return;
       if(pref.videoPaused||document.hidden){v.pause();claim(false);return;}
-      let sound=pref.videoSound;
+      let sound=pref.videoSound&&!customMusicPlaying;
       if(sound&&!node&&audio.ctx){try{node=audio.ctx.createMediaElementSource(v);node.connect(audio.bgmGain);}catch{sound=false;}}
       if(sound&&!node)sound=false;
       v.muted=!sound;
@@ -260,8 +275,9 @@ function HubVideo({bg}) {
     const gesture=()=>{if(prefRef.current.videoSound)audio._unlock();sync();};
     const stop=()=>claim(false);
     v.addEventListener('pause',stop);v.addEventListener('error',stop);
-    window.addEventListener('pointerdown',gesture,{passive:true});window.addEventListener('sp:lobby-video-sync',sync);document.addEventListener('visibilitychange',sync);sync();
-    return()=>{dead=true;v.removeEventListener('pause',stop);v.removeEventListener('error',stop);window.removeEventListener('pointerdown',gesture);window.removeEventListener('sp:lobby-video-sync',sync);document.removeEventListener('visibilitychange',sync);v.pause();claim(false);node?.disconnect();v.removeAttribute('src');v.load();};
+    window.addEventListener('pointerdown',gesture,{passive:true});window.addEventListener('sp:lobby-video-sync',sync);document.addEventListener('visibilitychange',sync);
+    const unsubscribe=music.subscribe(state=>{customMusicPlaying=state.playing;sync();});
+    return()=>{dead=true;unsubscribe();v.removeEventListener('pause',stop);v.removeEventListener('error',stop);window.removeEventListener('pointerdown',gesture);window.removeEventListener('sp:lobby-video-sync',sync);document.removeEventListener('visibilitychange',sync);v.pause();claim(false);node?.disconnect();v.removeAttribute('src');v.load();};
   },[]);
   useEffect(()=>{window.dispatchEvent(new Event('sp:lobby-video-sync'));},[bg.pref.videoSound,bg.pref.videoPaused]);
   return html`<video ref=${ref} class="hub-bg__video" src=${bg.imageUrl} loop playsInline preload="metadata" muted style=${`position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:${bg.pref.blur?`blur(${bg.pref.blur}px)`:'none'}`} />`;
@@ -312,6 +328,75 @@ function Swatch({ theme }) {
   </span>`;
 }
 
+function WallpaperCover({ item }) {
+  const [image, setImage] = useState(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    let url, dead = false;
+    loadWallpaperCover(item, { signal: controller.signal }).then(blob => {
+      if (dead) return;
+      url = URL.createObjectURL(blob); setImage({ id: item.id, url });
+    }).catch(() => {});
+    return () => { dead = true; controller.abort(); if (url) URL.revokeObjectURL(url); };
+  }, [item.id, item.cover.version]);
+  return image?.id === item.id ? html`<img src=${image.url} alt="" loading="lazy" decoding="async" />`
+    : html`<${Icon} name="image" />`;
+}
+
+function WallpaperLibrary({ bg }) {
+  const [state, setState] = useState(() => wallpaperResources.getState());
+  const [query, setQuery] = useState(''), [page, setPage] = useState(0);
+  const [group, setGroup] = useState('');
+  const [busy, setBusy] = useState(''), [error, setError] = useState('');
+  const mounted = useRef(true), choosing = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    const off = wallpaperResources.subscribe(setState);
+    void wallpaperResources.refresh().catch(() => {});
+    return () => { mounted.current = false; off(); };
+  }, []);
+  const selectedGroup = state.groups.some(item => item.id === group) ? group : state.groups[0]?.id || '';
+  const items = state.items.filter(item => item.group === selectedGroup && item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const pages = Math.max(1, Math.ceil(items.length / 12)), current = Math.min(page, pages - 1);
+  const choose = async item => {
+    if (choosing.current) return;
+    choosing.current = true; setBusy(item.id); setError('');
+    try { await bg.setWallpaper(item); }
+    catch (error) { if (mounted.current) setError(error.message || '壁纸下载失败，请重试'); }
+    finally { choosing.current = false; if (mounted.current) setBusy(''); }
+  };
+  return html`<section class="hub-wallpapers" aria-label=${t('动态壁纸')}>
+    <div class="hub-wallpapers__head"><h3>${t('动态壁纸')}<small>${state.items.length ? state.items.length : ''}</small></h3>
+      <input type="search" value=${query} placeholder=${t('搜索壁纸')} aria-label=${t('搜索壁纸')}
+        onInput=${event => { setQuery(event.currentTarget.value); setPage(0); }} />
+    </div>
+    <div class="hub-wallpapers__groups" role="group" aria-label=${t('壁纸分组')}>
+      ${state.groups.map(item => html`<button type="button" key=${item.id}
+        aria-pressed=${selectedGroup === item.id} onClick=${() => { setGroup(item.id); setPage(0); }}>${item.title}</button>`)}
+    </div>
+    <div class="hub-wallpapers__grid" role="group" aria-label=${t('选择大厅壁纸')}>
+      ${items.slice(current * 12, current * 12 + 12).map(item => {
+        const selected = bg.pref.theme === 'custom' && bg.pref.wallpaperId === item.id;
+        return html`<button key=${item.id} type="button" class=${`hub-wallpaper${selected ? ' is-selected' : ''}`}
+          aria-pressed=${selected} title=${item.title} disabled=${!!busy} onClick=${() => choose(item)}>
+          <span class="hub-wallpaper__cover"><${WallpaperCover} item=${item} />
+            <span class="hub-wallpaper__time">${Math.round(item.duration)}s</span>
+            ${selected ? html`<span class="hub-wallpaper__selected"><${Icon} name="check" /></span>` : null}</span>
+          <span class="hub-wallpaper__title">${busy === item.id ? t('正在载入…') : item.title}</span>
+        </button>`;
+      })}
+    </div>
+    ${!items.length ? html`<p class="bgset__note">${state.loading ? t('正在读取壁纸…') : state.error || (query ? t('没有匹配的壁纸') : t('请先预载或导入大厅壁纸资源'))}
+      ${state.error ? html`<${Button} size="sm" variant="ghost" onClick=${() => wallpaperResources.refresh().catch(() => {})}>${t('重试')}<//>` : null}</p>` : null}
+    ${pages > 1 ? html`<nav class="hub-wallpapers__pages" aria-label=${t('壁纸分页')}>
+      <${Button} size="sm" variant="ghost" disabled=${current === 0} onClick=${() => setPage(current - 1)}>${t('上一页')}<//>
+      <span>${current + 1} / ${pages}</span>
+      <${Button} size="sm" variant="ghost" disabled=${current === pages - 1} onClick=${() => setPage(current + 1)}>${t('下一页')}<//>
+    </nav>` : null}
+    ${error ? html`<p class="local-music__error" role="alert">${error}</p>` : null}
+  </section>`;
+}
+
 /** The body of the 大厅背景 dialog. */
 export function BackdropSettings({ bg }) {
   const { pref, update, imageUrl } = bg;
@@ -343,21 +428,22 @@ export function BackdropSettings({ bg }) {
         <${Swatch} theme=${x.id} />
         <span class="bgset__name">${x.name}</span><span class="bgset__en">${x.en}</span>
       </button>`)}
-      <button type="button" disabled=${busy} role="radio" aria-checked=${custom ? 'true' : 'false'} class=${`bgset__theme${custom ? ' is-selected' : ''}`}
-          onClick=${() => (imageUrl ? update({ theme: 'custom' }) : browse())}>
+      <button type="button" disabled=${busy} role="radio" aria-checked=${custom && !pref.wallpaperId ? 'true' : 'false'} class=${`bgset__theme${custom && !pref.wallpaperId ? ' is-selected' : ''}`}
+          onClick=${() => (imageUrl ? update({ theme: 'custom', wallpaperId: '' }) : browse())}>
         <span class="bgset__swatch bgset__swatch--custom" style=${imageUrl && bg.mediaKind!=='video' ? `background-image:url("${imageUrl}")` : ''} aria-hidden="true">
           ${bg.mediaKind==='video'&&imageUrl?html`<span class="bgset__plus">▶</span>`:imageUrl ? null : html`<span class="bgset__plus">+</span>`}
         </span>
         <span class="bgset__name">${t('自定义背景')}</span><span class="bgset__en">CUSTOM</span>
       </button>
     </div>
+    <${WallpaperLibrary} bg=${bg} />
     <input ref=${fileRef} type="file" accept="image/*,video/mp4,video/webm,.mp4,.webm,.m4v" hidden onChange=${onFile} />
     ${custom && imageUrl ? html`<div class="bgset__custom">
       <div class="bgset__row">
         <button type="button" class="btn btn--secondary btn--sm" disabled=${busy} onClick=${browse}><span class="btn__label">${busy ? t('处理中…') : t('更换背景')}</span></button>
         <button type="button" class="btn btn--ghost btn--sm" disabled=${busy} onClick=${() => bg.clearImage()}><span class="btn__label">${t('移除背景')}</span></button>
       </div>
-      ${bg.mediaKind==='video'?html`<label class="bgset__check"><input type="checkbox" checked=${pref.videoSound} onChange=${e=>{audio._unlock();update({videoSound:e.currentTarget.checked});}} /><span>${t('播放视频声音（暂停大厅 BGM）')}</span></label><button type="button" class="btn btn--secondary btn--sm" onClick=${()=>update({videoPaused:!pref.videoPaused})}>${pref.videoPaused?t('播放视频'):t('暂停视频')}</button>`:null}
+      ${bg.mediaKind==='video'?html`<label class="bgset__check"><input type="checkbox" checked=${pref.videoSound} onChange=${e=>{audio._unlock();update({videoSound:e.currentTarget.checked});}} /><span>${t('播放壁纸原声（大厅音乐优先）')}</span></label><button type="button" class="btn btn--secondary btn--sm" onClick=${()=>update({videoPaused:!pref.videoPaused})}>${pref.videoPaused?t('播放视频'):t('暂停视频')}</button>`:null}
       <label class="bgset__slider"><span>${t('暗化')}</span>
         <input type="range" min="0" max="85" step="1" value=${pref.dim} onInput=${(e) => update({ dim: Number(e.currentTarget.value) })} />
         <b class="num">${pref.dim}%</b></label>
@@ -367,6 +453,6 @@ export function BackdropSettings({ bg }) {
       <label class="bgset__check"><input type="checkbox" checked=${pref.overlay} onChange=${(e) => update({ overlay: e.currentTarget.checked })} /><span>${t('叠加战术网格')}</span></label>
     </div>` : busy ? html`<p class="bgset__note">${t('图片处理中…')}</p>` : null}
     <label class="bgset__check"><input type="checkbox" checked=${pref.motion} onChange=${(e) => update({ motion: e.currentTarget.checked })} /><span>${t('动态效果（云层、粒子、雷达扫描）')}</span></label>
-    <p class="bgset__note">${t('图片上限 30MB；视频上限 60MB、最高 1080p，推荐横版 H.264 MP4 / WebM。仅保存在当前浏览器。视频默认静音，可搭配 ♫ 大厅音乐；切出大厅或隐藏网页会暂停视频。')}</p>
+    <p class="bgset__note">${t('自定义上传：图片上限 30MB，视频上限 60MB、最高 1080p。壁纸选择仅保存在当前浏览器；自选大厅音乐播放时自动静音壁纸原声，切出大厅或隐藏网页会暂停视频。')}</p>
   </div>`;
 }

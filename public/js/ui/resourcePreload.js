@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from '../../vendor/hooks
 import { html, Fragment, Modal, Button, Icon, ProgressBar, MicroLabel, confirmDialog } from './components.js';
 import { resourceCache } from '../resourceCache.js';
 import { MUSIC_PRELOAD_GROUPS, musicPreload } from '../musicPreload.js';
+import { wallpaperResources } from '../wallpaperResources.js';
 import { useStore, loadPref, savePref } from '../store.js';
 import { copyQQGroup } from './clipboard.js';
 import { skinsStore } from './skins.js';
@@ -53,27 +54,45 @@ function MusicResourceGroup({ group, state, disabled }) {
   </section>`;
 }
 
+function WallpaperResourceGroup({ state, disabled }) {
+  const done = state.total > 0 && state.done === state.total;
+  const percent = state.bytes ? Math.min(done ? 100 : 99.9, (state.downloadedBytes + state.currentBytes) / state.bytes * 100) : 0;
+  return html`<section class="resource-preload__group resource-tier resource-preload__group--wallpapers">
+    <header class="resource-tier__head"><div><h3><${Icon} name="image" />${t('大厅动态壁纸')}</h3><${MicroLabel}>OPTIONAL LOBBY WALLPAPERS<//></div><span class="resource-tier__badge">${t('可选资源')}</span></header>
+    <p>${t('壁纸列表、分组、首帧封面与视频均从资源服获取。可预载全部，也可在大厅背景中按需选择；瓦罗兰特壁纸保留原声，播放自选大厅音乐时自动静音壁纸原声。')}</p>
+    <div class="resource-tier__summary"><b>${t(state.loading ? '正在读取资源服壁纸列表…' : !state.loaded ? '尚未读取壁纸列表' : done ? '已缓存完整' : state.running ? '正在预载…' : state.paused ? '已暂停' : '尚未预载')}</b><span>${percent.toFixed(1)}%</span></div>
+    <${ProgressBar} value=${percent} max=${100} tone="amber" />
+    <div class="resource-preload__count"><span>${state.done} / ${state.total} ${t('项')}</span><span>${size(state.downloadedBytes)} / ${size(state.bytes)}</span></div>
+    ${state.currentTitle ? html`<p class="resource-preload__note">${state.currentTitle}</p>` : null}
+    <div class="resource-tier__actions">${state.running
+      ? html`<${Button} variant="secondary" size="sm" disabled=${state.paused} onClick=${() => wallpaperResources.pause()}>${t('暂停预载')}<//>`
+      : html`<${Button} variant="secondary" size="sm" icon=${done ? 'check' : 'download'} disabled=${disabled || done || state.loading} onClick=${() => state.loaded ? wallpaperResources.download() : wallpaperResources.refresh().catch(() => {})}>${t(done ? '下载完成' : !state.loaded ? '读取壁纸列表' : state.done ? '继续预载' : '预载壁纸')}<//>`}</div>
+    ${state.error ? html`<p class="resource-preload__error" role="alert">${state.error}</p>` : null}
+  </section>`;
+}
+
 export function ResourcePreloadHost() {
   const entered = useStore(s => s.session.entered);
   const voice = useStore(s => s.voice, Object.is, skinsStore);
   const [view, setView] = useState(() => ({ ...menu }));
   const [state, setState] = useState(() => resourceCache.getState());
   const [musicState, setMusicState] = useState(() => musicPreload.getState());
+  const [wallpaperState, setWallpaperState] = useState(() => wallpaperResources.getState());
   const [continuing, setContinuing] = useState(false);
   const [voiceLang, setVoiceLang] = useState(() => loadPref('resourceVoiceLang', voice.lang || 'cn'));
   const [allVoices, setAllVoices] = useState(() => loadPref('resourceAllVoices', false) === true);
   const [storage, setStorage] = useState(null);
   const [note, setNote] = useState('');
   const fileInput = useRef(null);
-  const downloading = state.required.running || state.optional.running || state.voice.running || Object.values(musicState).some(group => group.running);
+  const downloading = state.required.running || state.optional.running || state.voice.running || wallpaperState.running || Object.values(musicState).some(group => group.running);
   const packBusy = !!state.pack.running || !!state.clearing;
   const packDisabled = state.checking || packBusy || downloading;
   const voiceOptions = allVoices ? {} : { voiceLang };
   const voiceState = resourceCache.selectionState('voice', voiceOptions);
   useLayoutEffect(() => {
-    listeners.add(setView); const off = resourceCache.subscribe(setState), offMusic = musicPreload.subscribe(setMusicState);
+    listeners.add(setView); const off = resourceCache.subscribe(setState), offMusic = musicPreload.subscribe(setMusicState), offWallpaper = wallpaperResources.subscribe(setWallpaperState);
     setView({ ...menu }); setState(resourceCache.getState()); setMusicState(musicPreload.getState());
-    return () => { listeners.delete(setView); off(); offMusic(); };
+    return () => { listeners.delete(setView); off(); offMusic(); offWallpaper(); };
   }, []);
   useEffect(() => { if (view.open) void musicPreload.refresh(); }, [view.open]);
   useEffect(() => {
@@ -89,12 +108,15 @@ export function ResourcePreloadHost() {
   const importResources = async event => {
     const file = event.currentTarget.files?.[0]; event.currentTarget.value = '';
     if (!file) return;
-    try { if (!await musicPreload.importPack(file)) await resourceCache.importPack(file); }
+    try { if (!await wallpaperResources.importPack(file) && !await musicPreload.importPack(file)) await resourceCache.importPack(file); }
     catch (error) { setNote(error.message || t('资源包导入失败')); }
   };
   const clearOptional = async () => {
     if (!await confirmDialog({ title: t('清理个性化资源'), text: t('清理本机缓存的皮肤与精英二立绘、官方地图、官方特效、音乐和语音。设置、档案与对局记录会保留；未预载的立绘、地图和特效使用原有表现。') })) return;
     const result = await resourceCache.clearOptional();
+    if (!result?.busy && !result?.error) {
+      try { await wallpaperResources.clear(); } catch (error) { setNote(error.message); return; }
+    }
     setNote(result?.busy ? t('资源正在使用中，请等待当前处理完成后重试') : result?.error || t('已清理个性化资源与语音缓存'));
   };
   const proceed = async () => {
@@ -106,11 +128,12 @@ export function ResourcePreloadHost() {
     ${!entered ? html`<div class="resource-preload__entries"><${Button} class="resource-preload__qq-entry" size="sm" icon="copy" title="QQ群：964356269" onClick=${copyQQGroup}>${t('加群')}<//><${Button} class="resource-preload__entry" size="sm" icon="shield" onClick=${() => openResourcePreload()}>${t('资源预载')}<//></div>` : null}
     ${entered && state.missing && !view.open ? html`<${Button} class="resource-preload__entry resource-preload__missing" size="sm" icon="shield" onClick=${() => openResourcePreload()}>${t('本地资源缺失 · 点击补齐')}<//>` : null}
     <${Modal} open=${view.open} class="resource-preload resource-modal" width="min(11rem, 94vw)" micro="RESOURCE MANAGER" title=${t('预载资源管理')} utility=${true} onClose=${close}
-      actions=${html`${downloading ? html`<${Button} variant="secondary" icon="pause" onClick=${() => { resourceCache.pause(); musicPreload.pause(); }}>${t('暂停全部')}<//>` : null}${view.resume ? html`<${Button} variant="primary" iconRight="chevrons" loading=${continuing} disabled=${continuing} onClick=${proceed}>${t('进入游戏')}<//>` : null}<${Button} variant="secondary" onClick=${close}>${t('关闭')}<//>`}>
+      actions=${html`${downloading ? html`<${Button} variant="secondary" icon="pause" onClick=${() => { resourceCache.pause(); musicPreload.pause(); wallpaperResources.pause(); }}>${t('暂停全部')}<//>` : null}${view.resume ? html`<${Button} variant="primary" iconRight="chevrons" loading=${continuing} disabled=${continuing} onClick=${proceed}>${t('进入游戏')}<//>` : null}<${Button} variant="secondary" onClick=${close}>${t('关闭')}<//>`}>
       <div class="resource-manager">
         <p class="resource-manager__intro">${t('各类资源均需手动开始预载，优先从阿里云企业网盘直接下载到当前浏览器，失败时自动切换 CDN。进度按实时接收的资源字节显示，保存完成后计入已缓存项。关闭面板后下载继续；暂停后可继续补齐。')}</p>
         ${state.missing ? html`<p class="resource-preload__error" role="alert">${state.missing}</p>` : null}
         <div class="resource-preload__columns resource-manager__tiers"><${ResourceGroup} group="required" state=${{ ...state.required, source: state.required.source || state.source }} checking=${state.checking || packBusy} /><${ResourceGroup} group="optional" state=${{ ...state.optional, source: state.optional.source || state.source }} checking=${state.checking || packBusy} /></div>
+        <${WallpaperResourceGroup} state=${wallpaperState} disabled=${packBusy} />
         <section class="resource-manager__voice"><div class="resource-manager__voice-head"><h3>${t('预载语音语言')}</h3><div class="resource-voice-tabs" role="group" aria-label=${t('预载语音语言')}>
           ${['cn', 'jp'].map(lang => html`<button type="button" aria-pressed=${voiceLang === lang} disabled=${state.voice.running || packBusy} onClick=${() => { setVoiceLang(lang); savePref('resourceVoiceLang', lang); }}>${lang === 'cn' ? t('中文') : '日本語'}</button>`)}
         </div></div><label class="resource-choice"><input type="checkbox" checked=${allVoices} disabled=${state.voice.running || packBusy} onChange=${e => { setAllVoices(e.currentTarget.checked); savePref('resourceAllVoices', e.currentTarget.checked); }} />${t('同时预载全部语音语言')}</label></section>

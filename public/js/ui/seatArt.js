@@ -26,7 +26,7 @@ export const GHOSTY_AVATAR = '/assets/local/playercards/ghosty/avatar.png';
 export const GHOSTY_POSTER = '/assets/local/playercards/ghosty/poster.png';
 export const GHOSTY_ANIMATION = '/assets/local/playercards/ghosty/card.gif';
 
-const SPECIAL_CARD_ART = [
+export const SPECIAL_CARD_ART = [
   { id: SPECIAL_GHOSTY_CARD, name: '小幽祟祟', description: '', search: ['ghosty', '惊叫幽灵', '小幽灵'], avatar: GHOSTY_AVATAR, poster: GHOSTY_POSTER, animation: GHOSTY_ANIMATION },
   { id: SPECIAL_GOOD_BOY_CARD, name: '晴雨同汪', description: '段位纪念', search: ['good boy', 'dog days'], avatar: GOOD_BOY_AVATAR, poster: GOOD_BOY_POSTER, animation: GOOD_BOY_ANIMATION },
   { id: SPECIAL_TRICKSTER_CARD, name: '捣蛋鬼出没', description: '玩家纪念', search: ['捣蛋鬼', 'trickster'], avatar: TRICKSTER_AVATAR, poster: TRICKSTER_POSTER, animation: TRICKSTER_ANIMATION },

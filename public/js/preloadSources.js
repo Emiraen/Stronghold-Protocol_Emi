@@ -2,12 +2,14 @@
 // Resource bytes travel directly from the chosen source to the player's browser.
 import { PRELOAD_DELTAS, preloadDelta, preloadDeltaPack } from './preloadDeltas.js';
 import { MUSIC_PACK_FILES } from './musicPackFiles.js';
+import { WALLPAPER_PACK_FILES } from './wallpaperPackFiles.js';
 export const PRELOAD_CDN_ORIGIN = 'https://sources.emiraen.cfd';
 export const PRELOAD_CLOUD_API = 'https://bj40593.api.aliyunfile.com';
 export const PRELOAD_CLOUD_DATA = 'https://5180167180b0486ea77bda19b2d8e7a7.data.aliyunfile.com';
 const SHARE_ID = '1xfF9z8duTt';
 export const PRELOAD_FILES = Object.freeze({
   ...MUSIC_PACK_FILES,
+  ...WALLPAPER_PACK_FILES,
   ...Object.fromEntries(PRELOAD_DELTAS.map(pack => [pack.name, pack])),
   'resource-required-lossless.sprpack': { fileId: '6ae6d34e8415d29fb7a84a17ac610ef70db4b6a8', bytes: 1287414277, sha1: '8e371fbecb3f8ddab3fe2fae451a4dd2f5ccd003' },
   'resource-optional.sprpack': { fileId: '6ae6d3aa5200a4d5e18e41baa539a2f5cfd14c5c', bytes: 765238697, sha1: 'ef14ee473a8d460b3746ccb48b5e4c57920b7b50' },
@@ -180,7 +182,11 @@ export function readPreloadRange(group, start, end, total, options = {}) {
 // Music reads only the catalog header or the selected track's byte range.
 // Both transfer routes go directly to resource providers, never a game server.
 export function readMusicPackRange(name, start, end, options = {}) {
-  const file = MUSIC_PACK_FILES[name];
+  if (!MUSIC_PACK_FILES[name]) return Promise.reject(new Error('未知音乐资源包。'));
+  return readResourcePackRange(name, start, end, options);
+}
+export function readResourcePackRange(name, start, end, options = {}) {
+  const file = PRELOAD_FILES[name];
   if (!file || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end >= file.bytes)
     return Promise.reject(new Error('音乐资源包区间无效。'));
   // A loopback preview can use its own separate resource service. Public game
@@ -188,7 +194,7 @@ export function readMusicPackRange(name, start, end, options = {}) {
   let previewOrigin = null;
   try {
     const page = new URL(globalThis.location.href);
-    const target = new URL(page.searchParams.get('musicResources'));
+    const target = new URL(page.searchParams.get('mediaResources') || page.searchParams.get('musicResources'));
     if (['localhost', '127.0.0.1', '[::1]'].includes(page.hostname)
       && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)
       && ['http:', 'https:'].includes(target.protocol) && target.origin !== page.origin) previewOrigin = target.origin;

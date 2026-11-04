@@ -917,7 +917,7 @@ export function LobbyScreen() {
     <//>` : null}
     <${SettingsModal} open=${dialog === 'settings'} onClose=${() => setDialog(null)} />
     ${dialog === 'friends' ? html`<${FriendsHall} onClose=${() => setDialog(null)} />` : null}
-    <${Modal} open=${dialog === 'backdrop'} title=${trA('大厅背景')} micro="LOBBY BACKDROP" onClose=${() => setDialog(null)} class="east-backdrop-modal" width="min(700px, 94vw)"><${BackdropSettings} bg=${bg} /><//>
+    <${Modal} open=${dialog === 'backdrop'} title=${trA('大厅背景')} micro="LOBBY BACKDROP" onClose=${() => setDialog(null)} class="east-backdrop-modal hub-backdrop-panel" width="min(680px, calc(100vw - 20px))"><${BackdropSettings} bg=${bg} /><//>
     <${Modal} open=${dialog === 'join'} title=${trA('密钥加入')} micro="JOIN WITH ALLIANCE KEY" onClose=${() => setDialog(null)} width="min(640px, 94vw)">
       <div class="join-row"><${TextField} size="code" icon="key" value=${code} placeholder=${trA('输入同盟密钥 / 粘贴邀请链接')} onInput=${setCode} onEnter=${join} /></div>
       <div class="join-foot">${recent.length ? recent.map((c) => html`<button key=${c} type="button" class="code-chip num" onClick=${() => setCode(c)}>${c}</button>`) : html`<span>${trA('向同伴索取同盟密钥，或粘贴完整邀请链接。')}</span>`}</div>

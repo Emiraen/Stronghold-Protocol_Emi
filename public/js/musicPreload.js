@@ -1,4 +1,4 @@
-import { MUSIC_PLAYLISTS, loadMusicPlaylist, loadMusicTrack, parseMusicPackHeader } from './musicSources.js';
+import { MUSIC_PLAYLISTS, loadMusicPlaylist, loadMusicTrack, loadMusicCover, musicCoverCacheKey, parseMusicPackHeader } from './musicSources.js';
 
 export const MUSIC_PRELOAD_GROUPS = Object.freeze([
   Object.freeze({ id: 'ost', category: 'ost-music', title: '明日方舟 OST', label: 'ARKNIGHTS OST' }),
@@ -97,6 +97,18 @@ async function download(id) {
       keys.add(key); value.done++; value.downloadedBytes += track.bytes;
       value.currentBytes = 0; publish();
     }
+    // Album art shares a small cache across songs from the same album.
+    for (const track of playlist.tracks) {
+      checkAbort(signal);
+      const key = musicCoverCacheKey(track);
+      if (!key || keys.has(key)) continue;
+      value.currentTitle = '专辑封面 · ' + track.title; publish();
+      const blob = await loadMusicCover(track, { signal });
+      checkAbort(signal);
+      if (await cacheOperation('readonly', table => table.getKey(key)) === undefined)
+        await cacheOperation('readwrite', table => table.put(blob, key));
+      keys.add(key);
+    }
   } catch (error) {
     if (signal.aborted) value.paused = true;
     else value.error = error.message || '音乐预载失败，请重试';
@@ -133,6 +145,14 @@ async function importPack(file) {
       // File.slice keeps multi-gigabyte packs out of JavaScript memory.
       await cacheOperation('readwrite', table => table.put(file.slice(track.offset, track.offset + track.bytes, track.type), key));
       value.done++; value.downloadedBytes += track.bytes; keys.add(key); publish();
+    }
+    for (const track of playlist.tracks) {
+      checkAbort(signal);
+      const key = musicCoverCacheKey(track), cover = track.coverResource;
+      if (!key || keys.has(key)) continue;
+      value.currentTitle = '专辑封面 · ' + track.title; publish();
+      await cacheOperation('readwrite', table => table.put(file.slice(cover.offset, cover.offset + cover.bytes, cover.type), key));
+      keys.add(key);
     }
   } catch (error) {
     if (signal.aborted) value.paused = true;

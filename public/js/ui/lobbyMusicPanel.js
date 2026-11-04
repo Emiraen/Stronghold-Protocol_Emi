@@ -1,6 +1,7 @@
 import { html, Button, Icon, Modal } from './components.js';
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { searchMusicTracks } from './musicSearch.js';
+import { loadMusicCover, musicCoverCacheKey } from '../musicSources.js';
 import { t } from '../../../shared/i18n.js';
 
 const PAGE_SIZE = 60;
@@ -14,6 +15,32 @@ const durationLabel = seconds => {
   const whole = Math.floor(seconds), minutes = Math.floor(whole / 60), rest = String(whole % 60).padStart(2, '0');
   return minutes >= 60 ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`;
 };
+
+function AlbumArtwork({ track, enabled, playing }) {
+  const [image, setImage] = useState(null);
+  const active = useRef(null);
+  const key = track?.coverResource ? musicCoverCacheKey(track) : null;
+  useEffect(() => {
+    if (!enabled || !key) return undefined;
+    const controller = new AbortController();
+    let url;
+    void loadMusicCover(track, { signal: controller.signal }).then(blob => {
+      if (controller.signal.aborted || !blob) return;
+      url = URL.createObjectURL(blob);
+      const next = { key, url }; active.current = next; setImage(next);
+    }).catch(() => { /* Missing art keeps a stable, compact placeholder. */ });
+    return () => {
+      controller.abort();
+      if (url) URL.revokeObjectURL(url);
+      if (active.current?.url === url) active.current = null;
+    };
+  }, [enabled, key]);
+  const url = enabled && image === active.current && image?.key === key ? image.url : null;
+  return html`<div class="music-library__artwork" title=${track?.album || undefined}>
+    ${url ? html`<img src=${url} alt=${t('专辑封面')} width="64" height="64" decoding="async"
+      onError=${() => setImage(null)} />` : html`<${Icon} name=${playing ? 'signal' : 'play'} />`}
+  </div>`;
+}
 
 /** The existing lobby music button owns opening and catalog loading. */
 export function LobbyMusicPanel({ open, onClose, state = {}, actions = {} }) {
@@ -37,11 +64,11 @@ export function LobbyMusicPanel({ open, onClose, state = {}, actions = {} }) {
   };
   const currentLabel = state.mode === 'shuffle' ? t('随机播放') : state.mode === 'manual' || state.mode === 'local' ? t('单曲循环') : t('默认音乐');
   return html`<${Modal} class="lobby-music-panel lobby-music-panel--library" open=${open} title=${t('大厅音乐')} micro="LOBBY MUSIC"
-    width="min(760px, calc(100vw - 24px))" onClose=${onClose}
+    width="min(680px, calc(100vw - 24px))" onClose=${onClose}
     actions=${html`<${Button} variant="secondary" onClick=${onClose}>${t('关闭')}<//>`}>
     <div class="music-library">
       <section class="music-library__now" aria-label=${t('当前音乐')}>
-        <div class="music-library__now-icon" aria-hidden="true"><${Icon} name=${state.playing ? 'signal' : 'play'} /></div>
+        <${AlbumArtwork} track=${state.currentTrack} enabled=${open} playing=${state.playing} />
         <div class="music-library__now-text"><span class="music-library__eyebrow">${currentLabel}</span>
           <strong>${state.name || t('默认大厅音乐')}</strong>
           ${state.name && (state.currentArtist || Number.isFinite(state.currentDuration))
@@ -49,7 +76,7 @@ export function LobbyMusicPanel({ open, onClose, state = {}, actions = {} }) {
           <small role="status" aria-live="polite">${state.status || ''}</small>
           ${state.nextTitle && state.mode === 'shuffle' ? html`<small class="music-library__next">${t('下一首')} · ${state.nextTitle}</small>` : null}
         </div>
-        <${Button} variant="secondary" icon=${state.playing ? 'pause' : 'play'} disabled=${!state.name || state.busy}
+        <${Button} variant="secondary" size="sm" icon=${state.playing ? 'pause' : 'play'} disabled=${!state.name || state.busy}
           onClick=${() => action(actions.toggle)}>${state.playing ? t('暂停') : t('播放')}<//>
       </section>
       <div class="music-library__search">

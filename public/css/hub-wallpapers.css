@@ -1,0 +1,58 @@
+/* Compact lobby media controls; only first-frame posters appear in the catalogue. */
+.hub-backdrop-panel .modal__body { padding: 10px 14px 12px; }
+.hub-backdrop-panel .modal__head { padding: 10px 14px; }
+.hub-backdrop-panel .modal__actions { padding: 7px 14px; }
+.hub-backdrop-panel .modal__title { font-size: 17px; }
+.hub-backdrop-panel .bgset { gap: 10px; }
+.hub-backdrop-panel .bgset__themes { gap: 6px; }
+.hub-backdrop-panel .bgset__theme { padding: 5px; gap: 3px; min-height: 44px; border-radius: 5px; }
+.hub-backdrop-panel .bgset__swatch { max-height: 66px; }
+.hub-backdrop-panel .bgset__name { font-size: 12px; }
+.hub-backdrop-panel .bgset__en { font-size: 8px; letter-spacing: .07em; }
+.hub-backdrop-panel .bgset__custom { padding: 8px; gap: 7px; }
+.hub-backdrop-panel .bgset__row { gap: 6px; }
+.hub-backdrop-panel .bgset__slider { grid-template-columns: 32px minmax(0,1fr) 40px; gap: 8px; font-size: 12px; }
+.hub-backdrop-panel .bgset__slider > span { white-space: nowrap; }
+.hub-backdrop-panel .btn--sm { min-height: 30px; padding: 5px 8px; font-size: 12px; }
+.hub-backdrop-panel .bgset__note { line-height: 1.4; font-size: 11px; }
+.hub-wallpapers { display: grid; gap: 8px; min-width: 0; }
+.hub-wallpapers__head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.hub-wallpapers__head h3 { display: flex; align-items: baseline; gap: 6px; font-size: 13px; margin: 0; }
+.hub-wallpapers__head small { color: var(--text-dim); font-size: 11px; }
+.hub-wallpapers__head input { flex: 1; min-width: 100px; min-height: 34px; padding: 5px 9px;
+  border: 1px solid rgba(223,230,226,.15); background: rgba(0,0,0,.2); color: var(--text-hi); border-radius: 4px; font: inherit; font-size: 13px; }
+.hub-wallpapers__grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; }
+.hub-wallpapers__groups { display: flex; gap: 6px; }
+.hub-wallpapers__groups button { min-height: 34px; padding: 5px 12px; border-radius: 4px; border: 1px solid rgba(223,230,226,.18);
+  background: rgba(0,0,0,.2); color: var(--text-hi); cursor: pointer; font-size: 12px; touch-action: manipulation; }
+.hub-wallpapers__groups button[aria-pressed="true"] { border-color: var(--mint-400); background: rgba(23,249,183,.1); color: var(--mint-400); }
+.hub-wallpaper { display: grid; grid-template-rows: auto 1fr; align-content: start; gap: 4px; min-width: 0; min-height: 44px;
+  padding: 4px; border: 1px solid rgba(223,230,226,.14); border-radius: 5px; background: rgba(10,18,17,.7); color: var(--text-hi);
+  text-align: left; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.hub-wallpaper:focus-visible { outline: 2px solid var(--mint-400); outline-offset: 2px; }
+.hub-wallpaper.is-selected { border-color: var(--mint-400); box-shadow: inset 0 0 0 1px var(--mint-400); }
+.hub-wallpaper:disabled { cursor: progress; opacity: .65; }
+.hub-wallpaper:active { background: rgba(23,249,183,.12); }
+.hub-wallpaper__cover { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 16/9; overflow: hidden; background: #101a19; border-radius: 3px; }
+.hub-wallpaper__cover img { width: 100%; height: 100%; object-fit: cover; }
+.hub-wallpaper__cover > .icon { width: 24px; height: 24px; opacity: .4; }
+.hub-wallpaper__time { position: absolute; bottom: 3px; right: 3px; padding: 1px 4px; border-radius: 3px; background: rgba(0,0,0,.75); font-size: 10px; line-height: 1.5; }
+.hub-wallpaper__selected { position: absolute; left: 4px; top: 4px; display: grid; place-items: center; width: 20px; height: 20px; color: #051b14; background: var(--mint-400); border-radius: 50%; }
+.hub-wallpaper__selected .icon { width: 14px; height: 14px; }
+.hub-wallpaper__title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.hub-wallpapers__pages { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 12px; }
+@media (hover:hover) and (pointer:fine) { .hub-wallpaper:hover { border-color: var(--mint-400); } }
+@media (max-width:600px) {
+  .sp-overlay-layer .modal__box.hub-backdrop-panel { width: min(480px,calc(100vw - 16px)) !important; max-height: calc(100dvh - 16px); }
+  .hub-backdrop-panel .modal__head,.hub-backdrop-panel .modal__actions { padding: 7px 10px; }
+  .hub-backdrop-panel .modal__body { padding: 7px 10px 10px; }
+  .hub-backdrop-panel .modal__title { font-size: 15px; }
+  .hub-backdrop-panel .bgset__themes { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 4px; }
+  .hub-backdrop-panel .bgset__theme { padding: 3px; }
+  .hub-backdrop-panel .bgset__en { display: none; }
+  .hub-backdrop-panel .bgset__name { font-size: 11px; white-space: normal; }
+  .hub-wallpapers__grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; }
+  .hub-wallpaper__title { font-size: 11px; }
+  .hub-wallpapers__head input { font-size: 16px; min-height: 34px; }
+}
+@media (max-width:350px) { .hub-wallpapers__grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }

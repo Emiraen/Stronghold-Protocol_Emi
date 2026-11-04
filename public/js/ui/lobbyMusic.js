@@ -24,7 +24,7 @@ let foreground = null, next = null, nextController = null, advancing = false;
 const currentKey = () => { const state = store.get(); return bgmKeyFor(selectRoute(state), state.match?.public); };
 const inMusicArea = () => selectRoute(store.get()) !== 'title' && currentKey() === 'lobby';
 const customSelected = () => !!record?.enabled && !record.paused && inMusicArea();
-const videoSelected = () => videoAudible && selectRoute(store.get()) === 'lobby';
+const videoSelected = () => videoAudible && selectRoute(store.get()) === 'lobby' && !customSelected();
 const notify = () => listeners.forEach(listener => listener(music.snapshot()));
 const aborted = error => error?.name === 'AbortError';
 const sameTrack = (a, b) => !!a && !!b && a.id === b.id && a.playlistId === b.playlistId;
@@ -119,6 +119,9 @@ async function refreshCatalog() {
           tracks: playlist.tracks.map(track => ({ ...track, playlistId: playlist.id, playlistTitle: playlist.title })) };
       } else failures.push(MUSIC_PLAYLISTS[index].title + '：' + (result.reason?.message || '歌单获取失败'));
     }
+    // A remembered playing song may predate the cover-enabled catalogue.
+    const current = record?.track && playlists.flatMap(playlist => playlist.tracks).find(track => sameTrack(track, record.track));
+    if (current) record.track = current;
     catalogError = failures.join('；');
     return playlists;
   })().finally(() => { catalogLoading = false; catalogRequest = null; notify(); });
@@ -136,7 +139,7 @@ async function startTrack(track, token, prepared = null) {
     if (token !== revision) return false;
     replace({ blob, name: track.title, track, enabled: true, paused: settings.paused });
     settings.selected = { id: track.id, playlistId: track.playlistId }; saveSettings();
-    status = settings.paused ? '已暂停 · 使用默认音乐' : '已预载 · ' + track.title;
+    status = settings.paused ? '已暂停' : '已预载 · ' + track.title;
     refresh(); prefetchNext(); return true;
   } catch (error) {
     if (token !== revision || aborted(error)) return false;
@@ -204,7 +207,7 @@ function install() {
     if (!(value?.blob instanceof Blob) || !value.blob.size || value.blob.size > MAX_MUSIC_BYTES) return;
     settings.mode = 'local'; settings.paused = value.paused === true; saveSettings();
     replace({ ...value, enabled: value.enabled !== false, paused: settings.paused });
-    status = record.paused ? '已暂停 · 使用默认音乐' : '点击“播放”开始音乐'; refresh();
+    status = record.paused ? '已暂停' : '点击“播放”开始音乐'; refresh();
   })().catch(error => { if (initialRevision === revision) { status = error.message || '本地音乐存储暂不可用'; notify(); } });
 }
 
@@ -214,7 +217,12 @@ export const music = {
     status: t(status), busy, mode: settings.mode, shuffleIds: [...settings.shuffleIds], playlists,
     catalogLoading, catalogError, loadingTrackId, currentTrackId: record?.track?.id || null,
     currentPlaylistId: record?.track?.playlistId || null, nextTitle: next?.track.title || '',
+    currentTrack: record?.track || null, currentAlbum: record?.track?.album || '',
     currentArtist: record?.track?.playlistId !== 'ost' ? record?.track?.artist || '' : '', currentDuration: record?.track?.duration ?? null }),
+  subscribe(listener) {
+    listeners.add(listener); listener(music.snapshot());
+    return () => listeners.delete(listener);
+  },
   async refreshCatalog() { install(); return refreshCatalog(); },
   async playTrack(track) {
     install(); audio._unlock(); const token = ++revision; advancing = false; clearNext();
@@ -269,7 +277,7 @@ export const music = {
     record.enabled = true; record.paused = !record.paused && !player.paused;
     settings.paused = record.paused; saveSettings();
     if (settings.mode === 'local') await putLocalMedia('lobbyMusic', record);
-    status = record.paused ? '已暂停 · 使用默认音乐' : '点击“播放”开始音乐';
+    status = record.paused ? '已暂停' : '点击“播放”开始音乐';
     if (!record.paused && player.ended && shuffleActive()) { void advanceShuffle(); return; }
     refresh(); if (!record.paused) prefetchNext();
   },

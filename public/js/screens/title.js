@@ -23,7 +23,7 @@ import { AnnouncementButton } from '../ui/announcement.js';
 import { GIcon } from '../ui/gameComponents.js';
 import { openResourcePreload } from '../ui/resourcePreload.js';
 import { useResourceUrl } from '../ui/cachedImage.js';
-import { loadRememberedProfile, clearRememberedProfile, installRememberedProfile, rememberCurrentProfile } from '../rememberedAccount.js';
+import { useRememberedProfile, warmRememberedProfile, clearRememberedProfile, installRememberedProfile, rememberCurrentProfile } from '../rememberedAccount.js';
 
 // Same character classes as server/net.js sanitizeName (control, zero-width, bidi, BOM), so a name
 // the client accepts is never rejected by the server's hello validation.
@@ -326,7 +326,11 @@ export function TitleScreen() {
   const pendingJoin = useStore((s) => s.ui.pendingJoin);
   const switching = useStore((s) => s.switching, undefined, serversState);
   const rememberedLogin = useMemo(() => identity.loadRememberedLogin(), []);
-  const rememberedProfile = useMemo(() => loadRememberedProfile(rememberedLogin?.name), []);
+  const rememberedProfile = useRememberedProfile(rememberedLogin?.name);
+  useEffect(() => {
+    installRememberedProfile();
+    if (rememberedLogin?.name) void warmRememberedProfile(rememberedLogin.name);
+  }, [rememberedLogin?.name]);
   const [quickLogin, setQuickLogin] = useState(() => !!rememberedLogin && !!(rememberedLogin.password || identity.getAuth(rememberedLogin.name)));
   const [name, setName] = useState(() => rememberedLogin?.name || store.get().me.name || identity.loadName() || '');
   const [password, setPassword] = useState(() => rememberedLogin?.password || '');
@@ -448,7 +452,7 @@ export function TitleScreen() {
           <span>${trA("收到同盟邀请")}</span><b class="num">${pendingJoin.code || pendingJoin}</b><span class="t-lo">· 登录后将自动加入</span>
         </div>` : null}
         ${quickLogin ? html`<div class="title-account" data-testid="remembered-account">
-          <${AvatarFrame} name=${name} src=${rememberedProfile?.avatar} fallbackSrc=${rememberedProfile?.fallbackAvatar} fallbackIcon="user" size="md" self=${true} />
+          <${AvatarFrame} name=${name} src=${rememberedProfile?.thumbnail || rememberedProfile?.avatar} fallbackSrc=${rememberedProfile?.fallbackAvatar} fallbackIcon="user" size="md" self=${true} />
           <div class="title-account__identity"><span class="title-account__status"><span class="status-dot is-on"></span>已登录该账号</span><strong class="title-account__name">${name}</strong></div>
           <button class="title-account__switch" type="button" disabled=${authenticating || switching} onClick=${forgetAccount}>切换账号</button>
         </div>` : html`<${TextField} label=${trA("博士代号")} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
