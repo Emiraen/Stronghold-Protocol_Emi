@@ -1338,6 +1338,31 @@ export function createProfileAccess(config, stores, log) {
         }
       }
     },
+    /** Move a proven same-account connection lease onto its existing match seat, without another login/read. */
+    transferSession(source, target) {
+      if (source === target || !access.validSession(source) || !source.profileBound || !target.profileBound
+          || source.aid !== target.aid || target.loginInFlight || source.roomCode || source.spectatorCode) return false;
+      const oldLease = target.loginLease;
+      const incomingLease = source.loginLease;
+      clearLeaseTimer(source); clearLeaseTimer(target);
+      finishRecovery(source); finishRecovery(target);
+      sessions.delete(source); sessions.delete(target);
+      for (const field of ['loginOwner', 'loginGeneration', 'loginAid', 'loginLease', 'leaseUntil', 'leaseRenewalStarted']) {
+        target[field] = source[field];
+      }
+      target.loginInFlight = null; target.loginHandoffLease = null;
+      target.loginReleased = false; target.loginRevoked = false;
+      source.loginLease = null; source.loginHandoffLease = null;
+      source.loginReleased = true; source.profileReady = false;
+      source.connected = false; source.ws = null;
+      sessions.add(target);
+      arm(target, target.leaseRenewalStarted);
+      // The old target lease has a different owner. Never release the incoming lease.
+      if (oldLease && oldLease.owner !== incomingLease.owner) {
+        optional('原设备租约释放暂不可用', () => call('lease.release', [oldLease]));
+      }
+      return true;
+    },
     async releaseSession(session) {
       const key = session.loginLease;
       session.profileReady = false;

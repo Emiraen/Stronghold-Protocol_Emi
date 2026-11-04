@@ -99,13 +99,14 @@ export class FunnelFx {
       const info = v.info || null;
       if (info && info.side !== 'enemy' && info.kind !== 'device' && info.kind !== 'item') {
         const key = this.w.unitKeyOf(v);
-        const plan = this._plan(key);
+        const idx = this.w.indexOf(v);
+        const plan = this._plan(key, idx);
         if (plan) {
           const rec = this._record(info);
           const si = Number.isInteger(info.diy?.skillIndex) ? info.diy.skillIndex : Number.isInteger(info.skillIndex) ? info.skillIndex : undefined;
           const srec = skillRecordOf(rec, si);
           U = {
-            id, key, v, plan, rec, srec, dmgType: rec && typeof rec.dmgType === 'string' ? rec.dmgType : null,
+            id, key, idx, v, plan, rec, srec, dmgType: rec && typeof rec.dmgType === 'string' ? rec.dmgType : null,
             attachN: 0,             // units one attach attack showed (0: initialCount)
             home: new Map(),        // `${key}|${mount}` → { h, key, mount, unit }
             out: new Map(),         // `${mode}|${i}` → { until, hit (a remote unit's playing hit), n (its hits) }
@@ -129,10 +130,12 @@ export class FunnelFx {
   }
 
   /** The plan of an index unit, once per battle. */
-  _plan(key) {
-    if (!key || !this.w.idx) return null;
-    let p = this.plans.get(key);
-    if (p === undefined) { p = funnelPlan(this.w.idx, key); this.plans.set(key, p); }
+  _plan(key, idx = this.w.idx) {
+    if (!key || !idx) return null;
+    let plans = this.plans.get(idx);
+    if (!plans) this.plans.set(idx, plans = new Map());
+    let p = plans.get(key);
+    if (p === undefined) { p = funnelPlan(idx, key); plans.set(key, p); }
     return p;
   }
 
@@ -303,7 +306,7 @@ export class FunnelFx {
       const g = this._shot(U, mode);
       if (!g || again) return null;
       const casts = this._casts(U, g, wound ? 'strike' : 'all');
-      const proj = g.projectileKey ? this.w.idx.projectiles[g.projectileKey] : null;
+      const proj = g.projectileKey ? U.idx.projectiles[g.projectileKey] : null;
       const delay = proj ? this.w._fly(proj, src, tgt, kind, time, g.mount != null ? { mount: g.mount } : {}) : null;
       return casts > 0 || Number.isFinite(delay) ? { skipBody: false, drawn: true } : null;
     }
@@ -478,7 +481,7 @@ export class FunnelFx {
     const def = this.w.ofx.lib.def(key);
     const pos = this._flyPos(dr);
     return this.w.ofx.spawn(key, { pos, groundZ: pos[2] }, {
-      loop: true, important: true,
+      loop: true, important: true, owner: U.v, resolveEffect: this.w.effectResolver(U.v),
       track: (fx) => {
         const p = this._flyPos(dr);
         fx.anchor[0] = p[0]; fx.anchor[1] = p[1]; fx.anchor[2] = p[2];
@@ -519,7 +522,7 @@ export class FunnelFx {
     best.phase = tgt ? 'chase' : 'seek';
     best.v = S3.chase.v0;
     best.orbit = null;
-    if (tgt && this._has(U.plan.dispersed.marks.trace)) best.trace = this.w.playOn(U.plan.dispersed.marks.trace, tgt, { follow: true, loop: true, important: true });
+    if (tgt && this._has(U.plan.dispersed.marks.trace)) best.trace = this.w.playOn(U.plan.dispersed.marks.trace, tgt, { follow: true, loop: true, important: true, skinOwner: U.v });
     return !!best.h?.alive || !!best.trace?.alive;
   }
 
@@ -527,7 +530,7 @@ export class FunnelFx {
   _marks(dr, latchOn) {
     if (dr.trace && !latchOn) { dr.trace.stop(); dr.trace = null; }
     if (dr.latched) { dr.latched.stop(); dr.latched = null; }
-    if (latchOn && this._has(dr.latchedKey)) dr.latched = this.w.playOn(dr.latchedKey, latchOn, { follow: true, loop: true, important: true });
+    if (latchOn && this._has(dr.latchedKey)) dr.latched = this.w.playOn(dr.latchedKey, latchOn, { follow: true, loop: true, important: true, skinOwner: U.v });
   }
 
   /** A unit's target fell or left: it reappears near that spot and waits for its next lock (the sim's draw is its own). */
@@ -782,7 +785,7 @@ export class FunnelFx {
     const out = new Set();
     for (const v of views) {
       const U = this.of(v);
-      if (U) for (const k of planKeys(U.plan, this.w.idx.projectiles)) out.add(k);
+      if (U) for (const k of planKeys(U.plan, U.idx.projectiles)) out.add(k);
     }
     return [...out];
   }

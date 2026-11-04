@@ -4,6 +4,8 @@ import { getDefaultRegistry, GARRISON_HOOK } from '../../match/effectsMeta.js';
 import { itemKey } from '../../match/gamedata.js';
 import { rollMizukiRecruitOperator, grantMizukiRecruitRefreshes, validMizukiRecruitTicket, enableMizukiSpecialRecruitPool } from './Recruitment.js';
 import { mizukiStrategySpecialRecruitRefresh } from './StrategyAdaptation.js';
+import { mizukiEquipmentAvailable } from './EquipmentPolicy.js';
+import { mizukiStrategyAvailable } from './StrategyPolicy.js';
 
 const PREFIX='mizuki:recruit:piece:';
 const own=(object,key)=>Object.prototype.hasOwnProperty.call(object || {},key);
@@ -80,6 +82,8 @@ export function dispatchMizukiRecruitMeta({player,ticket,catalog,gd,contextFacto
   };
   const payload=hook==='onRefresh'?{...event,slots:slots(),free:true,price:0}:event;
   const call=(key,handler,source,allowRun=true)=>{
+    if(source.kind==='item'&&!mizukiEquipmentAvailable(gd,source.piece?.id))return;
+    if(source.kind==='band'&&!mizukiStrategyAvailable(source.bandId))return;
     const fn=handler?.[hook]||(allowRun?handler?.run:null);
     if(typeof fn!=='function')return;
     try{fn(makeContext(source),payload);output.dispatched++;}

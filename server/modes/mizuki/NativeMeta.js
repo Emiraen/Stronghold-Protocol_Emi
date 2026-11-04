@@ -2,6 +2,8 @@
 // lifecycle boundary and must claim each round/result event before dispatching.
 import { getDefaultRegistry, GARRISON_HOOK, HOOKS, MAX_DEPTH } from '../../match/effectsMeta.js';
 import { itemKey } from '../../match/gamedata.js';
+import { mizukiEquipmentAvailable, mizukiEquipmentEffectAvailable } from './EquipmentPolicy.js';
+import { mizukiStrategyAvailable } from './StrategyPolicy.js';
 
 const depths = new WeakMap();
 const list = value => Array.isArray(value) ? value : [];
@@ -52,6 +54,9 @@ export function dispatchMizukiNativeMeta({ player, gd, contextFactory, hook, eve
       hand: () => pieces().filter(piece => piece.area === 'hand'),
       temp: () => pieces().filter(piece => piece.area === 'temp') });
     const call = (key, handler, source, repeat = 1) => {
+      if (source.kind === 'item' && !mizukiEquipmentAvailable(gd, source.piece?.id)
+        || source.kind === 'effect' && !mizukiEquipmentEffectAvailable(source.ref)
+        || source.kind === 'band' && !mizukiStrategyAvailable(source.bandId)) return;
       const fn = typeof handler?.[hook] === 'function' ? handler[hook]
         : source.kind === 'garrison' && typeof handler?.run === 'function' ? handler.run : null;
       if (!fn) return;

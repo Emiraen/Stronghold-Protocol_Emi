@@ -10,6 +10,9 @@
 .resource-preload__group { display: flex; flex-direction: column; padding: .24rem; border: 1px solid var(--line-2); background: var(--bg-1); min-width: 0; }
 .resource-preload__group--required { border-top: 2px solid var(--mint-500); }
 .resource-preload__group--voice { border-top: 2px solid var(--ice); }
+.resource-preload__group--music { border-top: 2px solid var(--amber); }
+.resource-preload__music-groups { margin-top: .22rem; }
+.resource-preload__group .resource-preload__music-track { margin: 0 0 .12rem; overflow-wrap: anywhere; }
 .resource-preload__heading { display: flex; align-items: center; gap: .1rem; color: var(--mint-500); font-size: .22rem; font-weight: 700; }
 .resource-preload__group--voice .resource-preload__heading { color: var(--ice); }
 .resource-preload__heading small { margin-left: auto; font-size: .13rem; font-weight: 400; color: var(--text-lo); border: 1px solid var(--line); padding: .025rem .06rem; white-space: nowrap; }

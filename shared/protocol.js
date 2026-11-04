@@ -456,6 +456,7 @@ export const C2S = {
   'room.setCapacity': { capacity: (v) => ZHAJING_CAPACITIES.includes(v) || MIZUKI_CAPACITIES.includes(v) || ENTERTAINMENT_CAPACITIES.includes(v) || CYCLOPS_CAPACITIES.includes(v) || ANNIHILATION_CAPACITIES.includes(v) },
   'room.cancelReady': { seat: (v) => isInt(v, 0, ENTERTAINMENT_MAX_SEATS - 1), playerId: isId },
   'session.release': {},
+  'session.transfer': { target: (v) => typeof v === 'string' && /^p_[0-9a-f]{10}$/.test(v) },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v),
     serverId: (v) => v === 'main' || v === 'secondary', testAck: (v) => v === true, $optional: ['serverId', 'testAck'] },
   'room.leave': {},

@@ -216,8 +216,9 @@ export class SkillFx {
       if (info && info.kind !== 'device' && info.kind !== 'item') {
         const unitKey = this.w.unitKeyOf(v);
         const rec = this._recordOf(info);
-        const r = unitKey ? planFor(this.w.idx, { info, rec, unitKey }) : null;
-        if (r && (r.plan || r.charge || r.enemy.length)) U = this._record(id, r, rec);
+        const idx = this.w.indexOf(v);
+        const r = unitKey ? planFor(idx, { info, rec, unitKey }) : null;
+        if (r && (r.plan || r.charge || r.enemy.length)) U = this._record(id, r, rec, idx);
       }
       this.units.set(id, U);
     }
@@ -231,10 +232,10 @@ export class SkillFx {
     try { return this.w.opts.record(info) || null; } catch { return null; }
   }
 
-  _record(id, r, rec = null) {
-    const idx = this.w.idx, plan = r.plan;
+  _record(id, r, rec = null, idx = this.w.idx) {
+    const plan = r.plan;
     return {
-      id, v: null, key: r.unitKey, skillId: r.skillId, plan, charge: r.charge, srec: r.srec,
+      id, idx, v: null, key: r.unitKey, skillId: r.skillId, plan, charge: r.charge, srec: r.srec,
       buffS: buffDuration(r.srec), tHit: plan ? targetsOf(idx, plan).hit : [], drawsStart: false,
       on: null, startFrame: -1, offAt: -Infinity, atkN: 0, attacked: false, byFlag: false, loopsOn: false,
       loops: [], ready: [], readyOn: false, passiveOn: false, passiveShots: false, passiveDraws: false, passiveFrame: -1, passiveDone: false, timed: false,
@@ -586,11 +587,11 @@ export class SkillFx {
 
   /** The plan of an enemy's skill in the mode its form names (formMode; the copies of a boss's skill differ by mode). */
   _enemyPlan(U, entry, v) {
-    const mode = formMode(this.w.idx.units[U.key], this.w.formOf(v), this.w.formMap(U.key)) || 'Default';
+    const mode = formMode(U.idx.units[U.key], this.w.formOf(v), this.w.formMap(U.key)) || 'Default';
     if (mode === 'Default') return entry.plan;
     const key = `${entry.slot}|${mode}`;
     let p = U.modePlans.get(key);
-    if (!p) { p = skillPlan(this.w.idx, U.key, entry.prefabKey, { mode }); U.modePlans.set(key, p); }
+    if (!p) { p = skillPlan(U.idx, U.key, entry.prefabKey, { mode }); U.modePlans.set(key, p); }
     return p;
   }
 
@@ -683,16 +684,16 @@ export class SkillFx {
     const replace = fits || forced;
     if (fx.ability && !replace) { fx.cast = fx.cast.filter((e) => e.ability !== fx.ability); fx.range = []; fx.aim = []; fx.hit = st.plan.each.hit[0].length ? [st.plan.each.hit[0]] : []; }
     // the projectile its ability fires (index v3: abilities[].projectileKey, a use's projectileKey), else the naming guess
-    const projectile = fits && ranged ? fx.projectile || skillProjectile(this.w.idx, st.plan) : null;
-    const ready = (e, v) => !!e && !!v && this.w.ofx.ready(this._key(e, v));
+    const projectile = fits && ranged ? fx.projectile || skillProjectile(st.U.idx, st.plan) : null;
+    const ready = (e, v) => !!e && !!v && this.w.ofx.ready(this.w.effectKey(this._key(e, v), src));
     fx.cast = fx.cast.filter((e) => ready(e, src));
     fx.range = fx.range.filter((e) => ready(e, src));
     fx.aim = fx.aim.filter((e) => ready(e, tgt));
     fx.hit = fx.hit.map((g) => g.filter((e) => ready(e, tgt)));
     if (!fx.hit.some((g) => g.length)) fx.hit = [];
     const buffs = st.U.tHit.filter((e) => ready(e, tgt));
-    const proj = projectile && this.w.idx.projectiles[projectile];
-    const flies = !!proj && this.w.projectileReady(proj);
+    const proj = projectile && st.U.idx.projectiles[projectile];
+    const flies = !!proj && this.w.projectileReady(proj, [], src);
     if (!flies && !fx.cast.length && !fx.range.length && !fx.aim.length && !fx.hit.some((g) => g.length) && !buffs.length) return null;
     return { U: st.U, fx, replace, projectile, shot: replace ? fx.shot : null, buffs, late: forced };
   }
@@ -786,7 +787,7 @@ export class SkillFx {
     const rel = U.charge.onRelease;
     const mode = this.w.mode(this.w.unitOf(src), src);
     const pk = rel.projectiles[mode?.name] || rel.projectiles[(mode?.name || '').replace(/_T\d+$/, '')] || rel.projectiles.Default;
-    const proj = pk ? this.w.idx.projectiles[pk] : null;
+    const proj = pk ? U.idx.projectiles[pk] : null;
     let flown = 0;
     for (let i = 0; i < n; i++) {
       if (proj && kind && kind !== 'none') {
@@ -1004,7 +1005,7 @@ export class SkillFx {
    * says; a binding's own `keys` at 'target' once on the unit the fx names.
    */
   _bound(U, bind, x, y, extra) {
-    const keys = bindingEffects(this.w.idx, bind).filter((k) => this.w.ofx.ready(k));
+    const keys = bindingEffects(U.idx, bind).filter((k) => this.w.ofx.ready(k));
     if (!keys.length) return false;
     if (bind.at === 'target') {
       // once on the unit the fx names (泡泡's attacker), else where it happens; turned by the owner's side
@@ -1021,7 +1022,7 @@ export class SkillFx {
       : Number(bb[bind.hold]) > 0 ? Number(bb[bind.hold]) : bind.holdS || SKILL_CAST_S;
     let drew = false;
     for (const k of keys) {
-      const h = this.w.playOn(k, at, { loop: true, important: true });
+      const h = this.w.playOn(k, at, { loop: true, important: true, skinOwner: U.v });
       if (!h) continue;
       drew = true;
       later(this.w.ofx, holdS, () => h.stop());
@@ -1034,12 +1035,12 @@ export class SkillFx {
 
   /** Every key the battle's units' skills, charges and bindings can play (FxWiring.begin / more). */
   keys(views) {
-    const idx = this.w.idx;
     const out = new Set();
-    const proj = (pk) => { const p = pk && idx.projectiles?.[pk]; if (p) for (const k of p.effects || []) out.add(String(k).toLowerCase()); };
     for (const v of views) {
       const U = this.of(v);
       if (!U) continue;
+      const idx = U.idx;
+      const proj = (pk) => { const p = pk && idx.projectiles?.[pk]; if (p) for (const k of p.effects || []) out.add(String(k).toLowerCase()); };
       if (U.plan) {
         for (const k of planKeys(U.plan)) out.add(k);
         for (const pk of U.plan.projectiles) proj(pk);
@@ -1049,7 +1050,7 @@ export class SkillFx {
         for (const k of planKeys(en.plan)) out.add(k);
         for (const pk of en.plan.projectiles) proj(pk);
         // the copies of a boss's skill in its other modes (the forms it may take)
-        for (const mode of new Set((en.plan && this.w.idx.units[U.key]?.skills?.[en.prefabKey]?.uses || []).map((x) => x.mode).filter((m) => typeof m === 'string' && m !== 'Default'))) {
+        for (const mode of new Set((en.plan && idx.units[U.key]?.skills?.[en.prefabKey]?.uses || []).map((x) => x.mode).filter((m) => typeof m === 'string' && m !== 'Default'))) {
           for (const k of planKeys(skillPlan(idx, U.key, en.prefabKey, { mode }))) out.add(k);
         }
       }

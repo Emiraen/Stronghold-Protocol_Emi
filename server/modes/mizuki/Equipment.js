@@ -7,6 +7,7 @@ import { getDefaultRegistry } from '../../match/effectsMeta.js';
 import { pieceBonds } from '../../match/bondsMeta.js';
 import { itemMergeRecipe } from '../../../shared/itemMerge.js';
 import { validMizukiRosterProgression } from './RosterProgression.js';
+import { mizukiEquipmentAvailable, mizukiEquipmentEffectAvailable, mizukiEquipmentPool } from './EquipmentPolicy.js';
 
 const MAX_BAG = 4096, MAX_IDS = 4096;
 const copy = (value) => structuredClone(value);
@@ -76,6 +77,8 @@ export function mizukiEquipmentItemView(item, { gd } = {}) {
   return record ? { ...copy(item), name: record.name, description: record.desc || '', iconId: record.iconId || record.id,
     tier: record.tier, isGolden: !!record.isGolden, itemType: record.itemType, category: record.category,
     kind: 'item', effectKind: record.kind, consumable: !!record.kind?.startsWith('consume_on_equip'),
+    disabled: !mizukiEquipmentAvailable(gd, item.id),
+    disabledReason: mizukiEquipmentAvailable(gd, item.id) ? null : '此道具在水月肉鸽中禁用。',
     effects: copy(record.buffs || []), merge: itemMergeRecipe(item.id, (id) => gd.item(id), gd.itemMergeCount) } : null;
 }
 
@@ -83,7 +86,7 @@ export function mizukiEquipmentItemView(item, { gd } = {}) {
 export function rollMizukiEquipmentDrop({ gd, rng, stage = 1 } = {}) {
   if (!gd || typeof rng !== 'function' || !integer(stage, 1)) return null;
   const level = Math.min(gd.maxShopLevel || 6, stage);
-  return new SharedPool(gd).rollItem(rng, level);
+  return new SharedPool(gd).rollItem(rng, level, mizukiEquipmentPool(gd));
 }
 
 function allItems(player) {
@@ -131,8 +134,9 @@ function mergeItems(player, { gd, allocateUid, onMerge }) {
   for (let guard = 0; guard < MAX_BAG; guard++) {
     let changed = false;
     for (const id of new Set(allItems(player).map((item) => item.id))) {
+      if (!mizukiEquipmentAvailable(gd, id)) continue;
       const recipe = itemMergeRecipe(id, (key) => gd.item(key), gd.itemMergeCount);
-      if (!recipe) continue;
+      if (!recipe || !mizukiEquipmentAvailable(gd, recipe.upgradeId)) continue;
       const twins = allItems(player).filter((item) => item.id === id).sort((a, b) => a.uid - b.uid).slice(0, recipe.count);
       if (twins.length !== recipe.count) continue;
       if (player.equipmentInventory.length - twins.filter((item) => player.equipmentInventory.includes(item)).length + 1 > MAX_BAG) {
@@ -161,6 +165,7 @@ function mergeItems(player, { gd, allocateUid, onMerge }) {
 
 export function grantMizukiEquipment(player, itemId, options = {}) {
   const { gd, allocateUid } = options;
+  if (gd?.item(itemId) && !mizukiEquipmentAvailable(gd, itemId)) return fail('BAD_TARGET', '此道具在水月肉鸽中禁用。');
   if (!gd?.item(itemId) || !validMizukiEquipmentState(player, { gd })) {
     return fail('BAD_TARGET', '道具记录或个人装备区无效。');
   }
@@ -243,6 +248,7 @@ function contextFor(draft, source, hook, options, writes) {
       draft.equipmentDeployCapBonus = (draft.equipmentDeployCapBonus || 0) + amount; return changed(amount);
     },
     addEffect: (ref) => {
+      if (!mizukiEquipmentEffectAvailable(ref)) return null;
       if (!validId(ref?.id) || !/^effect:[A-Za-z0-9_.:#-]+$/.test(ref?.key) || !jsonData(ref)) return null;
       const existing = draft.equipmentEffects.find((value) => value.id === ref.id);
       if (!existing && draft.equipmentEffects.length >= MAX_IDS) return null;
@@ -269,7 +275,7 @@ function contextFor(draft, source, hook, options, writes) {
     upgradeItem: (uid) => {
       const item = allItems(draft).find((value) => value.uid === uid), rec = gd.item(item?.id);
       const upgradeId = rec?.upgradeChessId || rec?.goldenId;
-      if (!item || rec.isGolden || !gd.item(upgradeId)) return false;
+      if (!item || rec.isGolden || !mizukiEquipmentAvailable(gd, item.id) || !mizukiEquipmentAvailable(gd, upgradeId)) return false;
       item.id = upgradeId; return changed(true);
     },
     toast: (message) => { draft.metaMessages.push(String(message)); draft.metaMessages = draft.metaMessages.slice(-20); },
@@ -289,6 +295,7 @@ function contextFor(draft, source, hook, options, writes) {
 }
 
 function callHandler(draft, item, holder, hook, event, options, writes) {
+  if (!mizukiEquipmentAvailable(options.gd, item?.id)) return false;
   const registry = options.registry || getDefaultRegistry(), key = 'item:' + itemKey(item.id);
   const handler = registry.get(key), fn = handler?.[hook];
   if (typeof fn !== 'function') return false;
@@ -329,6 +336,7 @@ export function planMizukiEquipment(player, intent = {}, options = {}) {
   const originalHolder = player.roster.find((unit) => unit.uid === intent.targetUid);
   const record = gd?.item(originalItem?.id);
   if (!originalItem || !originalHolder || !record || record.itemType !== 'EQUIP') return fail('BAD_TARGET', '道具或目标不属于当前玩家。');
+  if (!mizukiEquipmentAvailable(gd, originalItem.id)) return fail('BAD_TARGET', '此道具在水月肉鸽中禁用。');
   const consume = record.kind?.startsWith('consume_on_equip');
   const capacity = gd.equipPerChess || 2;
   if (intent.replaceUid != null && !(originalHolder.items || []).some((item) => item.uid === intent.replaceUid)) return fail('BAD_TARGET', '替换装备不在目标干员身上。');
@@ -412,7 +420,7 @@ export function dispatchMizukiEquipmentMeta(player, options = {}) {
       if (callHandler(draft, item, pieceView(draft, holder), hook, event, options, writes)) dispatched++;
     }
     for (const refId of effects) {
-      const ref = draft.equipmentEffects.find((value) => value.id === refId); if (!ref) continue;
+      const ref = draft.equipmentEffects.find((value) => value.id === refId); if (!ref || !mizukiEquipmentEffectAvailable(ref)) continue;
       const handler = registry.get(ref.key);
       if ((draft.alive === false || draft.left) && !handler?.afterElimination) continue;
       if (typeof handler?.[hook] !== 'function') continue;

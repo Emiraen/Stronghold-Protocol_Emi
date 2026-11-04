@@ -1307,3 +1307,16 @@
 @media (prefers-reduced-motion: reduce) {
   .announcement__track.is-scrolling { animation: none; }
 }
+/* Explicit account match handoff; summaries stay compact on narrow screens. */
+.session-transfer__hint { margin: 0 0 12px; color: var(--text-lo, #a8b6bd); font-size: 12px; line-height: 1.6; }
+.session-transfer__error { margin: 10px 0 0; color: var(--red, #ff8989); font-size: 12px; line-height: 1.5; }
+.session-transfer__list { display: grid; gap: 8px; max-height: 48dvh; overflow-y: auto; }
+.session-transfer__match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; background: rgba(128, 164, 168, .07); border: 1px solid rgba(128, 164, 168, .18); }
+.session-transfer__info { min-width: 0; display: grid; gap: 3px; font-size: 12px; }
+.session-transfer__info strong { overflow-wrap: anywhere; }
+.session-transfer__info span { color: var(--text-lo, #a8b6bd); font-size: 11px; }
+.session-transfer__match > .btn { flex-shrink: 0; }
+@media (max-width: 360px) {
+  .session-transfer__match { flex-wrap: wrap; }
+  .session-transfer__match > .btn { margin-left: auto; }
+}

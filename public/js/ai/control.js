@@ -3,7 +3,7 @@ import { C2S, validateC2S, DIRS, isLoadoutOps } from '../../../shared/protocol.j
 import { GEO, DIFFICULTIES, EMOTES } from '../../../shared/constants.js';
 import { POTENTIAL_DEFAULT, CULTIVATE_DEFAULT } from '../../../shared/potential.js';
 export const AGENT_API_VERSION = 1;
-const INTERNAL = new Set(['hello', 'ping', 'session.probeAck', 'session.release', 'b.progress', 'b.result', 'b.yield', 'g.test', 'room.contentReady', 'profile.presentation', 'profile.loadout']);
+const INTERNAL = new Set(['hello', 'ping', 'session.probeAck', 'session.release', 'session.transfer', 'b.progress', 'b.result', 'b.yield', 'g.test', 'room.contentReady', 'profile.presentation', 'profile.loadout']);
 const SECRET_KEYS = /^(token|password|newPassword|confirmPassword|ticket|authTicket|accessToken|refreshToken|sessionToken|authorization|auth|aid|clientAid|deviceId|legacyEntries|legacyOps)$/i;
 const FILES = new Set(['chess', 'items', 'enemies', 'bonds', 'bands', 'stages', 'bosses', 'tokens', 'choices', 'garrisons', 'backups', 'cyclops']);
 const plain = v => !!v && typeof v === 'object' && !Array.isArray(v);

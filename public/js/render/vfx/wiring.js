@@ -48,6 +48,8 @@ import { FunnelFx } from './funnelfx.js';
 import { V79Fx } from './v79fx.js';
 import { formModes } from './talents.js';
 import { shotOf } from './skills.js';
+import { skinFxIndex, skinEffectKey } from './skinfx.js';
+import { tokenOwnerSkin } from '../../tokenSkins.js';
 import { UF } from '../../../../shared/constants.js';
 
 /** Battle seconds a non-oneshot cast effect lasts without its end event. */
@@ -199,6 +201,7 @@ export class FxWiring {
     this.ofx = ofx;
     this.opts = opts;
     this.idx = null;
+    this.skinViews = [];
     this.generation = 0;
     this.flights = new Set();     // projectile flights in the air
     this.loops = new Map();       // `${unitId}|${status}` → handle
@@ -255,10 +258,43 @@ export class FxWiring {
     return k;
   }
 
+  /** Optional skin metadata is selected per view; the shared index stays unchanged. */
+  indexOf(v) {
+    return skinFxIndex(this.idx, this.selectedSkin(v), url => this.ofx.lib.isInstalled(url));
+  }
+
+  selectedSkin(v) {
+    const info = v?.info;
+    if (info?.skin) return info.skin;
+    if (info?.kind !== 'token' || !this.idx?.skinOverrides) return null;
+    const tokenId = this.unitKeyOf(v) || info.defId;
+    const owners = new Set(Object.values(this.idx.skinOverrides)
+      .filter(override => override?.tokenIds?.includes(tokenId)).map(override => override.charId));
+    if (!owners.size) return null;
+    const candidates = this.skinViews.slice();
+    for (const id of [info.ownerUnitId, info.sourceUnitId]) {
+      const owner = id != null ? this.view(id) : null;
+      if (owner && !candidates.some(view => view === owner || (view.id ?? view.info?.id) === (owner.id ?? owner.info?.id))) candidates.push(owner);
+    }
+    const units = candidates.map(view => view.info).filter(Boolean);
+    const manifest = { tokens: { [info.defId]: {} }, chars: {} };
+    for (const charId of owners) manifest.chars[charId] = { skins: { catalog: { tokens: { [info.defId]: {} } } } };
+    return tokenOwnerSkin(info, units, manifest);
+  }
+
+  effectKey(key, v) { return skinEffectKey(this.indexOf(v), key); }
+
+  effectResolver(v) {
+    const index = this.indexOf(v);
+    return key => skinEffectKey(index, key);
+  }
+
+  projectileOf(key, v) { return key ? this.indexOf(v)?.projectiles?.[lc(key)] || null : null; }
+
   /** The index unit of a view (by its info), cached per battle id. */
   unitOf(v) {
     const k = this.unitKeyOf(v);
-    return k ? this.idx.units[k] : null;
+    return k ? this.indexOf(v).units[k] : null;
   }
 
   /** A battle view by id (opts.view), or null. */
@@ -299,6 +335,8 @@ export class FxWiring {
 
   /** The battle's units' effect keys (for preloading; `generic` false: the units' own only). */
   keysFor(views, generic = true) {
+    views = Array.isArray(views) ? views : [...views];
+    this.skinViews = views;
     const keys = new Set();
     const g = generic ? this.idx?.generic : null;
     if (g) {
@@ -308,7 +346,7 @@ export class FxWiring {
       for (const k of Object.values(g.status || {})) if (k) keys.add(k);
     }
     // an attack's rows and projectiles, its sub-abilities' too (index v2: a group's, a funnel attack's)
-    const walk = (a, depth = 0) => {
+    const walk = (a, idx, depth = 0) => {
       if (!a || depth > 4) return;
       for (const list of [a.cast, a.hit, a.castTarget, a.inputTarget]) {
         for (const e of list || []) {
@@ -318,22 +356,28 @@ export class FxWiring {
         }
       }
       for (const pk of [a.projectileKey, ...(a.extraProjectileKeys || [])]) {
-        const p = pk && this.idx.projectiles[lc(pk)];
+        const p = pk && idx.projectiles[lc(pk)];
         if (p) for (const k of p.effects || []) keys.add(k);
       }
-      for (const sub of a.abilities || []) walk(sub, depth + 1);
+      for (const sub of a.abilities || []) walk(sub, idx, depth + 1);
     };
     for (const v of views) {
       const u = this.unitOf(v);
       if (!u) continue;
+      const idx = this.indexOf(v);
       for (const m of u.modes || []) {
-        walk(m.attack);
-        walk(m.combat);   // index v2: the blow on a blocker (most enemies' only attack)
+        walk(m.attack, idx);
+        walk(m.combat, idx);   // index v2: the blow on a blocker (most enemies' only attack)
         if (m.overrideStartEffect) keys.add(m.overrideStartEffect);
         if (m.overrideDeadEffect) keys.add(m.overrideDeadEffect);
       }
       if (u.startEffect) keys.add(u.startEffect);
       if (u.deadEffect) keys.add(u.deadEffect);
+    }
+    // Nested emitters can refer to a default key which the skin replaces at spawn time.
+    for (const v of views) {
+      const index = this.indexOf(v);
+      if (index !== this.idx) for (const key of Object.values(index.skinReplacements || {})) keys.add(key);
     }
     // the skill, talent and charge effects (render/vfx/skillfx.js keys: plans, the skills' projectiles, bindings) and the
     // talents' and abilities' (render/vfx/talentfx.js, index v3)
@@ -483,11 +527,12 @@ export class FxWiring {
    * started in the battle's first frames used to sit at the HitPoint for good).
    */
   playOn(key, v, o = {}) {
-    let k = lc(key);
+    const skinOwner = o.skinOwner || o.flipFrom || v;
+    let k = this.effectKey(key, skinOwner);
     if (!k || !this.ofx.lib.has(k)) return null;
     let def = this.ofx.lib.def(k);
     if (def && def.switchable) {
-      const alt = lc(this._variant(def.switchable, v, this.pose(v)));
+      const alt = this.effectKey(this._variant(def.switchable, v, this.pose(v)), skinOwner);
       if (alt === 'common_empty') return null;
       if (alt && alt !== k && this.ofx.lib.has(alt)) { k = alt; def = this.ofx.lib.def(k); }
     }
@@ -501,7 +546,7 @@ export class FxWiring {
     if (P.onGround) pos[2] = -ground;
     const place = { pos, groundZ: -ground, yaw: 0, mirror: false, flipY: false, mountRot: P.rotKind ? mountRotation(skin, P.rotKind, pose) : null };
     this._orient(def, place, pose, o, v);
-    const opts = { track: o.track || null, data: o.data ?? null, loop: !!o.loop, important: !!o.important, skip: o.skip > 0 ? o.skip : 0, owner: v };
+    const opts = { track: o.track || null, data: o.data ?? null, loop: !!o.loop, important: !!o.important, skip: o.skip > 0 ? o.skip : 0, owner: v, resolveEffect: this.effectResolver(skinOwner) };
     // the owner each frame: FollowMountPoint keeps the effect on the unit's point (and its rotation), a held effect
     // moves with the unit (`keep`), FollowDirection turns it with the unit, PauseEffectIf hides it while the unit shows
     // a condition; a prefab with chained effects (OnPlayEmitter: system.js FxHandle._start hands them this track) has
@@ -713,7 +758,7 @@ export class FxWiring {
           // a MultiHit emitter's own rows without a group give way to its groups unless it keeps them (none in this client)
         } else set.hit.push(r);
       }
-      if (!set.projectileKey && lc(x.projectileKey)) { set.projectileKey = lc(x.projectileKey); set.shot = shotOf(x, this.idx.projectiles); set.shotClass = x.class || null; }
+      if (!set.projectileKey && lc(x.projectileKey)) { set.projectileKey = lc(x.projectileKey); set.shot = shotOf(x, this.indexOf(src).projectiles); set.shotClass = x.class || null; }
     }
     return set;
   }
@@ -801,7 +846,7 @@ export class FxWiring {
     const hits = keysOf(a?.hit || []);
     // the projectile: a ranged skill attack's own, else the mode's (a sub-ability's)
     const pk = sk?.projectile || set?.projectileKey || null;
-    const proj = pk ? this.idx.projectiles[pk] : null;
+    const proj = this.projectileOf(pk, src);
     const isShot = kind && kind !== 'none';
     const tid = tgt ? tgt.id ?? tgt.info?.id : null;
     // the hit groups (the mode's MultiHit ones, the skill's) and the buffs the skill's attack puts on the target wait
@@ -855,7 +900,7 @@ export class FxWiring {
    * hit rows, with a key the library has. Without any (the data missing) the procedural shot stays.
    */
   _drawable(a, sk, src, nth) {
-    const has = (k) => { const kk = lc(k); return !!kk && this.ofx.ready(kk); };
+    const has = (k) => { const kk = this.effectKey(k, src); return !!kk && this.ofx.ready(kk); };
     const rowHas = (e) => this._rowKeys(e, src, nth).some(has);
     const entryHas = (e) => !!e && (has(e.key) || (Array.isArray(e.slots) && e.slots.some(has)));
     if (a) {
@@ -913,7 +958,7 @@ export class FxWiring {
     if (!shot || !(shot.times > 0)) return;
     for (let i = 1; i <= shot.times; i++) {
       const key = shot.additional[i - 1] || pk;
-      const proj = key ? this.idx.projectiles[key] : null;
+      const proj = this.projectileOf(key, src);
       if (!proj) continue;
       const go = () => { if (tgt && !tgt.destroyed && tgt.alive !== false && src && !src.destroyed) this._fly(proj, src, tgt, kind, this.ofx.time, mount != null ? { mount, later: shot.delta > 0, followUp: true } : { later: shot.delta > 0, followUp: true }); };
       if (!(shot.delta > 0)) go();
@@ -928,12 +973,12 @@ export class FxWiring {
   }
 
   /** All parts of this shot must already be drawable; requesting them only prepares later events. */
-  projectileReady(proj, rows = []) {
+  projectileReady(proj, rows = [], src = null) {
     if (!proj || !this.ofx.active) return false;
     const p = projectileParts(proj);
     const keys = [p.main, p.rope, p.chain, ...(proj.onStart || []), ...(proj.toTargetOnStart || []),
       ...(proj.toTileOnStart || []), ...(proj.onHit || []), ...(proj.onReached || []), ...rows.map(h => h.k)]
-      .map(lc).filter(Boolean);
+      .map(key => this.effectKey(key, src)).filter(Boolean);
     let complete = keys.length > 0, drawable = false;
     for (const key of new Set(keys)) {
       if (this.ofx.ready(key)) drawable = true;
@@ -962,7 +1007,7 @@ export class FxWiring {
    * time of its own (a shot flown for show, R16). Returns the battle seconds until the hit.
    */
   _fly(proj, src, tgt, kind, time, o = {}) {
-    if (!src || !tgt || !this.projectileReady(proj, o.hits || [])) return null;
+    if (!src || !tgt || !this.projectileReady(proj, o.hits || [], src)) return null;
     const su = this.unitOf(src), tu = this.unitOf(tgt);
     const sSkin = this.skinOf(su), tSkin = this.skinOf(tu);
     // the start: the mount point as the attack clip poses it at its strike frame (a follow-up shot: as it is drawn then);
@@ -970,7 +1015,8 @@ export class FxWiring {
     const startAt = (out, strike = false) => {
       const pose = this.pose(src);
       pose.strike = strike;
-      return Number.isInteger(o.mount) ? mountPoint(sSkin, o.mount, pose, out) : unitPoint(sSkin, 'muzzle', pose, out);
+      const mount = Number.isInteger(o.mount) ? o.mount : proj.skinMuzzle;
+      return Number.isInteger(mount) ? mountPoint(sSkin, mount, pose, out) : unitPoint(sSkin, 'muzzle', pose, out);
     };
     const from = startAt([0, 0, 0], !o.later);
     const to0 = unitPoint(tSkin, 'hit', this.pose(tgt));
@@ -984,8 +1030,8 @@ export class FxWiring {
     let started = false;
     for (const k of proj.onStart || []) if (this.playOn(k, src, { toward: tgt, strike: !o.later })) started = true;
     const placed = this._startOnTarget(proj, src, tgt);
-    const mainKey = parts.main;
-    const ropeKey = parts.rope;
+    const mainKey = this.effectKey(parts.main, src);
+    const ropeKey = this.effectKey(parts.rope, src);
     // a timer (no flying effect: 溯光星源 S3): its hit when the effect it put on its target lands, at the end of its life
     let hitAt = dur;
     if (!mainKey) {
@@ -995,7 +1041,7 @@ export class FxWiring {
     // the hit's time on the effects' clock (the render time `time` is another clock), the attack's rows, the damage covered
     const t0 = this.ofx.time;
     const rows = Array.isArray(o.hits) && o.hits.length ? o.hits : null;
-    const impact = placed || [...(proj.onHit || []), ...(proj.onReached || []), ...(rows || []).map(h => h.k)].some(k => this.ofx.ready(k));
+    const impact = placed || [...(proj.onHit || []), ...(proj.onReached || []), ...(rows || []).map(h => h.k)].some(k => this.ofx.ready(this.effectKey(k, src)));
     const accept = () => {
       if (!o.followUp && impact) {
         this._expect(tgt, hitAt);
@@ -1028,7 +1074,7 @@ export class FxWiring {
     const def = mainKey ? this.ofx.lib.def(mainKey) : null;
     const flipIfLeft = def ? def.flipIfLeft : false;
     const handle = mainKey ? this.ofx.spawn(mainKey, { pos: from.slice(), groundZ: -(src.z || 0) }, {
-      important: true,
+      important: true, owner: src, resolveEffect: this.effectResolver(src),
       track: (fx) => {
         if (flight.done) return;
         step(Math.min(flight.dur, fx.time));
@@ -1048,7 +1094,7 @@ export class FxWiring {
       // line draws nothing before); without a head it flies the shot itself
       const drive = !handle;
       flight.rope = this.ofx.spawn(ropeKey, { pos: from.slice(), groundZ: -(src.z || 0) }, {
-        important: true,
+        important: true, owner: src, resolveEffect: this.effectResolver(src),
         track: (fx) => {
           if (flight.done) return;
           step(Math.min(flight.dur, fx.time));
@@ -1113,7 +1159,7 @@ export class FxWiring {
       const now = this.ofx.time;
       let drawn = false, healed = false;
       if (tgt && !tgt.destroyed) {
-        for (const k of proj.onHit || []) if (this.playOn(k, tgt, { important: true })) { drawn = true; if (/heal/i.test(k)) healed = true; }
+        for (const k of proj.onHit || []) if (this.playOn(k, tgt, { important: true, flipFrom: src || undefined })) { drawn = true; if (/heal/i.test(k)) healed = true; }
         if (rows) {
           const own = new Set((proj.onHit || []).map(lc));
           for (const h of rows) if (!own.has(lc(h.k)) && this.playOn(h.k, tgt, { important: true, flipFrom: src || undefined, toward: h.along && src ? beyond(src, tgt) : undefined })) { drawn = true; if (/heal/i.test(h.k)) healed = true; }
@@ -1121,7 +1167,7 @@ export class FxWiring {
       }
       for (const k of proj.onReached || []) {
         const kk = lc(k);
-        if (kk && this.ofx.spawn(kk, { pos: at.slice(), groundZ: at[2] }, { important: true })) drawn = true;
+        if (kk && this.ofx.spawn(kk, { pos: at.slice(), groundZ: at[2] }, { important: true, owner: src, resolveEffect: this.effectResolver(src) })) drawn = true;
       }
       const id = tgt?.id ?? tgt?.info?.id;
       if (id != null) {
@@ -1270,7 +1316,7 @@ export class FxWiring {
     if (!this.ofx.active || !prev || !next || prev === next || !this.idx || !CHAIN.has(kind)) return false;
     const c = this.chains.get(prev.id ?? prev.info?.id);
     if (!c || this.ofx.time > c.until) return false;
-    if (!this.projectileReady(c.proj, c.rows || []) || !this.ofx.ready(c.line)) return false;
+    if (!this.projectileReady(c.proj, c.rows || [], c.src) || !this.ofx.ready(this.effectKey(c.line, c.src))) return false;
     const nid = next.id ?? next.info?.id;
     if (nid != null) this.chains.set(nid, c);
     const delay = Math.max(0, c.at - this.ofx.time);
@@ -1285,9 +1331,9 @@ export class FxWiring {
     let drawn = false;
     const ps = this.skinOf(this.unitOf(prev)), ns = this.skinOf(this.unitOf(next));
     const a = unitPoint(ps, 'hit', this.pose(prev)), b = unitPoint(ns, 'hit', this.pose(next));
-    if (c.line && this.ofx.ready(c.line)) {
+    if (c.line && this.ofx.ready(this.effectKey(c.line, c.src))) {
       const h = this.ofx.spawn(c.line, { pos: a.slice(), groundZ: -(prev.z || 0) }, {
-        important: true,
+        important: true, owner: c.src, resolveEffect: this.effectResolver(c.src),
         track: (fx) => {
           if (!prev.destroyed && prev.alive !== false) unitPoint(ps, 'hit', this.pose(prev), a);
           if (!next.destroyed && next.alive !== false) unitPoint(ns, 'hit', this.pose(next), b);
@@ -1297,7 +1343,7 @@ export class FxWiring {
       });
       if (h) { drawn = true; setTimeout0(this.ofx, h, CHAIN_LINE_S); }
     }
-    return this._arrive(c.proj, next, b, null, c.rows, prev) || drawn;
+    return this._arrive(c.proj, next, b, null, c.rows, c.src || prev) || drawn;
   }
 
   /**
@@ -1353,6 +1399,7 @@ export class FxWiring {
       return;
     }
     const list = Array.isArray(views) ? views : [...views];   // (render/app.js passes the views Map's iterator)
+    this.skinViews = list;
     this.skills.sync(list);
     this.talents.sync(list);
     this.funnels.sync(list);
@@ -1409,6 +1456,7 @@ export class FxWiring {
 
   /** Battle reset. */
   clear() {
+    this.skinViews = [];
     this.generation++;
     this.flights.clear();
     this.loops.clear();

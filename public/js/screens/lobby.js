@@ -925,7 +925,7 @@ export function LobbyScreen() {
     <//>
     ${dialog === 'history' ? html`<${Modal} open=${true} title=${trA('对局记录')} class="social-modal" width="min(1600px, 96vw)" onClose=${() => setDialog(null)}><${HistoryScreen} key=${`${me.playerId}:${me.name}`} playerId=${me.playerId} name=${me.name} onBack=${() => setDialog(null)} /><//>` : null}
     ${dialog === 'recruitment' ? html`<${Modal} open=${true} title="招募大厅" class="social-modal recruitment-modal" width="min(1200px, 96vw)" onClose=${() => setDialog(null)}><${RecruitmentHall} rooms=${recruitment} online=${online} busy=${busy} onBack=${() => setDialog(null)} onJoin=${(room) => run(`recruit:${recruitmentKey(room)}`, () => joinRoom(recruitmentTarget(room)))} /><//>` : null}
-    ${dialog === 'spectator' ? html`<${Modal} open=${true} title=${trA('观战大厅')} class="social-modal" width="min(1200px, 96vw)" onClose=${() => setDialog(null)}><${SpectatorHall} online=${online} onBack=${() => setDialog(null)} /><//>` : null}
+    ${dialog === 'spectator' ? html`<${Modal} open=${true} title=${trA('观战大厅')} class="social-modal spectator-modal" width="min(1200px, 96vw)" onClose=${() => setDialog(null)}><${SpectatorHall} online=${online} onBack=${() => setDialog(null)} /><//>` : null}
     <${RankHelp} open=${rankHelpOpen} onClose=${() => setRankHelpOpen(false)} />
   </div>`;
 }

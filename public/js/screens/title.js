@@ -8,7 +8,7 @@ import { t as trA } from '../../../shared/i18n.js';
 
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { NAME_MAX_LEN, APP_VERSION, EMI_BUILD } from '../../../shared/constants.js';
-import { html, Modal, Button, Icon, MicroLabel, TextField, PingPill } from '../ui/components.js';
+import { html, Modal, Button, Icon, MicroLabel, TextField, PingPill, AvatarFrame } from '../ui/components.js';
 import { GuideButton } from '../ui/guide.js';
 import { SettingsModal } from '../ui/settings.js';
 import { openStats } from './stats.js';
@@ -23,6 +23,7 @@ import { AnnouncementButton } from '../ui/announcement.js';
 import { GIcon } from '../ui/gameComponents.js';
 import { openResourcePreload } from '../ui/resourcePreload.js';
 import { useResourceUrl } from '../ui/cachedImage.js';
+import { loadRememberedProfile, clearRememberedProfile, installRememberedProfile, rememberCurrentProfile } from '../rememberedAccount.js';
 
 // Same character classes as server/net.js sanitizeName (control, zero-width, bidi, BOM), so a name
 // the client accepts is never rejected by the server's hello validation.
@@ -75,6 +76,7 @@ export const isValidName = (raw) => sanitizeName(raw).length > 0;
 export async function enterSession(rawName, auth = null, resume = null, rememberPassword = false) {
   const name = sanitizeName(rawName);
   if (!name) return false;
+  installRememberedProfile();
   if (!await resourceCache.ensureSessionReady()) {
     // A form may resume its pending submission after the resource dialog is closed.
     openResourcePreload(resume || (() => identity.getAuth(name) ? enterSession(name).catch(() => false) : false));
@@ -90,8 +92,13 @@ export async function enterSession(rawName, auth = null, resume = null, remember
   try {
     await net.login(name, auth);
     if (auth && typeof auth.password === 'string') {
-      if (rememberPassword) identity.saveRememberedLogin(name, auth.action === 'reset' ? auth.newPassword : auth.password);
-      else identity.clearRememberedLogin();
+      if (rememberPassword) {
+        identity.saveRememberedLogin(name, auth.action === 'reset' ? auth.newPassword : auth.password);
+        rememberCurrentProfile();
+      } else {
+        identity.clearRememberedLogin();
+        clearRememberedProfile();
+      }
     }
   }
   finally {
@@ -319,6 +326,8 @@ export function TitleScreen() {
   const pendingJoin = useStore((s) => s.ui.pendingJoin);
   const switching = useStore((s) => s.switching, undefined, serversState);
   const rememberedLogin = useMemo(() => identity.loadRememberedLogin(), []);
+  const rememberedProfile = useMemo(() => loadRememberedProfile(rememberedLogin?.name), []);
+  const [quickLogin, setQuickLogin] = useState(() => !!rememberedLogin && !!(rememberedLogin.password || identity.getAuth(rememberedLogin.name)));
   const [name, setName] = useState(() => rememberedLogin?.name || store.get().me.name || identity.loadName() || '');
   const [password, setPassword] = useState(() => rememberedLogin?.password || '');
   const [rememberPassword, setRememberPassword] = useState(() => !!rememberedLogin);
@@ -345,23 +354,40 @@ export function TitleScreen() {
 
   const valid = isValidName(name);
   const authenticating = busy || conn.status === 'handshaking';
+  const forgetAccount = () => {
+    identity.clearRememberedLogin();
+    clearRememberedProfile();
+    setQuickLogin(false); setRememberPassword(false); setPassword(''); setAuthError('');
+  };
   useEffect(() => {
     if (conn.lastError && conn.lastError.code !== 'AUTH_RESET_REQUIRED') setAuthError(conn.lastError.text);
+    if (quickLogin && ['AUTH_INVALID', 'AUTH_REQUIRED'].includes(conn.lastError?.code)) {
+      identity.clearRememberedLogin(); clearRememberedProfile();
+      setQuickLogin(false); setPassword('');
+    }
   }, [conn.lastError?.code, conn.lastError?.text]);
   const start = async (event) => {
     event?.preventDefault();
     if (submitting.current || authenticating || switching || authModal) return;
     if (!valid) { setAuthError('请输入账户名称'); return; }
-    if (!password) { setAuthError('请输入密码'); return; }
+    const savedAuth = quickLogin ? identity.getAuth(name) : null;
+    if (!savedAuth && !password) { setAuthError('请输入密码'); return; }
     submitting.current = true;
     setBusy(true); setAuthError('');
     try {
-      if (await enterSession(name, { action: 'login', password }, () => start(), rememberPassword)) setPassword('');
+      if (await enterSession(name, savedAuth || { action: 'login', password }, () => start(), rememberPassword)) setPassword('');
     } catch (err) {
       if (err.code === 'AUTH_RESET_REQUIRED') {
         setAuthModal({ mode: 'reset', initialName: sanitizeName(name), oldPassword: password });
+        setQuickLogin(false); clearRememberedProfile();
         setPassword(''); setAuthError('');
-      } else setAuthError(err.message || '登录失败，请重试');
+      } else {
+        if (quickLogin && ['AUTH_INVALID', 'AUTH_REQUIRED'].includes(err.code)) {
+          identity.clearRememberedLogin(); clearRememberedProfile();
+          setQuickLogin(false); setPassword('');
+          setAuthError('登录凭证已失效，请重新输入密码');
+        } else setAuthError(err.message || '登录失败，请重试');
+      }
     } finally {
       submitting.current = false; setBusy(false);
     }
@@ -416,12 +442,16 @@ export function TitleScreen() {
       <h1 class="title-cn">${trA("卫戍协议")}<span class="title-cn__colon">：</span><em>${trA("盟约")}</em></h1>
       <p class="title-tag">${trA("调配资金与干员，与同伴协同布防，抵御多波次进攻，直至击败敌方领袖。")}</p>
 
-      <form class="title-login" onSubmit=${start}>
+      <form class=${`title-login${quickLogin ? ' title-login--remembered' : ''}`} onSubmit=${start}>
         ${pendingJoin ? html`<div class="title-invite">
           <${Icon} name="key" />
           <span>${trA("收到同盟邀请")}</span><b class="num">${pendingJoin.code || pendingJoin}</b><span class="t-lo">· 登录后将自动加入</span>
         </div>` : null}
-        <${TextField} label=${trA("博士代号")} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
+        ${quickLogin ? html`<div class="title-account" data-testid="remembered-account">
+          <${AvatarFrame} name=${name} src=${rememberedProfile?.avatar} fallbackSrc=${rememberedProfile?.fallbackAvatar} fallbackIcon="user" size="md" self=${true} />
+          <div class="title-account__identity"><span class="title-account__status"><span class="status-dot is-on"></span>已登录该账号</span><strong class="title-account__name">${name}</strong></div>
+          <button class="title-account__switch" type="button" disabled=${authenticating || switching} onClick=${forgetAccount}>切换账号</button>
+        </div>` : html`<${TextField} label=${trA("博士代号")} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
           name="username" autocomplete="username" disabled=${authenticating || switching}
           placeholder=${trA('输入你的代号（最多 {NAME_MAX_LEN} 字）', { NAME_MAX_LEN })} autoFocus=${!touchUi}
           onInput=${(value) => { setName(value); setAuthError(''); }} />
@@ -434,16 +464,16 @@ export function TitleScreen() {
             onChange=${(event) => {
               const checked = event.currentTarget.checked;
               setRememberPassword(checked);
-              if (!checked) identity.clearRememberedLogin();
+              if (!checked) { identity.clearRememberedLogin(); clearRememberedProfile(); }
             }} />
           <span>记住密码</span>
-        </label>
+        </label>`}
         ${authError ? html`<p class="title-auth-error" role="alert">${authError}</p>` : null}
         <div class="title-login__submit">
           <${Button} variant="primary" size="xl" block=${true} type="submit" iconRight="chevrons"
-            loading=${authenticating} disabled=${!valid || !password || switching}>${trA("开始游戏")}<//>
-          <${Button} variant="secondary" size="lg" disabled=${authenticating || switching}
-            onClick=${() => { setPassword(''); setAuthError(''); setAuthModal({ mode: 'register', initialName: name }); }}>注册<//>
+            loading=${authenticating} disabled=${!valid || (!quickLogin && !password) || switching}>${trA("开始游戏")}<//>
+          ${!quickLogin ? html`<${Button} variant="secondary" size="lg" disabled=${authenticating || switching}
+            onClick=${() => { setPassword(''); setAuthError(''); setAuthModal({ mode: 'register', initialName: name }); }}>注册<//>` : null}
         </div>
         <${ServerPicker} name=${name} disabled=${authenticating} />
         <div class="title-meta">

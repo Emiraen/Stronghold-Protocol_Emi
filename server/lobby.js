@@ -471,6 +471,40 @@ export class Lobby {
     this.resync(session, true);
   }
 
+  /** Minimal account-private discovery metadata; the match stays on this server. */
+  transferInfo(session) {
+    const room = this.roomOf(session);
+    if (!room?.match || room.disposed) return null;
+    return { roomCode: room.code, mode: room.mode, variant: room.variant || null };
+  }
+
+  /** A device change keeps all live match settings and only resends the state needed by the new controller. */
+  onSessionTransfer(session) {
+    if (!session?.connected || this.registry.byId(session.playerId) !== session
+        || (this.profiles && !this.profiles.validSession(session))) return;
+    const room = this.roomOf(session);
+    if (!room?.match) throw new Error('转移时对局已结束');
+    session.profileGeneration = (session.profileGeneration || 0) + 1;
+    session.notice = null; session.pendingResult = null;
+    session.pendingResultGeneration++;
+    session.pendingResultInFlight = 0; session.pendingResultFailed = false;
+    this.clearGrace(session.playerId);
+    this.clearResync(session.playerId);
+    const seat = room.seatOf(session.playerId), changed = !seat.connected;
+    seat.connected = true;
+    seat.content = null; seat.contentGen = (seat.contentGen || 0) + 1;
+    session.profileReady = true;
+    this.sendLoadoutState(session, { locked: true });
+    this.sendPresentationState(session);
+    if (session.aid && this.ranked) {
+      sendSession(session, { t: 'rank.me', ...this.ranked.summary(session.aid, session.name, session.debugAuthorized === true),
+        profileId: this.players.profiles.get(session.aid)?.id || null });
+    }
+    if (changed) this.broadcastState(room);
+    else this.sendState(room, session);
+    this.resync(session, true);
+  }
+
   /** Restore only presentation frames skipped during a bounded lease recovery; never re-run login or settlement. */
   onLeaseRecovered(session) {
     if (!session?.connected || session.profileReady === false || this.registry.byId(session.playerId) !== session

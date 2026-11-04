@@ -28,7 +28,8 @@
 // recent tokens in localStorage (resume after closing/reopening the tab). `identity.init()` asks
 // the other live tabs over a BroadcastChannel which tokens they hold, so a second or duplicated tab
 // of the same browser becomes a separate player instead of hijacking another tab's session.
-// Account authentication tickets are held in sessionStorage only and work across both game servers.
+// Account tickets live in sessionStorage; an explicit remember-login choice also persists the
+// latest ticket on this device. Passwords from older remembered records are migrated after login.
 //
 // Shared modules are imported relatively: in the browser '../../shared/x.js' from /js/ resolves
 // to /shared/x.js (URL resolution clamps at the root); under Node it resolves to <repo>/shared.
@@ -77,7 +78,7 @@ const QUEUE_BATCH_SIZE = 8;
 const QUEUE_BATCH_MS = 250;
 const HEAVY_QUEUE_MS = 500;
 // 与 server/net.js 的 HEAVY_TYPES 保持一致；heavy 同时消耗普通桶。
-const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'profile.loadout', 'profile.presentation', 'history.detail', 'spectator.join', 'spectator.watch']);
+const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'profile.loadout', 'profile.presentation', 'history.detail', 'spectator.join', 'spectator.watch', 'session.transfer']);
 
 /** Client-side error codes (in addition to shared ERR codes). */
 export const CLIENT_ERR_TEXT = Object.freeze({
@@ -87,6 +88,7 @@ export const CLIENT_ERR_TEXT = Object.freeze({
   CLOSED: '连接已关闭',
   BUSY: '待处理请求过多，请稍后重试',
   REPLACED: '此设备的该账号已在另一页面恢复',
+  TRANSFERRED: '对局已转移到另一设备，此设备已退出控制',
   ADMIN_KICK: '你已被管理员下线，请主动重新连接',
   VERSION: '客户端版本与服务器不一致，请刷新页面',
 });
@@ -95,6 +97,8 @@ export const CLIENT_ERR_TEXT = Object.freeze({
 export const CLOSE_REPLACED = 4001;
 /** Administrator disconnected this socket; only an explicit user action reconnects. */
 export const CLOSE_ADMIN_KICK = 4003;
+/** An explicit same-account match handoff; the old device must not reconnect automatically. */
+export const CLOSE_TRANSFERRED = 4005;
 /** Server close code: the socket never sent `hello` (server/net.js CLOSE.HELLO_TIMEOUT, ~30–60 s). */
 export const CLOSE_HELLO_TIMEOUT = 4002;
 /** A pre-hello socket must have lived this long before a 4002 close is swapped quietly (no loop). */
@@ -294,6 +298,7 @@ export class Net {
     this._helloSentName = null;
     this._loginAuth = null;    // credentials for one explicit hello; never replayed on reconnect
     this._loginAttempt = null;
+    this._transferAttempt = null;
     this._lastRx = 0;
     this._unansweredSince = null; // time of the oldest ping sent since the last inbound frame
     this._clockSamples = [];   // [{ offset, rtt }]
@@ -496,6 +501,24 @@ export class Net {
     else attempt?.resolve(welcome);
   }
 
+  /** Explicit, single-flight handoff. Never queue a transfer across a broken connection. */
+  transferSession(target) {
+    if (this._transferAttempt) return this._transferAttempt.promise;
+    if (this.status !== 'online' || this._manualClose) return Promise.reject(new NetError('OFFLINE'));
+    if (typeof target !== 'string' || !/^[A-Za-z0-9_\-.:]{1,64}$/.test(target)) return Promise.reject(new NetError('BAD_MSG'));
+    // Nothing originating from the temporary lobby identity may reach the inherited seat.
+    this._failPending('DISCONNECTED', true);
+    this._flow?.clear(() => true);
+    this._clearTimer('_queueTimer', 'clearTimeout');
+    this._queueBatchAt = this._queueHeavyAt = 0;
+    const attempt = { promise: null };
+    this._transferAttempt = attempt;
+    attempt.promise = this.request('session.transfer', { target }, { timeout: 10000 }).finally(() => {
+      if (this._transferAttempt === attempt) this._transferAttempt = null;
+    });
+    return attempt.promise;
+  }
+
   _stopHandshake(error) {
     error.accountName = this._helloSentName || this.name;
     this._manualClose = true;
@@ -582,15 +605,16 @@ export class Net {
     this._teardownSocket();
     this._failPending('DISCONNECTED', false);
     if (this._manualClose) { this._setStatus('closed'); return; }
-    if (ev && (ev.code === CLOSE_REPLACED || ev.code === CLOSE_ADMIN_KICK)) {
-      // Neither a replaced nor an administratively disconnected socket should fight the server.
+    if (ev && (ev.code === CLOSE_REPLACED || ev.code === CLOSE_ADMIN_KICK || ev.code === CLOSE_TRANSFERRED)) {
       const kicked = ev.code === CLOSE_ADMIN_KICK;
+      const transferred = ev.code === CLOSE_TRANSFERRED;
+      const code = transferred ? 'TRANSFERRED' : kicked ? 'ADMIN_KICK' : 'REPLACED';
       this._manualClose = true;
-      this._failPending(kicked ? 'ADMIN_KICK' : 'REPLACED', true);
-      this.lastError = new NetError(kicked ? 'ADMIN_KICK' : 'REPLACED');
+      this._failPending(code, true);
+      this.lastError = new NetError(code);
       if (this._loginAttempt) this._stopHandshake(this.lastError);
       else this._setStatus('closed');
-      this._emit(kicked ? 'kicked' : 'replaced', this.lastError);
+      this._emit(transferred ? 'transferred' : kicked ? 'kicked' : 'replaced', this.lastError);
       return;
     }
     if (ev && ev.code === CLOSE_HELLO_TIMEOUT && !this.name && this.status === 'connected'
@@ -724,6 +748,8 @@ export class Net {
   }
 
   _onWelcome(msg) {
+    // The server committed the handoff; welcome subscribers now belong to the inherited seat.
+    if (msg.transferred === true) this._transferAttempt = null;
     this._setLeaseState('active');
     this._stateBases.clear();
     this._mizukiFieldBases.clear();
@@ -788,6 +814,8 @@ export class Net {
   request(t, fields = {}, opts = {}) {
     return new Promise((resolve, reject) => {
       if (t === 'hello') { reject(new NetError('BAD_MSG', 'use setName() for hello')); return; }
+      if (this._transferAttempt && t !== 'session.transfer') { reject(new NetError('BUSY')); return; }
+      if (t === 'session.transfer' && this.status !== 'online') { reject(new NetError('OFFLINE')); return; }
       const rid = this._nextRid();
       const msg = { ...(fields && typeof fields === 'object' ? fields : {}), t, rid };
       const bad = validateC2S(msg);
@@ -844,6 +872,7 @@ export class Net {
    */
   send(t, fields = {}, { periodic = false } = {}) {
     if (t === 'hello') return false;
+    if (this._transferAttempt) return false;
     const msg = { ...(fields && typeof fields === 'object' ? fields : {}), t };
     const bad = validateC2S(msg);
     if (bad) { console.warn(`[net] refusing invalid ${t}: ${bad}`); return false; }
@@ -949,7 +978,7 @@ export class Net {
    */
   _failPending(code, includeQueued) {
     for (const [rid, entry] of [...this._pending]) {
-      if (!entry.sent && !includeQueued) continue;
+      if (!entry.sent && !includeQueued && entry.msg.t !== 'session.transfer') continue;
       this._pending.delete(rid);
       this._flow?.clear((pending) => pending.options.request === entry);
       entry.queued = false;
@@ -1087,7 +1116,7 @@ export class Net {
     }
 
     let handled = false;
-    if (rid != null && t !== 'welcome' && this._pending.has(rid)) {
+    if (rid != null && (t !== 'welcome' || msg.transferred === true) && this._pending.has(rid)) {
       const entry = this._pending.get(rid);
       this._pending.delete(rid);
       this._clearEntryTimer(entry);
@@ -1280,7 +1309,7 @@ export class Net {
 
 const K_NAME = 'sp.name';
 const K_REMEMBERED_LOGIN = 'sp.remembered.login';
-const K_AUTH_PREFIX = 'sp.auth.ticket.'; // sessionStorage only; shared by both game servers
+const K_AUTH_PREFIX = 'sp.auth.ticket.'; // active-tab authentication, shared by both game servers
 const AUTH_TICKET_MAX_LEN = 512;
 // origin 自身隔离存储；显式命名空间使旧单服键只迁移到当前 origin。
 const SESSION_SCOPE = encodeURIComponent(globalThis.location?.origin || 'local');
@@ -1362,9 +1391,18 @@ export function createIdentity(deps = {}) {
   const authName = (name) => String(name || '').normalize('NFC').trim().replace(/\s+/g, ' ');
   const authKey = (name) => K_AUTH_PREFIX + encodeURIComponent(authName(name));
   const validTicket = (ticket) => typeof ticket === 'string' && ticket.length > 0 && ticket.length <= AUTH_TICKET_MAX_LEN;
+  const validPassword = (password) => typeof password === 'string' && password.length >= 6 && password.length <= 128;
   const validRememberedLogin = (value) => value && typeof value === 'object'
     && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= NAME_MAX_LEN
-    && typeof value.password === 'string' && value.password.length >= 6 && value.password.length <= 128;
+    && (validTicket(value.ticket) || validPassword(value.password));
+  const rememberedLogin = () => {
+    try {
+      const saved = JSON.parse(sget(local, K_REMEMBERED_LOGIN) || 'null');
+      if (!validRememberedLogin(saved)) return null;
+      return { name: authName(saved.name), ...(validTicket(saved.ticket) ? { ticket: saved.ticket }
+        : { password: saved.password }) };
+    } catch { return null; }
+  };
   const accountKey = () => `sp.device.${deviceId}.${serverId}.${encodeURIComponent(accountName)}.token`;
   const accountToken = () => {
     const token = sget(local, accountKey());
@@ -1458,15 +1496,16 @@ export function createIdentity(deps = {}) {
   return {
     tabId,
     getDeviceId: () => deviceId,
-    /** Explicit opt-in for the title form; this never marks a new tab as logged in. */
+    /** Explicit opt-in; the title still validates the remembered identity when Start is pressed. */
     loadRememberedLogin() {
-      try {
-        const saved = JSON.parse(sget(local, K_REMEMBERED_LOGIN) || 'null');
-        return validRememberedLogin(saved) ? { name: saved.name, password: saved.password } : null;
-      } catch { return null; }
+      return rememberedLogin();
     },
     saveRememberedLogin(name, password) {
-      const saved = { name: authName(name), password };
+      const normalized = authName(name);
+      const activeTicket = authTickets.get(normalized) || sget(session, authKey(normalized));
+      const previous = rememberedLogin();
+      const ticket = validTicket(activeTicket) ? activeTicket : previous?.name === normalized ? previous.ticket : null;
+      const saved = { name: normalized, ...(validTicket(ticket) ? { ticket } : { password }) };
       if (validRememberedLogin(saved)) sset(local, K_REMEMBERED_LOGIN, JSON.stringify(saved));
     },
     clearRememberedLogin() { sdel(local, K_REMEMBERED_LOGIN); },
@@ -1474,7 +1513,9 @@ export function createIdentity(deps = {}) {
     getAuth(name = accountName) {
       const normalized = authName(name);
       if (!normalized) return null;
-      const ticket = authTickets.get(normalized) || sget(session, authKey(normalized));
+      const remembered = rememberedLogin();
+      const ticket = authTickets.get(normalized) || sget(session, authKey(normalized))
+        || (remembered?.name === normalized ? remembered.ticket : null);
       return validTicket(ticket) ? { action: 'login', ticket } : null;
     },
     saveAuthTicket(name, ticket) {
@@ -1482,11 +1523,15 @@ export function createIdentity(deps = {}) {
       if (!normalized || !validTicket(ticket)) return;
       authTickets.set(normalized, ticket);
       sset(session, authKey(normalized), ticket);
+      if (rememberedLogin()?.name === normalized) {
+        sset(local, K_REMEMBERED_LOGIN, JSON.stringify({ name: normalized, ticket }));
+      }
     },
     clearAuth(name = accountName) {
       const normalized = authName(name);
       authTickets.delete(normalized);
       sdel(session, authKey(normalized));
+      if (rememberedLogin()?.name === normalized) sdel(local, K_REMEMBERED_LOGIN);
     },
     getServer: () => serverId,
     hasSelectedServer: () => serverSelected,

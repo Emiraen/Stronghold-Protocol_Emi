@@ -47,6 +47,7 @@ import { LobbyScreen, rememberRoom, parseRoomParam } from './screens/lobby.js';
 import { RoomScreen } from './screens/room.js';
 import { installFriendsSync } from './friends.js';
 import { FriendInvitationHost } from './ui/friends.js';
+import { SessionTransferHost } from './ui/sessionTransfer.js';
 import { GameScreen } from './screens/game.js';
 import { installAudio, audio } from './audio.js';
 import { installContent, installContentSet } from './content.js';
@@ -112,7 +113,7 @@ function schedulePendingJoin() {
   joinTimer = setTimeout(async () => {
     const s = store.get();
     const target = s.ui.pendingJoin;
-    if (!target || joinInFlight || !appMounted || !s.session.entered || net.status !== 'online') return;
+    if (!target || joinInFlight || !appMounted || !s.session.entered || s.session.resumeMatches?.length || net.status !== 'online') return;
     if (s.room?.code === target.code && s.room?.serverId === target.serverId) { clearPendingJoin(); return; }
     joinInFlight = true;
     try {
@@ -167,8 +168,8 @@ function onWelcome(msg) {
     // expired on it): whatever we showed before is gone — back to the lobby cleanly and say why.
     const notice = sessionResetNotice(prev, msg.playerId);
     backToLobby();
-    store.set({ chat: { items: [] } });
-    if (notice) toast(notice, 'warn', { ttl: 7000 });
+    if (!msg.transferred) store.set({ chat: { items: [] } });
+    if (notice && !msg.transferred) toast(notice, 'warn', { ttl: 7000 });
   } else if (msg.roomCode === null && msg.spectatorCode === null) {
     // A processed leave may lose its ACK when the connection drops. New servers
     // explicitly confirm no membership; old servers omit these fields, not null.
@@ -180,7 +181,17 @@ function onWelcome(msg) {
     // the current screen/runner until room.closed, spectator.closed or a new session.
     store.patch('ui', { restoring: true });
   }
-  schedulePendingJoin();
+  const resumeMatches = Array.isArray(msg.resumeMatches) ? msg.resumeMatches.slice(0, 8).filter(match =>
+    match && typeof match.id === 'string' && /^[A-Za-z0-9_\-.:]{1,64}$/.test(match.id)
+    && typeof match.roomCode === 'string' && /^[A-HJ-NP-Z]{4}$/.test(match.roomCode)
+    && ['solo', 'coop'].includes(match.mode)).map(match => ({
+      id: match.id, roomCode: match.roomCode, mode: match.mode, online: match.online === true,
+    })) : [];
+  store.patch('session', { resumeMatches });
+  if (msg.transferred) {
+    clearPendingJoin();
+    store.patch('ui', { restoring: true });
+  } else if (!resumeMatches.length) schedulePendingJoin();
 }
 
 function onRoomState(msg) {
@@ -241,6 +252,16 @@ function wireNet() {
     // The title form owns authentication feedback, including the required-reset modal.
   });
   net.on('replaced', () => toast('此设备的该账号已在另一页面恢复，本页已断开', 'info', { ttl: 6000 }));
+  net.on('transferred', () => {
+    clearTimeout(joinTimer);
+    clearPendingJoin();
+    closeAllDialogs();
+    identity.clearToken();
+    identity.setEntered(false);
+    backToLobby();
+    store.set(s => ({ me: { playerId: null, name: s.me.name, token: null }, session: { entered: false, resumeMatches: [] } }));
+    toast('对局已转移到另一设备，此设备已退出控制', 'info', { ttl: 8000 });
+  });
   net.on('kicked', () => {
     closeAllDialogs();
     void alertDialog({ title: t('连接已断开'), micro: 'ADMIN ACTION', text: t('你已被管理员下线。当前页面不会自动重连；如需继续游戏，请主动点击重新连接。') });
@@ -365,7 +386,7 @@ function wireNet() {
   store.subscribe((s, prev) => {
     // 已主动清空/离开旧局后，不让仍在途的旧帧恢复它；新局/观战确认会重新开放。
     if ((prev.match.public && !s.match.public) || (prev.room?.inMatch && !s.room) || (prev.spectator && !s.spectator)) matchDismissed = true;
-    if (s.session.entered && !prev.session.entered) schedulePendingJoin();
+    if (s.session.entered && (!prev.session.entered || (prev.session.resumeMatches?.length && !s.session.resumeMatches?.length))) schedulePendingJoin();
     // in a room (co-op or solo, also a resumed one) a match is near: its data starts downloading
     if (s.room && !prev.room) warmGameData();
     if (s.match.private !== prev.match.private || s.match.watchBench !== prev.match.watchBench ||
@@ -475,6 +496,7 @@ function App() {
     <${StatsHost} />
     <${ResourcePreloadHost} />
     <${FriendInvitationHost} />
+    <${SessionTransferHost} />
   </div>`;
 }
 

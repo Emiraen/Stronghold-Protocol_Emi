@@ -56,7 +56,7 @@ async function archiveMessages() {
 export function installFriendsSync() {
   if (installed) return;
   installed = true;
-  net.on('welcome', () => friendsStore.set(empty()));
+  net.on('welcome', msg => { if (!msg.transferred) friendsStore.set(empty()); });
   net.on('serverSwitch', () => friendsStore.set(empty()));
   net.on('friends.state', applyFriends);
   net.on('rank.me', msg => {

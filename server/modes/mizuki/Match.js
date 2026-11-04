@@ -54,6 +54,8 @@ import { grantMizukiEconomicHope, validMizukiEconomy } from './Economy.js';
 import { grantMizukiEquipment, equipMizukiEquipment, dispatchMizukiEquipmentMeta,
   grantMizukiBattleEquipment, validMizukiEquipmentState, mizukiEquipmentDeployLimit, mizukiEquipmentItemView } from './Equipment.js';
 import { dispatchMizukiNativeMeta } from './NativeMeta.js';
+import { mizukiEquipmentAvailable, mizukiEquipmentEffectAvailable, mizukiEquipmentSourceAvailable,
+  mizukiEquipmentPool, mizukiEquipmentOffers } from './EquipmentPolicy.js';
 import { mizukiDifficultyOptions, mizukiDifficultyInitial, mizukiDifficultyLight, validMizukiDifficulty,
   mizukiDifficultyHopeDelta, mizukiDifficultyDeployDelta, mizukiDifficultyCursePool, mizukiCollectibleEffects, MIZUKI_INITIAL_DICE,
   mizukiCommanderProgress, validMizukiCommander, mizukiCommanderNextExp, mizukiCommanderLevelRewards } from './Difficulty.js';
@@ -70,6 +72,7 @@ import { createMizukiRouteMissions, acceptMizukiRouteMission, advanceMizukiRoute
   validMizukiRouteMissions } from './RouteMissions.js';
 import { MIZUKI_VARIATION_IDS, mizukiVariationSpec } from './Variations.js';
 import { mizukiStrategyStartingLife, mizukiStrategyReserveSlots, mizukiStrategyRouteHook, mizukiStrategyDeferredPrepRound } from './StrategyAdaptation.js';
+import { mizukiStrategyAvailable, mizukiStrategyBandId } from './StrategyPolicy.js';
 
 const OK = Object.freeze({ ok: true });
 const OFFICIAL = JSON.parse(readFileSync(new URL('../../../data/mizuki/rogue2.json', import.meta.url), 'utf8'));
@@ -300,6 +303,7 @@ export class MizukiMatch {
     this.floorState = { version: 1, enteredZones: [], curse: null, mutations: createMizukiMutationState(), pending: null, virtues: [], eventLedger: createMizukiRouteEventLedger() };
     this.facilityPlacements = {};
     this.strategyOptions = Object.values(this.ds.raw?.bands || this.data.bands || {}).sort((a, b) => a.sortId - b.sortId)
+      .filter(band => mizukiStrategyAvailable(band.bandId))
       .map((band) => ({ bandId: band.bandId, name: band.name,
         description: MIZUKI_STRATEGY_DESCRIPTIONS[band.bandId] || band.desc, iconId: band.iconId }));
     this.light = mizukiDifficultyLight(this.difficultyGrade);
@@ -1024,6 +1028,10 @@ export class MizukiMatch {
         if (previous) previous.equipmentGiftOutbox = (previous.equipmentGiftOutbox || []).filter((gift) => gift.id !== id);
       }
     };
+    if (!mizukiEquipmentEffectAvailable({ key: 'effect:builtin_gift' })) {
+      for (const gift of [...(sender.equipmentGiftOutbox || [])]) consume(gift.id);
+      return;
+    }
     for (const gift of [...(sender.equipmentGiftOutbox || [])]) {
       let target = this.players.get(gift.toPlayerId);
       if (!target?.alive || target.left) target = this.order.filter((player) => player.playerId !== sender.playerId && player.alive && !player.left)
@@ -1081,14 +1089,16 @@ export class MizukiMatch {
       return result.ok ? result.item : null;
     };
     const offer = (kind, ids, options = {}) => {
-      const choices = [...new Set(ids)].filter((id) => kind === 'chess' ? this.fullCatalog.byId.has(id) : !!this.gd.item(id));
+      const offerSource = options.source?.includes(':') ? options.source : source?.key || 'item:mizuki';
+      if (!mizukiEquipmentSourceAvailable(this.gd, offerSource)) return false;
+      const choices = [...new Set(ids)].filter((id) => kind === 'chess' ? this.fullCatalog.byId.has(id) : mizukiEquipmentAvailable(this.gd, id));
       if (!choices.length || (player.equipmentOffers?.length || 0) >= 64) return false;
       player.equipmentOffers ||= []; player.equipmentOfferSeq = (player.equipmentOfferSeq || 0) + 1;
       player.equipmentOffers.push({ id: 'mzeo:' + player.seat + ':' + player.equipmentOfferSeq, kind, choices,
-        source: options.source?.includes(':') ? options.source : source?.key || 'item:mizuki', createdRound: this.round, pick: 1, grantOpts: {} });
+        source: offerSource, createdRound: this.round, pick: 1, grantOpts: {} });
       return true;
     };
-    const mate = (target) => ({ playerId: target.playerId, name: target.name, alive: target.alive, bandId: () => target.bandId,
+    const mate = (target) => ({ playerId: target.playerId, name: target.name, alive: target.alive, bandId: () => mizukiStrategyBandId(target.bandId),
       bondCount: (id) => this._prepBonds(target)[id]?.count || 0,
       grantChess: (id) => {
         if (hook !== 'onRoundStart' || source?.ref?.key !== 'effect:builtin_gift') return null;
@@ -1104,7 +1114,7 @@ export class MizukiMatch {
       : mizukiStrategyReserveSlots({ player, rollChess, stage: this._equipmentStage(player) }));
     let pool = null;
     const rollItem = (options = {}) => MatchSpDraft.prototype.rollItemId.call({ gd: this.gd, rngMeta: rng,
-      itemPool: { canGain: () => true, pick: (random, ids, weights) => (weights ? random.weighted(ids, (id) => weights.get(id) || 0) : random.pick(ids)) || null } },
+      itemPool: mizukiEquipmentPool(this.gd) },
     { shopLevel: this._equipmentStage(player), ...options });
     return { data: this.ds.raw, gd: this.gd, phase: this.phase, round: this.round, source, hook, playerId: player.playerId, name: player.name, seat: player.seat, rng,
       counter: (key) => player.metaCounters[key] || 0,
@@ -1129,7 +1139,7 @@ export class MizukiMatch {
       addFunds: (amount) => { const n = Math.max(0, Math.trunc(amount)); this._grantEconomicHope(player, n); return n; },
       addPendingFunds: (amount) => { const n = Math.max(0, Math.trunc(amount)); player.equipmentPendingFunds = (player.equipmentPendingFunds || 0) + n; return n; },
       roundStats: () => ({ gainedChess: player.gainedChess, spent: 0, refreshes: player.recruitRefreshes, buys: 0 }),
-      bandId: () => player.bandId, teammates: () => this.order.filter((target) => target.playerId !== player.playerId && target.alive && !target.left).map(mate),
+      bandId: () => mizukiStrategyBandId(player.bandId), teammates: () => this.order.filter((target) => target.playerId !== player.playerId && target.alive && !target.left).map(mate),
       teamMedicGranted: () => this.order.some(target => target.bandId === 'band_amedic'),
       player: (id) => { const target = this.players.get(id); return hook === 'onRoundStart' && target?.alive && !target.left && target !== player ? mate(target) : null; },
       shopLevel: () => this._equipmentStage(player), shopSlots: slots,
@@ -1151,7 +1161,7 @@ export class MizukiMatch {
         return plan.ok && this._addOperator(player, plan.operatorId, { ...plan, plan, missionPromotion: false });
       },
       addEffect: (ref) => {
-        if (!ref?.id || !ref.key) return null;
+        if (!ref?.id || !ref.key || !mizukiEquipmentEffectAvailable(ref)) return null;
         player.equipmentEffects ||= [];
         const existing = player.equipmentEffects.find((entry) => entry.id === ref.id);
         if (existing) Object.assign(existing, copy(ref)); else player.equipmentEffects.push(copy(ref));
@@ -2069,7 +2079,7 @@ export class MizukiMatch {
         syncMizukiPrep(player, { source: this.ds, grid, occupied, facilityBlocked, collectibles: this.collectibles, deployLimit: deployLimits[player.playerId] });
         const input = { playerId: player.playerId, seat: player.seat, units: mizukiPrepInput(player, { source: this.ds, grid, collectibles: this.collectibles }),
           bonds: copy(this._prepBonds(player)), layers: copy(player.layers || {}), progression: { layers: copy(player.layers || {}) },
-          bandId: player.bandId, squadMods: copy(this.squadMods), effects: copy(player.equipmentEffects || []) };
+          bandId: mizukiStrategyBandId(player.bandId), squadMods: copy(this.squadMods), effects: copy((player.equipmentEffects || []).filter(mizukiEquipmentEffectAvailable)) };
         getDefaultRegistry().get('global:contentb_info')?.onBattleStart(this._metaContext(player), { input, kind: this.currentNode.type === 'boss' ? 'boss' : 'normal' });
         if (battleStart) this._nativeHook(player, 'onBattleStart', { input, kind: this.currentNode.type === 'boss' ? 'boss' : 'normal' }, this.completedNodes + ':' + this.currentNode.id);
         return input;
@@ -2357,7 +2367,7 @@ export class MizukiMatch {
         battleInput: ({ carry }) => ({ playerId: player.playerId, seat: player.seat, coords: 'field',
           units: mizukiPrepInput(player, { source: this.ds }).map((unit) => ({ ...unit, ...(carry.has(unit.uid) ? { carryState: carry.get(unit.uid) } : {}) })),
           bonds: this._prepBonds(player), layers: copy(player.layers), progression: { layers: copy(player.layers) },
-          bandId: player.bandId, squadMods: copy(this.squadMods) }) };
+          bandId: mizukiStrategyBandId(player.bandId), squadMods: copy(this.squadMods) }) };
     });
     return { gd, isSolo: members.length === 1, alivePlayers: () => members, round: this.round, lastResults: this.lastResults, dispatch() {} };
   }
@@ -2768,6 +2778,7 @@ export class MizukiMatch {
     const player = this.players.get(playerId);
     if (!player || player.left) return fail(ERR.ELIMINATED, '你已退出探索。');
     if (!player.connected) return fail(ERR.BAD_TARGET, '连接尚未恢复。');
+    player.equipmentOffers = mizukiEquipmentOffers(this.gd, player.equipmentOffers);
     const type = message?.t;
     if (type === 'g.watch') {
       const field = this.fields.get(message.fieldId);
@@ -2994,6 +3005,7 @@ export class MizukiMatch {
     }
     if (type === 'g.mizuki.strategy' && this.phase === PHASE.STRATEGY) {
       if (player.strategyReady) return fail(ERR.ALREADY, '策略已经确认。');
+      if (!mizukiStrategyAvailable(message.bandId)) return fail(ERR.BAD_TARGET, '夕策略在水月肉鸽中禁用。');
       if (!this.strategyOptions.some((band) => band.bandId === message.bandId)) return fail(ERR.BAD_TARGET, '策略不存在。');
       if (this._active().some((member) => member.playerId !== playerId && member.bandId === message.bandId)) return fail(ERR.ALREADY, '该策略已被队友选择。');
       player.bandId = message.bandId; player.strategyReady = true; player.ready = true;
@@ -3192,7 +3204,7 @@ export class MizukiMatch {
   }
 
   _effectsView(player) {
-    const effects = [], band = this.gd.band(player.bandId);
+    const effects = [], band = this.gd.band(mizukiStrategyBandId(player.bandId));
     if (band) effects.push({ id: band.effectId || band.bandId, name: band.effectName || band.name,
       desc: band.desc || '', iconKind: 'band', iconId: band.iconId || band.bandId });
     for (const ref of player.equipmentEffects || []) {
@@ -3257,7 +3269,7 @@ export class MizukiMatch {
         totalNodes: null, light: this.light, ...pause,
         squadCapacity: this.squadCapacity, squads: this._squadOptions(), squadVotes: { ...this.squadVotes },
         selectedSquad: this._squadOptions().find((squad) => squad.id === (this.baseSquadId || this.selectedSquad?.id)) || null,
-        strategyOptions: copy(this.strategyOptions), strategySelections: Object.fromEntries(this.order.filter((player) => player.bandId).map((player) => [player.playerId, player.bandId])),
+        strategyOptions: copy(this.strategyOptions.filter(band => mizukiStrategyAvailable(band.bandId))), strategySelections: Object.fromEntries(this.order.filter((player) => player.bandId).map((player) => [player.playerId, player.bandId])),
         initialSupplyOptions: mizukiInitialSupplyOptions(), initialSupplySelections: Object.fromEntries(this.order.filter(player => player.initialSupplyId).map(player => [player.playerId, player.initialSupplyId])),
         recruitGroups: this._recruitGroupOptions(), recruitGroupSelections: Object.fromEntries(this.order.filter((player) => player.recruitGroupId).map((player) => [player.playerId, player.recruitGroupId])),
         difficultyGrade: this.difficultyGrade, difficultyOptions: mizukiDifficultyOptions(),
@@ -3312,7 +3324,7 @@ export class MizukiMatch {
       equipmentRules: { enabled: player.alive && !player.left, equipPerChess: this.gd.equipPerChess || 2, dropsEveryBattles: null,
         battlesCompleted: player.equipmentBattlesCompleted || 0, nextDropIn: null, stage: this._equipmentStage(player),
         boardDeployLimitMax: 9, lineupLimit: this.squadCapacity },
-      equipmentOffers: (player.equipmentOffers || []).map((offer) => ({ ...copy(offer), choices: offer.choices.map((id) => offer.kind === 'chess'
+      equipmentOffers: mizukiEquipmentOffers(this.gd, player.equipmentOffers).map((offer) => ({ ...copy(offer), choices: offer.choices.map((id) => offer.kind === 'chess'
         ? copy(this.fullCatalog.byId.get(id)) : { ...copy(this.gd.item(id)), itemId: id }) })),
       economy: { coinRemainder: player.economicCoinRemainder || 0, coinsPerHope: 5,
         totalConvertedHope: Math.floor((player.economicCoinTotal || 0) / 5) - (player.economicHopePending || 0), hopePending: player.economicHopePending || 0 },
@@ -3325,7 +3337,7 @@ export class MizukiMatch {
       tickets: copy(player.tickets), catalogueReport: copy(this.fullCatalog.report), recruitmentRules: copy(MIZUKI_RECRUIT_RULES),
       trainingSource: copy(this.fullCatalog.trainingSource), trainingReport: copy(this.fullCatalog.trainingReport),
       prepCovenants: copy(this._prepBonds(player)), metaMessages: [...player.metaMessages],
-      strategy: { options: copy(this.strategyOptions), selected: player.bandId, done: player.strategyReady },
+      strategy: { options: copy(this.strategyOptions.filter(band => mizukiStrategyAvailable(band.bandId))), selected: player.bandId, done: player.strategyReady },
       initialSupply: { options: mizukiInitialSupplyOptions(), selected: player.initialSupplyId, done: player.initialSupplyReady },
       battleOutcome: copy(player.battleOutcome || null),
       recruitGroup: { options: this._recruitGroupOptions(), selected: player.recruitGroupId, done: player.recruitGroupReady },
@@ -3705,7 +3717,7 @@ export class MizukiMatch {
         || (state.initialSupplyVersion === 1 && (typeof player.initialSupplyReady !== 'boolean'
           || (player.initialSupplyId !== null && !mizukiInitialSupplyReward(player.initialSupplyId))
           || player.initialSupplyReady !== (player.initialSupplyId !== null)))
-        || (player.bandId !== null && !this.strategyOptions.some((band) => band.bandId === player.bandId))
+        || (player.bandId !== null && !this.gd.band(player.bandId))
         || (player.recruitGroupId !== null && !MIZUKI_RECRUIT_GROUPS.some((group) => group.id === player.recruitGroupId))
         || (player.strategyReady !== (player.bandId !== null)) || (player.recruitGroupReady !== (player.recruitGroupId !== null))
         || !int(player.recruitRefreshes, 0, 99999)
@@ -3813,6 +3825,7 @@ export class MizukiMatch {
         equipmentEffects: [], equipmentPendingFunds: 0, equipmentOffers: [], equipmentOfferSeq: 0, equipmentGiftOutbox: [], equipmentDeployCapMin: 0, equipmentDeployCapBonus: 0,
         ...player, layers: clearNonStackingBondLayers({ ...player.layers }), name: current.name, connected: current.connected && !player.left };
     }).sort((a, b) => a.seat - b.seat);
+    for (const player of this.order) player.equipmentOffers = mizukiEquipmentOffers(this.gd, player.equipmentOffers);
     this.players = new Map(this.order.map((player) => [player.playerId, player]));
     this.seed = doc.seed; this.matchId = doc.matchId; this.matchNo = doc.matchNo;
     this.startedAt = Number(doc.startedAt) || this.now(); this.revision = Math.max(0, Number(doc.revision) || 0);

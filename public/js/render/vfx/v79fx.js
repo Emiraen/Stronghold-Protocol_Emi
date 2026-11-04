@@ -31,7 +31,7 @@ export class V79Fx {
     held?.handle?.stop(); this.held.delete(slot);
   }
   _play(key, v, opts = {}) {
-    if (!v || !this.w.ofx.ready(key)) return null;
+    if (!v || !this.w.ofx.ready(this.w.effectKey(key, opts.skinOwner || opts.flipFrom || v))) return null;
     return this.w.playOn(key, v, opts);
   }
   _hold(slot, owner, key, view, duration = 0, opts = {}, target = null, surviveOwner = false) {

@@ -76,10 +76,10 @@ export const NET_DEFAULTS = Object.freeze({
  * room.loadout (a ≤ 160-entry map validated against the game data; the client debounces its edits), and
  * history.detail (a potentially large saved result).
  */
-export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'profile.loadout', 'profile.presentation', 'history.detail', 'spectator.join', 'spectator.watch']);
+export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'profile.loadout', 'profile.presentation', 'history.detail', 'spectator.join', 'spectator.watch', 'session.transfer']);
 
 /** Close codes (see header). */
-export const CLOSE = Object.freeze({ REPLACED: 4001, HELLO_TIMEOUT: 4002, ADMIN_KICK: 4003, POLICY: 1008, SHUTDOWN: 1001 });
+export const CLOSE = Object.freeze({ REPLACED: 4001, HELLO_TIMEOUT: 4002, ADMIN_KICK: 4003, TRANSFERRED: 4005, POLICY: 1008, SHUTDOWN: 1001 });
 
 const WS_OPEN = 1;
 const RESUME_PROBE_TIMEOUT_MS = 2000;
@@ -223,6 +223,17 @@ export class SessionRegistry {
   remove(s) {
     if (this.byPlayerId.get(s.playerId) === s) this.byPlayerId.delete(s.playerId);
     if (this.byTokenMap.get(s.token) === s) this.byTokenMap.delete(s.token);
+  }
+
+  /** Invalidate the previous device's secret without changing its match seat. */
+  rotateToken(s) {
+    if (this.byPlayerId.get(s.playerId) !== s) return null;
+    let token;
+    do token = newToken(); while (this.byTokenMap.has(token));
+    if (this.byTokenMap.get(s.token) === s) this.byTokenMap.delete(s.token);
+    s.token = token;
+    this.byTokenMap.set(token, s);
+    return token;
   }
 
   /**
@@ -621,7 +632,7 @@ function socketPacingBuffered(ws, limits = NET_DEFAULTS) {
 }
 export function clearPendingPool(ws) { socketConnections.get(ws)?.clearPendingPool(); }
 export function clearDeferred(ws) { socketConnections.get(ws)?.flow.clear((entry) => entry.priority !== 'high'); }
-const CLOSE_REASONS = new Set(['session replaced', 'hello timeout', 'admin kick', 'rate limit', 'server shutdown',
+const CLOSE_REASONS = new Set(['session replaced', 'session transferred', 'hello timeout', 'admin kick', 'rate limit', 'server shutdown',
   'login lease expired', 'message backlog', 'login rejected', 'login unavailable', 'session released',
   'server switch', 'server switch failed']);
 const safeCloseReason = (reason) => {
@@ -636,6 +647,7 @@ const closeCause = (code, reason) => code === CLOSE.POLICY
   ? POLICY_CLOSE_CAUSES[safeCloseReason(reason)] || 'policy_close' : ({
   [CLOSE.REPLACED]: 'session_replaced', [CLOSE.HELLO_TIMEOUT]: 'hello_timeout',
   [CLOSE.SHUTDOWN]: 'server_shutdown', [CLOSE.ADMIN_KICK]: 'admin_kick',
+  [CLOSE.TRANSFERRED]: 'session_transferred',
 })[code] || 'server_close';
 
 export function terminateSocket(ws, cause, detail = {}) {
@@ -1280,7 +1292,12 @@ export class Network {
     if ((HEAVY_TYPES.has(msg.t) || heavyFriendAction(msg)) && !conn.heavy.take(now)) { this.reply(conn, errorMsg(ERR.RATE, rid, `${msg.t} too often`)); return; }
     if ((conn.pendingMessages || 0) >= 128) { conn.close(CLOSE.POLICY, 'message backlog'); return; }
     conn.pendingMessages = (conn.pendingMessages || 0) + 1;
-    conn.messageChain = (conn.messageChain || Promise.resolve()).then(() => this.dispatchMessage(conn, msg, now))
+    const identityEpoch = conn.identityEpoch || 0;
+    conn.messageChain = (conn.messageChain || Promise.resolve()).then(() => {
+      // Intents queued before a device transfer belong to the previous identity.
+      if ((conn.identityEpoch || 0) !== identityEpoch) return;
+      return this.dispatchMessage(conn, msg, now);
+    })
       .catch((e) => this.log.error('[net] 消息处理失败', e))
       .finally(() => { conn.pendingMessages--; });
   }
@@ -1378,12 +1395,14 @@ export class Network {
 
   async dispatchMessage(conn, msg, now) {
     if (conn.closing || this.closed || this.draining || this.conns.get(conn.ws) !== conn) return;
+    if (conn.transferLock) return;
     const rid = msg.rid;
     if (conn.session?.loginReleased || conn.session?.loginRevoked) return;
     if (msg.t === 'ping') { this.onPing(conn, msg, now); return; }
     if (msg.t === 'hello') { await this.onHelloMsg(conn, msg, now); return; }
     if (!conn.session || !conn.session.profileReady) { this.reply(conn, errorMsg(ERR.BAD_MSG, rid, 'hello required')); return; }
     if (!await this.ensureCurrentSession(conn)) return;
+    if (msg.t === 'session.transfer') { await this.onTransferMsg(conn, msg); return; }
 
     let res;
     try {
@@ -1470,6 +1489,10 @@ export class Network {
         session = null;
       }
       if (session?.loginReleased) session = null;
+      if (session?.transferLock) {
+        this.reply(conn, errorMsg(ERR.RATE, rid, '对局正在转移，请稍后再试'));
+        return;
+      }
       wasOnline = !!session?.connected;
       if (session) {
         // 同设备同账号直接恢复；不同设备使用各自会话，不再探测或拒绝顶号。
@@ -1553,6 +1576,8 @@ export class Network {
     // Authoritative membership at welcome; absence of later snapshots is never an exit signal.
     welcome.roomCode = session.roomCode ?? null;
     welcome.spectatorCode = session.spectatorCode ?? null;
+    // Initial login only: a compact offer, never a second battle snapshot or a poll.
+    welcome.resumeMatches = repeat ? [] : this.transferMatches(session);
     if (validRid(rid)) welcome.rid = rid;
     if (!this.reply(conn, welcome)) return;
     try {
@@ -1564,6 +1589,106 @@ export class Network {
       this.log.error('[net] onHello crashed', e);
       // welcome 后的重同步失败不能留下一个看似在线却缺失状态的会话。
       try { terminateSocket(conn.ws, 'resync_error'); } catch { /* 已关闭 */ }
+    }
+  }
+
+  /** Account-authenticated, on-demand discovery. No secrets or match snapshots leave this server. */
+  transferMatches(source) {
+    if (!source.profileBound || !source.aid || source.roomCode || source.spectatorCode) return [];
+    const matches = [];
+    for (const target of this.registry.all()) {
+      if (target === source || !target.profileBound || target.aid !== source.aid || target.loginReleased
+          || this.registry.isExpired(target, this.now())) continue;
+      const info = this.handler.transferInfo?.(target);
+      if (!info) continue;
+      matches.push({ id: target.playerId, roomCode: info.roomCode, mode: info.mode,
+        ...(info.variant ? { variant: info.variant } : {}), online: !!target.connected });
+      if (matches.length === 8) break;
+    }
+    return matches;
+  }
+
+  /** Explicit handoff: drain the old controller, then commit socket/lease/token ownership synchronously. */
+  async onTransferMsg(conn, msg) {
+    const source = conn.session, target = this.registry.byId(msg.target);
+    const reject = (code, detail) => this.reply(conn, errorMsg(code, msg.rid, detail));
+    const now = this.now();
+    if (!source?.profileBound || !target?.profileBound || target === source || !source.deviceId
+        || source.aid !== target.aid || source.roomCode || source.spectatorCode
+        || target.loginReleased || target.loginInFlight || this.registry.isExpired(target, now)
+        || !this.handler.transferInfo?.(target)) {
+      reject(ERR.BAD_TARGET, '对局已结束或无法转移，请重新登录获取最新对局'); return;
+    }
+    if (target.transferLock || now - (target.transferredAt ?? -Infinity) < 10_000
+        || now - (conn.transferRequestedAt ?? -Infinity) < 5000) {
+      reject(ERR.RATE, '对局正在转移或刚刚转移，请稍后再试'); return;
+    }
+    conn.transferRequestedAt = now;
+    const lock = {}, oldWs = target.ws, oldConn = oldWs && this.conns.get(oldWs);
+    target.transferLock = lock;
+    if (oldConn) oldConn.transferLock = lock;
+    let timer;
+    try {
+      // Wait for one already-running mutation; queued old-device intents see the lock and stop.
+      if (oldConn?.messageChain) {
+        const drained = await Promise.race([
+          oldConn.messageChain.then(() => true, () => true),
+          new Promise(resolve => { timer = setTimeout(() => resolve(false), 3500); timer.unref?.(); }),
+        ]);
+        clearTimeout(timer);
+        if (!drained) { reject(ERR.BAD_TARGET, '原设备正在完成操作，请稍后重试转移'); return; }
+      }
+      if (conn.closing || this.closed || this.draining || this.conns.get(conn.ws) !== conn
+          || conn.session !== source || source.ws !== conn.ws || !source.connected
+          || this.registry.byId(source.playerId) !== source || this.registry.byId(target.playerId) !== target
+          || source.aid !== target.aid || source.roomCode || source.spectatorCode
+          || target.ws !== oldWs || target.loginReleased || target.loginInFlight
+          || this.registry.isExpired(target, this.now()) || !this.handler.transferInfo?.(target)
+          || !this.handler.profiles?.validSession(source)) {
+        reject(ERR.BAD_TARGET, '连接或对局状态已变化，请重新选择对局'); return;
+      }
+      // transferSession reuses this authenticated connection's lease and performs no I/O.
+      // Target stays untouched until the old command chain and all permission checks pass.
+      const previous = { ws: target.ws, connected: target.connected };
+      target.ws = conn.ws; target.connected = true;
+      if (!this.handler.profiles.transferSession(source, target)) {
+        Object.assign(target, previous);
+        reject(ERR.BAD_TARGET, '登录凭证已失效，请重新登录'); return;
+      }
+      conn.session = target;
+      conn.identityEpoch = (conn.identityEpoch || 0) + 1;
+      this.registry.rotateToken(target);
+      this.registry.remove(source);
+      target.deviceId = source.deviceId;
+      target.targetId = conn.targetId;
+      target.addr = conn.ip; target.limitKey = conn.key;
+      target.lastSeen = this.now(); target.disconnectedAt = null;
+      target.profileReady = false; target.initializingChat = false; target.pendingChat = [];
+      target.transferredAt = this.now();
+      if (oldWs) this.detachReplaced(oldWs, CLOSE.TRANSFERRED, 'session transferred');
+      conn.streamFieldId = null; conn.ownFieldId = null; conn.streamManual = false;
+      let extra = null;
+      try { extra = this.handler.welcomeInfo?.() ?? null; } catch { /* optional display metadata */ }
+      const welcome = { ...(extra && typeof extra === 'object' ? extra : null),
+        t: 'welcome', playerId: target.playerId, token: target.token, name: target.name,
+        serverNow: this.now(), version: PROTOCOL_VERSION, resumed: true, transferred: true,
+        roomCode: target.roomCode ?? null, spectatorCode: null, resumeMatches: [],
+        stateDelta: conn.deltaEnabled ? 1 : 0, stateCompact: conn.compactEnabled ? 1 : 0,
+        stateStream: conn.fieldMetadataEnabled ? 2 : conn.streamEnabled ? 1 : 0,
+        bandwidthMbps: this.opts.bandwidthMbps, progressMs: this.bandwidth.baseMs,
+        ...(validRid(msg.rid) ? { rid: msg.rid } : {}) };
+      if (!this.reply(conn, welcome)) { terminateSocket(conn.ws, 'transfer_send_failed'); return; }
+      if (this.handler.onSessionTransfer) await this.handler.onSessionTransfer(target);
+      else await this.handler.onHello?.(target, { resumed: true, repeat: true, previousAid: target.aid });
+      if (!conn.closing && target.ws === conn.ws && this.handler.profiles.validSession(target)) target.profileReady = true;
+    } catch (error) {
+      this.log.error('[net] 对局转移失败', error);
+      if (conn.session === source) reject(ERR.INTERNAL, '转移暂时不可用，请稍后重试');
+      else terminateSocket(conn.ws, 'transfer_resync_failed');
+    } finally {
+      clearTimeout(timer);
+      if (target.transferLock === lock) target.transferLock = null;
+      if (oldConn?.transferLock === lock) oldConn.transferLock = null;
     }
   }
 
@@ -1608,7 +1733,7 @@ export class Network {
   }
 
   /** The session moved to a new socket: unbind and close the old one without firing a disconnect. */
-  detachReplaced(oldWs) {
+  detachReplaced(oldWs, code = CLOSE.REPLACED, reason = 'session replaced') {
     const old = this.conns.get(oldWs);
     if (old) {
       old.detachedIdentity = old.identity();
@@ -1620,9 +1745,9 @@ export class Network {
         session.pendingResultFailed = false;
       }
       old.session = null;
-      old.close(CLOSE.REPLACED, 'session replaced');
+      old.close(code, reason);
     } else {
-      try { oldWs.close(CLOSE.REPLACED, 'session replaced'); } catch { /* ignore */ }
+      try { oldWs.close(code, reason); } catch { /* ignore */ }
     }
   }
 

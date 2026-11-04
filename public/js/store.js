@@ -77,7 +77,7 @@ export const emptyMatch = () => ({ public: null, private: null, field: null, res
 export const initialState = Object.freeze({
   connection: { status: 'idle', ping: null, attempt: 0, retryAt: 0, lastError: null, everOnline: false },
   me: { playerId: null, name: '', token: null },
-  session: { entered: false },
+  session: { entered: false, resumeMatches: [] },
   room: null,
   match: emptyMatch(),
   ticker: [],

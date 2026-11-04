@@ -19,6 +19,7 @@ import { loadImageElement } from '../../assets.js';
 import { compileEffect } from './effect.js';
 import { FX_LIST_URL, loadFxList } from './available.js';
 import { setIndexVersion } from './mounts.js';
+import { mergeSkinFxCatalog } from './skinfx.js';
 const MAX_PARALLEL = 8;
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -92,6 +93,7 @@ export class FxLibrary {
     this.listUrl = opts.listUrl || FX_LIST_URL;
     this.list = isObj(opts.list) ? opts.list : null;
     this.groups = null;
+    this.skinFx = null;
     this._init = null;
     this._index = null;
     this._texInfo = null;
@@ -135,6 +137,7 @@ export class FxLibrary {
       }
       if (this.disposed) return false;
       this.groups = groups && isObj(groups['fx/prefabs']) ? groups : null;
+      this.skinFx = isObj(list?.skinFx) ? list.skinFx : null;
       // computed once: the full set lists ~4,000 prefabs and `available` is read for every event
       this._available = false;
       if (this.groups) for (const _k in this.groups['fx/prefabs']) { this._available = true; break; }
@@ -142,6 +145,8 @@ export class FxLibrary {
     })();
     return this._init;
   }
+
+  isInstalled(url) { return !!url && (this.fetch !== this._defaultFetch || resourceCache.isCached(url)); }
 
   /** Effects were extracted (the file list names prefabs). */
   get available() { return !this.disposed && !!this._available; }
@@ -230,7 +235,7 @@ export class FxLibrary {
     this._index = this.init().then(() => {
       const url = this.url('fx', 'index');
       return this._canRead(url) ? this._json(url) : null;
-    }).then((j) => { if (this.disposed) return null; setIndexVersion(j?.version); return j; }).catch(() => null)
+    }).then((j) => { if (this.disposed) return null; const index = mergeSkinFxCatalog(j, this.skinFx); setIndexVersion(index?.version); return index; }).catch(() => null)
       .then(j => { if (!j) this._index = null; return j; });
     return this._index;
   }
@@ -244,7 +249,7 @@ export class FxLibrary {
       return this._canRead(url) ? this._json(url) : null;
     }).catch(() => null).then(j => {
       if (this.disposed || !isObj(j?.textures)) { this._texInfo = null; return null; }
-      return j.textures;
+      return { ...j.textures, ...(this.skinFx?.textures || {}) };
     });
     return this._texInfo;
   }
@@ -443,6 +448,7 @@ export class FxLibrary {
     this.failed.clear();
     this._requests.clear(); this._requestAt.clear(); this._retryAt.clear();
     this.groups = null;
+    this.skinFx = null;
     this.list = null;
     this._init = this._index = this._texInfo = null;
   }

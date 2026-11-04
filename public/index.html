@@ -80,7 +80,7 @@
   <link rel="modulepreload" href="/vendor/preact.module.js" />
   <link rel="modulepreload" href="/vendor/hooks.module.js" />
   <link rel="modulepreload" href="/vendor/htm.module.js" />
-  <link rel="modulepreload" href="/js/main.js" />
+  <link rel="modulepreload" href="/js/main.js?release=session-handoff-20261105-0115" />
   <!-- Battlefield renderer libs (classic scripts, injected by js/render/app.js when a match view mounts): warm the cache
        at low priority so entering the match doesn't wait on ~800 KB of script. -->
   <link rel="prefetch" href="/vendor/pixi.min.js" as="script" />
@@ -128,7 +128,7 @@
       if (/specifier|resolve|import|module/i.test(String(ev && ev.message))) window.__spBootFail('load');
     });
   </script>
-  <script type="module" src="/js/main.js?release=nameplate-fill-20261102-r3" onerror="window.__spBootFail && window.__spBootFail('load')"></script>
+  <script type="module" src="/js/main.js?release=session-handoff-20261105-0115" onerror="window.__spBootFail && window.__spBootFail('load')"></script>
   <script type="module" src="/js/legacyNotice.js"></script>
   <script nomodule>window.__spBootFail && window.__spBootFail('old');</script>
   <script>
